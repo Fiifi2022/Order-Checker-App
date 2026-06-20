@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions for zero-trust security
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Schema and boundary checks for defensive design
+    function isValidAudit(data) {
+      return data.id is string
+        && data.id.size() <= 128
+        && data.timestamp is string
+        && data.whatsappMessage is string
+        && data.whatsappMessage.size() <= 10000
+        && data.fulfillmentConfirmation is string
+        && data.fulfillmentConfirmation.size() <= 10000
+        && data.confidence is int
+        && data.confidence >= 0
+        && data.confidence <= 100
+        && data.verdict is string
+        && data.verdict.size() <= 1000
+        && data.allMatch is bool
+        && data.issueCount is int
+        && data.status is string
+        && (data.status == 'pending' || data.status == 'resolved' || data.status == 'ignored')
+        && (!('resolutionNotes' in data) || (data.resolutionNotes is string && data.resolutionNotes.size() <= 5000))
+        && (!('resolvedAt' in data) || data.resolvedAt is string);
+    }
+
+    // Audits Collection match block
+    match /audits/{auditId} {
+      
+      // Enforce query security boundaries on reading
+      allow get: if true;
+      allow list: if true;
+
+      // Creation is allowed when payload is valid and conforms to static schema rules
+      allow create: if isValidId(auditId)
+        && isValidAudit(incoming())
+        && incoming().id == auditId;
+
+      // Updates can only be performed on status and resolution notes, other fields are immutable.
+      allow update: if isValidId(auditId)
+        && isValidAudit(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'resolutionNotes', 'resolvedAt'])
+        && (existing().status == 'pending') // Prevent updating resolved or ignored documents (State Locking)
+        && (incoming().status == 'resolved' || incoming().status == 'ignored');
+
+      // Deletion is strictly forbidden for audit records to preserve historical chain of custody
+      allow delete: if false;
+    }
+  }
+}

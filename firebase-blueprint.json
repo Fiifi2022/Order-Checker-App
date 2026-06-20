@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "auditRecord": {
+      "title": "AuditRecord",
+      "description": "Represents an analyzed Zipline Ghana customer care dispatch audit verification record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the audit" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "ISO timestamp when the audit was conducted" },
+        "whatsappMessage": { "type": "string", "description": "The custom customer text" },
+        "fulfillmentConfirmation": { "type": "string", "description": "The warehouse logistics log" },
+        "confidence": { "type": "integer", "description": "AI matching confidence level" },
+        "verdict": { "type": "string", "description": "Visual human verdict summary" },
+        "allMatch": { "type": "boolean", "description": "True if there are zero discrepancies" },
+        "issueCount": { "type": "integer", "description": "Number of visual mismatch issues identified" },
+        "items": {
+          "type": "array",
+          "description": "Sub-items compared"
+        },
+        "meta": {
+          "type": "object",
+          "description": "Customer, phone, and facility metadata assertions"
+        },
+        "insights": {
+          "type": "array",
+          "description": "Natural language bullet highlights"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "resolved", "ignored"],
+          "description": "The status of the audit record in the ledger"
+        },
+        "resolutionNotes": { "type": "string", "description": "Notes made by human operator on resolution" },
+        "resolvedAt": { "type": "string", "format": "date-time", "description": "ISO timestamp when resolution occurred" }
+      },
+      "required": ["id", "timestamp", "whatsappMessage", "fulfillmentConfirmation", "confidence", "verdict", "allMatch", "issueCount", "items", "meta", "insights", "status"]
+    }
+  },
+  "firestore": {
+    "audits": {
+      "schema": "auditRecord",
+      "description": "Storage for audited order logs and validation records."
+    }
+  }
+}
