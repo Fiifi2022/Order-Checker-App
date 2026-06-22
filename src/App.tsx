@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   MessageSquare, 
   ClipboardCheck, 
@@ -40,19 +40,22 @@ import {
   Upload,
   Trash,
   Download,
-  Calendar,
-  Plane,
-  Rocket
+  Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { OrderCheckResult, AuditRecord, AuditAnalytics } from './types';
 
 export default function App() {
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'auditor' | 'extension'>('auditor');
+  const [activeTab, setActiveTab] = useState<'auditor' | 'osu' | 'extension'>('auditor');
 
   // WhatsApp input modes: 'text' represents raw typing, 'screenshot' represents visual scan
   const [whatsappInputMode, setWhatsappInputMode] = useState<'text' | 'screenshot'>('text');
+
+  // Simulated out of stock (OSU) list
+  const [osuList, setOsuList] = useState<string[]>([]);
+  const [newOsuItem, setNewOsuItem] = useState('');
+  const [osuLoading, setOsuLoading] = useState(false);
 
   // Core input fields
   const [whatsappMessage, setWhatsappMessage] = useState('');
@@ -63,6 +66,58 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanAlert, setScanAlert] = useState<string | null>(null);
   const [scanSuccessMsg, setScanSuccessMsg] = useState<string | null>(null);
+
+  // Fetch registered OSU items
+  const fetchOsuList = async () => {
+    setOsuLoading(true);
+    try {
+      const res = await fetch('/api/osu');
+      if (res.ok) {
+        const data = await res.json();
+        setOsuList(data);
+      }
+    } catch (err) {
+      console.error('Failed to load active out of stock register:', err);
+    } finally {
+      setOsuLoading(false);
+    }
+  };
+
+  // Add OSU item
+  const addOsuItem = async () => {
+    if (!newOsuItem.trim()) return;
+    try {
+      const res = await fetch('/api/osu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item: newOsuItem.trim() })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setOsuList(data);
+        setNewOsuItem('');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Delete OSU item
+  const removeOsuItem = async (item: string) => {
+    try {
+      const res = await fetch('/api/osu', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setOsuList(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   // Process manual or dropped files
   const processScreenshotFile = (file: File) => {
@@ -98,7 +153,10 @@ export default function App() {
     setScanSuccessMsg(null);
   };
 
-
+  // Fetch logistics data on initialization
+  useEffect(() => {
+    fetchOsuList();
+  }, []);
 
   // Listen to keyboard clipboard pastes (Ctrl+V / Cmd+V) to seamlessly capture WhatsApp screenshots
   useEffect(() => {
@@ -171,176 +229,6 @@ export default function App() {
   // Active verify results (the client receives full AuditRecord back from server)
   const [result, setResult] = useState<AuditRecord | null>(null);
 
-  // Track operator answers for suspected product order limits
-  const [orderLimitAnswers, setOrderLimitAnswers] = useState<Record<string, 'yes' | 'no'>>({});
-
-  // Helper to check if an item has a quantity mismatch because fulfillment has a lower entry
-  const isSuspectedOrderLimit = (item: any): boolean => {
-    if (typeof item.suspectedOrderLimit === 'boolean') {
-      return item.suspectedOrderLimit;
-    }
-    if (item.status === 'quantity mismatch') {
-      const reqMatch = String(item.requested || '').match(/\d+/);
-      const foundMatch = String(item.found || '').match(/\d+/);
-      const reqNum = reqMatch ? parseInt(reqMatch[0], 10) : 0;
-      const foundNum = foundMatch ? parseInt(foundMatch[0], 10) : 0;
-      return foundNum > 0 && foundNum < reqNum;
-    }
-    return false;
-  };
-
-  // Compute dynamic items filtered by operator order limit answers
-  const computedItemsIssues = result ? result.items.filter((item: any) => {
-    if (item.status === 'out of stock') return false; // Never a discrepancy, just highlighted!
-    if (item.status === 'match') return false;
-    
-    if (isSuspectedOrderLimit(item)) {
-      const answer = orderLimitAnswers[item.name];
-      if (answer === 'yes') {
-        return false; // Confirmed order limit -> exempt from discrepancies
-      }
-      if (answer === 'no') {
-        return true;  // Confirmed discrepancy
-      }
-      return false; // Awaiting answer, initially not recorded as active discrepancy
-    }
-    return true; // Other statuses are discrepancies
-  }) : [];
-
-  // Compute dynamic metadata issues
-  const computedMetaIssues = result ? [
-    result.meta.customerName,
-    result.meta.facility,
-    result.meta.ordererName,
-    result.meta.facilityName
-  ].filter(metaField => metaField && metaField.status === 'mismatch') : [];
-
-  const computedIssueCount = computedItemsIssues.length + computedMetaIssues.length;
-
-  const hasPendingOrderLimitAnswers = result ? result.items.some((item: any) => 
-    isSuspectedOrderLimit(item) && orderLimitAnswers[item.name] === undefined
-  ) : false;
-
-  const computedAllMatch = result ? (computedIssueCount === 0 && !hasPendingOrderLimitAnswers) : false;
-
-  const isAllOutOfStock = useMemo(() => {
-    return result && result.items.length > 0 && result.items.every((it: any) => it.status === 'out of stock');
-  }, [result]);
-
-  const computedConfidence = useMemo(() => {
-    if (!result) return 0;
-    if (isAllOutOfStock) return 100;
-    
-    // Check if there is any unconfirmed product quantity mismatch or discrepancy
-    const hasUnconfirmedProductDiscrepancy = result.items.some((item: any) => {
-      // Anything that is not status='match' or status='out of stock' is a discrepancy
-      const isDiscrepancy = item.status !== 'match' && item.status !== 'out of stock';
-      if (!isDiscrepancy) return false;
-      
-      // If it is a suspected order limit, did we confirm/answer 'yes'?
-      if (isSuspectedOrderLimit(item)) {
-        return orderLimitAnswers[item.name] !== 'yes';
-      }
-      
-      return true; // Standard quantity mismatch / other discrepancy
-    });
-
-    const hasAnyCompulsoryMetaIssue = computedMetaIssues.length > 0;
-
-    // If there is any unconfirmed/unresolved discrepancy or compulsory field alert, confidence cannot be 100%
-    if (hasUnconfirmedProductDiscrepancy || hasAnyCompulsoryMetaIssue) {
-      const baseScore = result.confidence || 75;
-      return Math.min(85, baseScore); // Cap at 85% until resolved/confirmed
-    }
-
-    // Otherwise, if absolutely all matches are clean (or order limits are confirmed 'yes' + no other issues), return 100%
-    if (computedAllMatch) {
-      return 100;
-    }
-
-    const baseScore = result.confidence || 75;
-    return Math.min(99, baseScore);
-  }, [result, orderLimitAnswers, computedAllMatch, computedMetaIssues.length]);
-
-  // Track audits that have been automatically cleared on the server
-  const [syncedAudits, setSyncedAudits] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    if (result && computedAllMatch && !syncedAudits[result.id]) {
-      const markAuditAsResolved = async () => {
-        try {
-          const response = await fetch(`/api/audits/${result.id}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              status: 'resolved',
-              resolutionNotes: 'Order Limit/Out-of-Stock approved. Permission to Fly: GRANTED automatically.'
-            }),
-          });
-          if (response.ok) {
-            setSyncedAudits(prev => ({ ...prev, [result.id]: true }));
-          }
-        } catch (err) {
-          console.error('[Auto Clearance] Failed to update audit in DB:', err);
-        }
-      };
-      markAuditAsResolved();
-    }
-  }, [result, computedAllMatch, syncedAudits]);
-
-  const chooseOrderLimitAnswer = async (itemName: string, value: 'yes' | 'no') => {
-    if (!result) return;
-    
-    const updatedAnswers = { ...orderLimitAnswers, [itemName]: value };
-    setOrderLimitAnswers(updatedAnswers);
-
-    const hasPending = result.items.some((item: any) => 
-      isSuspectedOrderLimit(item) && updatedAnswers[item.name] === undefined
-    );
-
-    if (!hasPending) {
-      const activeIssues = result.items.filter((item: any) => {
-        if (item.status === 'out of stock') return false;
-        if (item.status === 'match') return false;
-        if (isSuspectedOrderLimit(item)) {
-          const ans = updatedAnswers[item.name];
-          if (ans === 'yes') return false;
-          if (ans === 'no') return true;
-          return false;
-        }
-        return true;
-      });
-
-      const activeIssueCount = activeIssues.length + computedMetaIssues.length;
-      const isAllCleared = activeIssueCount === 0;
-
-      const notes = isAllCleared
-        ? `Order Limit/Out-of-Stock approved. Permission to Fly: GRANTED automatically. Choice: ${itemName} = ${value.toUpperCase()}`
-        : `Operator confirmed mismatch discrepancy: order limit was NOT used on ${itemName}.`;
-
-      try {
-        const response = await fetch(`/api/audits/${result.id}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            status: 'resolved',
-            resolutionNotes: notes
-          }),
-        });
-        if (response.ok) {
-          setSyncedAudits(prev => ({ ...prev, [result.id]: true }));
-          setResult(prev => prev ? { ...prev, status: 'resolved', resolutionNotes: notes } : null);
-        }
-      } catch (err) {
-        console.error('[Choice Confirmation Sync] Failed to update audit in DB:', err);
-      }
-    }
-  };
-
   // Resolution panel controls
   const [selectedAuditForResolution, setSelectedAuditForResolution] = useState<AuditRecord | null>(null);
   const [resolutionActionNotes, setResolutionActionNotes] = useState('');
@@ -355,10 +243,9 @@ export default function App() {
   };
 
   // Quick helper to auto-populate test cases
-  const applySampleData = (caseType: 'perfect' | 'discrepancy_qty' | 'discrepancy_extra' | 'vaccine_diluent_mismatch' | 'vaccine_dropper_mismatch' | 'order_limit_suspected' | 'out_of_stock_demo') => {
+  const applySampleData = (caseType: 'perfect' | 'discrepancy_qty' | 'discrepancy_extra' | 'vaccine_diluent_mismatch' | 'vaccine_dropper_mismatch') => {
     setError(null);
     setResult(null);
-    setOrderLimitAnswers({});
     if (caseType === 'perfect') {
       setWhatsappMessage(`Name: Kwame Mensah\nPhone: 0244123456\nFacility: St. Jude's Clinic\nHey Zipline, please dispatch:\n- 20 units of ACT 20/120mg\n- 5 cards of ORS\nThank you!`);
       setFulfillmentConfirmation(`RECIPIENT: Kwame Mensah\nCONTACT: +233244123456\nFACILITY: St. Jude's\nREADY FOR FLIGHT:\n- Coartem 20/120mg: 20 units\n- ORT: 5 cards\nREADY FOR LAUNCH BUFFER.`);
@@ -374,12 +261,6 @@ export default function App() {
     } else if (caseType === 'vaccine_dropper_mismatch') {
       setWhatsappMessage(`Sender: Dr. Kwasi\nHospital: Kumasi Hospital\nPhone: 0205566778\nVaccine order list:\n- 15 vials of OPV vaccine\n- 15 Droppers`);
       setFulfillmentConfirmation(`SYSTEM CONFIRMATION:\nCustomer: Dr. Kwasi\nFacility: Kumasi Hospital\nPhone: 0205566778\nManifest Prepared:\n- OPV Polio vaccine: 15 vials\n(NO droppers of any kind were loaded)`);
-    } else if (caseType === 'order_limit_suspected') {
-      setWhatsappMessage(`Sender: Nurse Fatima\nFacility: Walewale Hospital\nPhone: 0244556677\nGood afternoon, please Dispatch:\n- 30 packs of PCM 500mg\n- 50 units of ACT 20/120mg`);
-      setFulfillmentConfirmation(`FULFILLMENT RECORD SYSTEM:\nCustomer: Fatima\nFacility: Walewale Hospital\nContact: 0244556677\nDispatched itemization:\n- Paracetamol 500mg: 10 packs\n- Coartem (ACT): 50 units`);
-    } else if (caseType === 'out_of_stock_demo') {
-      setWhatsappMessage(`Good day, this is Clinic Assistant Mensah from Tamale Center (0554321098).\nWe need:\n- 15 vials of OPV vaccine\n- 15 Droppers\n- 10 cards of ACT 20/120mg\n(Note: OPV vaccine is currently out of stock)`);
-      setFulfillmentConfirmation(`SYSTEM CONFIRMATION ENTRY:\nFacility: Tamale Center\nPhone: 0554321098\nLoaded Cargo:\n- OPV Polio vaccine: 0 vials\n- Droppers: 0 units\n- Coartem (ACT): 10 cards`);
     }
   };
 
@@ -392,7 +273,6 @@ export default function App() {
     setLoading(true);
     setError(null);
     setResult(null);
-    setOrderLimitAnswers({}); // Reset answers
     setVerificationTime(0);
 
     const startTime = Date.now();
@@ -450,7 +330,6 @@ export default function App() {
     setScreenshot(null);
     setScanSuccessMsg(null);
     setScanAlert(null);
-    setOrderLimitAnswers({}); // Reset answers
 
     const updatedResult: AuditRecord = {
       ...selectedAuditForResolution,
@@ -472,7 +351,6 @@ export default function App() {
     setScanSuccessMsg(null);
     setScanAlert(null);
     setResult(null);
-    setOrderLimitAnswers({}); // Reset answers
   };
 
 
@@ -502,10 +380,10 @@ export default function App() {
         };
       case 'out of stock':
         return {
-          bg: 'bg-sky-100 text-sky-800 border-sky-200',
-          dot: 'bg-sky-500',
-          border: 'border-sky-200',
-          leftBorder: 'border-l-sky-500'
+          bg: 'bg-rose-200 text-rose-950 border-rose-300 animate-pulse',
+          dot: 'bg-rose-600',
+          border: 'border-rose-300',
+          leftBorder: 'border-l-rose-600'
         };
       case 'extra item':
         return {
@@ -627,6 +505,26 @@ export default function App() {
           </button>
           
           <button
+            onClick={() => {
+              setActiveTab('osu');
+              fetchOsuList();
+            }}
+            className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer relative ${
+              activeTab === 'osu'
+                ? 'border-[#5C2D91] text-[#5C2D91]'
+                : 'border-transparent text-slate-500 hover:text-[#5C2D91]'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4 text-rose-500 animate-bounce" />
+            OSU Warehouse Stock (Simulated)
+            {osuList.length > 0 && (
+              <span className="bg-rose-500 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 ml-1 animate-pulse">
+                {osuList.length}
+              </span>
+            )}
+          </button>
+          
+          <button
             onClick={() => setActiveTab('extension')}
             className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'extension'
@@ -667,20 +565,6 @@ export default function App() {
                   className="px-3 py-1.5 bg-white border border-amber-200 hover:bg-amber-50 text-amber-800 text-[11px] font-bold rounded-xl transition cursor-pointer"
                 >
                   🟡 Quantity Mismatch (PCM)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applySampleData('order_limit_suspected')}
-                  className="px-3 py-1.5 bg-indigo-55 border border-indigo-200 hover:bg-indigo-100 text-indigo-800 text-[11px] font-bold rounded-xl transition cursor-pointer"
-                >
-                  ⚠️ Suspected Order Limit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applySampleData('out_of_stock_demo')}
-                  className="px-3 py-1.5 bg-sky-50 border border-sky-200 hover:bg-sky-100 text-sky-850 text-[11px] font-bold rounded-xl transition cursor-pointer"
-                >
-                  ❄️ Out of Stock Demanded
                 </button>
                 <button
                   type="button"
@@ -922,43 +806,19 @@ export default function App() {
                     
                     {/* Top Banner Verdict Alert */}
                     <div className={`p-5 rounded-2xl border-l-8 border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm bg-white ${
-                      isAllOutOfStock
-                        ? 'border-red-200 border-l-red-500 bg-red-50/10'
-                        : computedAllMatch 
-                          ? 'border-green-200 border-l-green-600' 
-                          : hasPendingOrderLimitAnswers
-                            ? 'border-indigo-200 border-l-indigo-500'
-                            : 'border-rose-200 border-l-rose-500'
+                      result.allMatch 
+                        ? 'border-green-200 border-l-green-600' 
+                        : 'border-rose-200 border-l-rose-500'
                     }`}>
                       <div className="flex items-start gap-4">
                         <div className={`p-2.5 rounded-full shrink-0 flex items-center justify-center ${
-                          isAllOutOfStock
-                            ? 'bg-red-100 text-red-750'
-                            : computedAllMatch 
-                              ? 'bg-green-100 text-green-700' 
-                              : hasPendingOrderLimitAnswers
-                                ? 'bg-indigo-100 text-indigo-700'
-                                : 'bg-rose-100 text-rose-700'
+                          result.allMatch ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'
                         }`}>
-                          {isAllOutOfStock
-                            ? <AlertCircle className="w-7 h-7" />
-                            : computedAllMatch 
-                              ? <CheckCircle className="w-7 h-7" /> 
-                              : hasPendingOrderLimitAnswers
-                                ? <HelpCircle className="w-7 h-7" />
-                                : <AlertCircle className="w-7 h-7" />
-                          }
+                          {result.allMatch ? <CheckCircle className="w-7 h-7" /> : <AlertCircle className="w-7 h-7" />}
                         </div>
                         <div>
                           <h3 className="font-black text-[#3B1A5E] text-lg leading-tight md:text-xl flex items-center gap-2 flex-wrap">
-                            {isAllOutOfStock
-                              ? 'Order Cancelled: ALL PRODUCTS OUT OF STOCK 🚫'
-                              : computedAllMatch 
-                                ? 'Cleared: PERMISSION TO FLY GRANTED 🚀' 
-                                : hasPendingOrderLimitAnswers 
-                                  ? 'Verify Suspected Order Limit' 
-                                  : result.verdict
-                            }
+                            {result.verdict}
                             <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-mono font-medium">Session Log</span>
                             {verificationTime !== null && (
                               <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded font-mono font-semibold flex items-center gap-1">
@@ -968,46 +828,20 @@ export default function App() {
                             )}
                           </h3>
                           <p className="text-xs text-slate-500 mt-1 sm:mt-0">
-                            {isAllOutOfStock
-                              ? 'All requested products in this order are out of stock. No package or flight dispatch is required.'
-                              : computedAllMatch 
-                                ? 'All parameters (including out-of-stock and order limits) verified successfully. Permission to Fly has been automatically approved and logged!'
-                                : hasPendingOrderLimitAnswers
-                                  ? 'Fulfillment contains lower quantity values than WhatsApp. Please confirm order limit usage below.'
-                                  : `Identified ${computedIssueCount} supply chain log alert${computedIssueCount > 1 ? 's' : ''}. Set as PENDING RESOLUTION.`
+                            {result.allMatch 
+                              ? 'All parameters verified successfully. Package is clear to proceed for launcher buffer.'
+                              : `Identified ${result.issueCount} supply chain log alert${result.issueCount > 1 ? 's' : ''}. Set as PENDING RESOLUTION.`
                             }
                           </p>
                         </div>
                       </div>
                       <div className="text-right shrink-0 flex items-center gap-3 flex-wrap sm:flex-nowrap">
                         <span className={`text-[10px] font-mono px-3 py-1.5 rounded-full font-bold shadow-sm uppercase ${
-                          isAllOutOfStock
-                            ? 'bg-red-100 text-red-800'
-                            : computedAllMatch 
-                              ? 'bg-green-100 text-green-800' 
-                              : hasPendingOrderLimitAnswers
-                                ? 'bg-indigo-100 text-indigo-800'
-                                : 'bg-red-100 text-red-800'
+                          result.allMatch ? 'bg-green-100 text-green-805' : 'bg-red-100 text-red-800'
                         }`}>
-                          {isAllOutOfStock
-                            ? 'CANCELLED DISPATCH'
-                            : computedAllMatch 
-                              ? 'APPROVED DISPATCH' 
-                              : hasPendingOrderLimitAnswers
-                                ? 'AWAITING RESPONSE'
-                                : 'DISPATCH ON HOLD'
-                          }
+                          {result.allMatch ? 'APPROVED DISPATCH' : 'DISPATCH ON HOLD'}
                         </span>
-                        {isAllOutOfStock ? (
-                          <button
-                            type="button"
-                            onClick={handleLogApprovedDispatch}
-                            className="bg-slate-600 hover:bg-slate-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-1 w-full sm:w-auto justify-center"
-                          >
-                            <CheckSquare className="w-4 h-4" />
-                            Confirm & Clear Case
-                          </button>
-                        ) : computedAllMatch ? (
+                        {result.allMatch ? (
                           <button
                             type="button"
                             onClick={handleLogApprovedDispatch}
@@ -1016,14 +850,17 @@ export default function App() {
                             <CheckSquare className="w-4 h-4" />
                             Confirm & Clear
                           </button>
-                        ) : hasPendingOrderLimitAnswers ? (
-                          <div className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-3 py-2 rounded-xl">
-                            Awaiting Operator Confirmation
-                          </div>
                         ) : (
-                          <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-3 py-2 rounded-xl">
-                            Discrepancy Confirmed & Logged
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAuditForResolution(result);
+                              setResolutionActionNotes('');
+                            }}
+                            className="bg-[#5C2D91] hover:bg-[#3B1A5E] text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-all shadow cursor-pointer w-full sm:w-auto"
+                          >
+                            Resolve Log
+                          </button>
                         )}
                       </div>
                     </div>
@@ -1049,116 +886,44 @@ export default function App() {
                             return (
                               <div 
                                 key={idx} 
-                                className={`bg-white border ${
-                                  item.status === 'out of stock'
-                                    ? 'border-sky-200 border-l-sky-500'
-                                    : isSuspectedOrderLimit(item)
-                                      ? orderLimitAnswers[item.name] === 'yes'
-                                        ? 'border-emerald-200 border-l-emerald-500'
-                                        : orderLimitAnswers[item.name] === 'no'
-                                          ? 'border-red-200 border-l-red-500'
-                                          : 'border-indigo-200 border-l-indigo-500'
-                                      : colors.border + ' ' + colors.leftBorder
-                                } border-l-4 rounded-xl p-4 shadow-sm flex flex-col gap-3 transition-all hover:shadow`}
+                                className={`bg-white border ${colors.border} ${colors.leftBorder} border-l-4 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 transition-all hover:shadow`}
                               >
-                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                                  <div className="space-y-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <h4 className="font-bold text-[#3B1A5E] text-base leading-none">{item.name}</h4>
-                                      {item.category && (
-                                        <span className={`text-[9px] uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded-full border ${getCategoryBadgeStyle(item.category).bg}`}>
-                                          {getCategoryBadgeStyle(item.category).label}
-                                        </span>
-                                      )}
-                                      <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded ${
-                                        item.status === 'out of stock'
-                                          ? 'bg-sky-100 text-sky-800 border border-sky-200'
-                                          : isSuspectedOrderLimit(item)
-                                            ? orderLimitAnswers[item.name] === 'yes'
-                                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                              : orderLimitAnswers[item.name] === 'no'
-                                                ? 'bg-red-100 text-red-800 border border-red-200'
-                                                : 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                                            : colors.bg
-                                      }`}>
-                                        {item.status === 'out of stock'
-                                          ? 'OUT OF STOCK (HIGHLIGHTED)'
-                                          : isSuspectedOrderLimit(item)
-                                            ? orderLimitAnswers[item.name] === 'yes'
-                                              ? 'ORDER LIMIT EXEMPT'
-                                              : orderLimitAnswers[item.name] === 'no'
-                                                ? 'QUANTITY MISMATCH'
-                                                : 'ORDER LIMIT SUSPECTED'
-                                            : item.status
-                                        }
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h4 className="font-bold text-[#3B1A5E] text-base leading-none">{item.name}</h4>
+                                    {item.category && (
+                                      <span className={`text-[9px] uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded-full border ${getCategoryBadgeStyle(item.category).bg}`}>
+                                        {getCategoryBadgeStyle(item.category).label}
                                       </span>
+                                    )}
+                                    <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded ${colors.bg}`}>
+                                      {item.status}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-4 text-xs text-slate-500 font-mono mt-1 pt-0.5">
+                                    <div>
+                                      <span className="text-slate-400">WhatsApp Request: </span>
+                                      <span className="text-slate-800 font-semibold">{item.requested}</span>
                                     </div>
-                                    <div className="flex items-center gap-4 text-xs text-slate-500 font-mono mt-1 pt-0.5">
-                                      <div>
-                                        <span className="text-slate-400">WhatsApp Request: </span>
-                                        <span className="text-slate-800 font-semibold">{item.requested}</span>
-                                      </div>
-                                      <div className="w-1.5 h-1.5 rounded-full bg-slate-200"></div>
-                                      <div>
-                                        <span className="text-slate-400">Fulfillment Match: </span>
-                                        <span className="text-[#3B1A5E] font-semibold">{item.found}</span>
-                                      </div>
+                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-200"></div>
+                                    <div>
+                                      <span className="text-slate-400">Fulfillment Match: </span>
+                                      <span className="text-[#3B1A5E] font-semibold">{item.found}</span>
                                     </div>
                                   </div>
-
-                                  {/* Suggested Action Button (if mismatch) */}
-                                  {item.action && !(isSuspectedOrderLimit(item) && orderLimitAnswers[item.name] === 'yes') && (
-                                    <div className="bg-[#F9F5FF] p-2.5 rounded-xl border border-purple-100 flex items-start gap-2 max-w-xs self-stretch sm:self-auto justify-center sm:justify-start">
-                                      <div className="p-1 rounded bg-[#5C2D91]/10 text-[#5C2D91] mt-0.5">
-                                        <HelpCircle className="w-3.5 h-3.5" />
-                                      </div>
-                                      <div className="text-left">
-                                        <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Compliance Correction Action</span>
-                                        <span className="text-xs font-semibold text-[#5C2D91] leading-tight block">
-                                          {item.status === 'out of stock' ? 'OUT OF STOCK: Highlighted for clinical dispatch notice' : item.action}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  )}
                                 </div>
 
-                                {/* Order Limit Ask Interactive Sub-Panel */}
-                                {isSuspectedOrderLimit(item) && orderLimitAnswers[item.name] === undefined && (
-                                  <div className="bg-indigo-50/70 border border-indigo-100/80 p-3.5 rounded-xl text-left w-full space-y-2 mt-1">
-                                    <div className="flex items-center gap-2">
-                                      <HelpCircle className="w-4 h-4 text-indigo-600 shrink-0" />
-                                      <span className="text-xs font-bold text-indigo-950">
-                                        Check required: Was the Product Order Limit used for {item.name}?
-                                      </span>
+                                {/* Suggested Action Button (if mismatch) */}
+                                {item.action && (
+                                  <div className="bg-[#F9F5FF] p-2.5 rounded-xl border border-purple-100 flex items-start gap-2 max-w-xs self-stretch sm:self-auto justify-center sm:justify-start">
+                                    <div className="p-1 rounded bg-[#5C2D91]/10 text-[#5C2D91] mt-0.5">
+                                      <HelpCircle className="w-3.5 h-3.5" />
                                     </div>
-                                    <p className="text-[11px] text-indigo-850/90 leading-relaxed">
-                                      Customer ordered above the threshold, so a lower fulfillment quantity entry is seen. If order limit was indeed used, we do NOT record this as a discrepancy.
-                                    </p>
-                                    <div className="flex gap-2.5 pt-1 flex-wrap">
-                                      <button
-                                        type="button"
-                                        onClick={() => chooseOrderLimitAnswer(item.name, 'yes')}
-                                        className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                                          orderLimitAnswers[item.name] === 'yes'
-                                            ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300'
-                                            : 'bg-white border border-indigo-200 text-indigo-900 hover:bg-emerald-50 hover:border-emerald-200'
-                                        }`}
-                                      >
-                                        <CheckCircle2 className="w-3.5 h-3.5" />
-                                        Yes, order limit was used
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => chooseOrderLimitAnswer(item.name, 'no')}
-                                        className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                                          orderLimitAnswers[item.name] === 'no'
-                                            ? 'bg-rose-600 text-white shadow-sm ring-2 ring-rose-300'
-                                            : 'bg-white border border-indigo-200 text-indigo-900 hover:bg-rose-50 hover:border-rose-200'
-                                        }`}
-                                      >
-                                        <XCircle className="w-3.5 h-3.5" />
-                                        No, it is a discrepancy
-                                      </button>
+                                    <div className="text-left">
+                                      <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Compliance Correction Action</span>
+                                      <span className="text-xs font-semibold text-[#5C2D91] leading-tight block">
+                                        {item.action}
+                                      </span>
                                     </div>
                                   </div>
                                 )}
@@ -1190,18 +955,18 @@ export default function App() {
                                 cx="64"
                                 cy="64"
                                 r="52"
-                                stroke={computedConfidence >= 90 ? '#22C55E' : computedConfidence >= 75 ? '#F59E0B' : '#EF4444'}
+                                stroke={result.confidence >= 90 ? '#22C55E' : result.confidence >= 75 ? '#F59E0B' : '#EF4444'}
                                 strokeWidth="8"
                                 fill="transparent"
                                 strokeDasharray={2 * Math.PI * 52}
-                                strokeDashoffset={2 * Math.PI * 52 * (1 - computedConfidence / 100)}
+                                strokeDashoffset={2 * Math.PI * 52 * (1 - result.confidence / 100)}
                                 strokeLinecap="round"
                                 className="transition-all duration-1000 ease-out"
                               />
                             </svg>
                             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                              <span className={`text-3xl font-black ${getConfidenceLevelColor(computedConfidence)}`}>
-                                {computedConfidence}%
+                              <span className={`text-3xl font-black ${getConfidenceLevelColor(result.confidence)}`}>
+                                {result.confidence}%
                               </span>
                               <span className="text-[9px] font-mono tracking-wide text-slate-400 uppercase">SYSTEM MATCH</span>
                             </div>
@@ -1224,6 +989,28 @@ export default function App() {
                               <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span> Compulsory Fields
                             </div>
 
+                            {/* Date Row */}
+                            {result.meta.date && (
+                              <div className="space-y-1 text-xs">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-slate-600 font-semibold flex items-center gap-2">
+                                    <Calendar size={13} className="text-slate-400" /> Date
+                                  </span>
+                                  <span className={`px-1.5 py-0.5 rounded-full font-bold uppercase text-[9px] border ${
+                                    result.meta.date.status === 'match' 
+                                      ? 'bg-green-100 text-green-800 border-green-200' 
+                                      : 'bg-red-100 text-red-800 border-red-200'
+                                  }`}>
+                                    {result.meta.date.status.toUpperCase()}
+                                  </span>
+                                </div>
+                                <div className="bg-slate-50/50 p-2 rounded-lg border border-slate-100 flex flex-col gap-0.5 text-[11px] font-mono">
+                                  <div className="flex justify-between"><span className="text-slate-400">WhatsApp:</span> <span className="text-slate-700 font-medium">{result.meta.date.whatsappValue || '(none)'}</span></div>
+                                  <div className="flex justify-between"><span className="text-slate-400">System:</span> <span className="text-slate-700 font-medium">{result.meta.date.fulfillmentValue || '(none)'}</span></div>
+                                </div>
+                              </div>
+                            )}
+
                             {/* Customer Name Row */}
                           <div className="space-y-1 text-xs">
                             <div className="flex justify-between items-center">
@@ -1241,6 +1028,26 @@ export default function App() {
                             <div className="bg-slate-50/50 p-2 rounded-lg border border-slate-100 flex flex-col gap-0.5 text-[11px] font-mono">
                               <div className="flex justify-between"><span className="text-slate-400">WhatsApp:</span> <span className="text-slate-700 font-medium">{result.meta.customerName.whatsappValue || '(none)'}</span></div>
                               <div className="flex justify-between"><span className="text-slate-400">System:</span> <span className="text-slate-700 font-medium">{result.meta.customerName.fulfillmentValue || '(none)'}</span></div>
+                            </div>
+                          </div>
+
+                          {/* Phone Number Row */}
+                          <div className="space-y-1 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-600 font-semibold flex items-center gap-2">
+                                <Phone size={13} className="text-slate-400" /> Contact Phone
+                              </span>
+                              <span className={`px-1.5 py-0.5 rounded-full font-bold uppercase text-[9px] border ${
+                                result.meta.phone.status === 'match' 
+                                  ? 'bg-green-100 text-green-800 border-green-200' 
+                                  : 'bg-red-100 text-red-800 border-red-200'
+                              }`}>
+                                {result.meta.phone.status.toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="bg-slate-50/50 p-2 rounded-lg border border-slate-100 flex flex-col gap-0.5 text-[11px] font-mono">
+                              <div className="flex justify-between"><span className="text-slate-400">WhatsApp:</span> <span className="text-slate-700 font-medium">{result.meta.phone.whatsappValue || '(none)'}</span></div>
+                              <div className="flex justify-between"><span className="text-slate-400">System:</span> <span className="text-slate-700 font-medium">{result.meta.phone.fulfillmentValue || '(none)'}</span></div>
                             </div>
                           </div>
 
@@ -1273,42 +1080,6 @@ export default function App() {
                               <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span> Non-Compulsory (Boycott Safe)</span>
                               <span className="text-[8px] text-green-600 bg-green-50 px-1 py-0.2 rounded font-mono font-medium">OMISSION OK</span>
                             </div>
-
-                            {/* Date Row (Optional/Info only) */}
-                            {result.meta.date && (
-                              <div className="space-y-1 text-xs opacity-85">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-slate-600 font-semibold flex items-center gap-2">
-                                    <Calendar size={13} className="text-slate-400" /> Date (Not Compulsory)
-                                  </span>
-                                  <span className="bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-full font-bold uppercase text-[9px]">
-                                    EXEMPT
-                                  </span>
-                                </div>
-                                <div className="bg-slate-50/50 p-2 rounded-lg border border-slate-100 flex flex-col gap-0.5 text-[11px] font-mono">
-                                  <div className="flex justify-between"><span className="text-slate-400">WhatsApp:</span> <span className="text-slate-700 font-medium">{result.meta.date.whatsappValue || '(none)'}</span></div>
-                                  <div className="flex justify-between"><span className="text-slate-400">System:</span> <span className="text-slate-700 font-medium">{result.meta.date.fulfillmentValue || '(none)'}</span></div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Phone Number Row (Optional/Info only) */}
-                            {result.meta.phone && (
-                              <div className="space-y-1 text-xs opacity-85">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-slate-600 font-semibold flex items-center gap-2">
-                                    <Phone size={13} className="text-slate-400" /> Contact Phone (Not Compulsory)
-                                  </span>
-                                  <span className="bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-full font-bold uppercase text-[9px]">
-                                    EXEMPT
-                                  </span>
-                                </div>
-                                <div className="bg-slate-50/50 p-2 rounded-lg border border-slate-100 flex flex-col gap-0.5 text-[11px] font-mono">
-                                  <div className="flex justify-between"><span className="text-slate-400">WhatsApp:</span> <span className="text-slate-700 font-medium">{result.meta.phone.whatsappValue || '(none)'}</span></div>
-                                  <div className="flex justify-between"><span className="text-slate-400">System:</span> <span className="text-slate-700 font-medium">{result.meta.phone.fulfillmentValue || '(none)'}</span></div>
-                                </div>
-                              </div>
-                            )}
 
                             {/* Drop Area Row */}
                             {result.meta.dropArea && (result.meta.dropArea.whatsappValue !== 'N/A' || result.meta.dropArea.fulfillmentValue !== 'N/A') && (
@@ -1396,7 +1167,86 @@ export default function App() {
           </div>
         )}
 
+        {/* OUT OF STOCK UNIT MANAGEMENT ACTIVE TAB VIEW */}
+        {activeTab === 'osu' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="bg-white rounded-2xl p-6 border border-purple-100 shadow-sm space-y-6 animate-in fade-in duration-300"
+          >
+            <div className="border-b border-purple-50 pb-4">
+              <h2 className="text-lg font-extrabold text-[#3B1A5E] flex items-center gap-2">
+                <AlertTriangle className="text-rose-500 w-5 h-5 animate-pulse" />
+                Warehouse Out-Of-Stock Unit (OSU) Inventory Alert Registry
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Manage the list of medical supplies that are currently out of stock. When a WhatsApp message contains an item on this list, the Compliance Auditor automatically flags it as a critical <b className="text-rose-700">"out of stock" (shortage)</b> scenario and generates compliant actions.
+              </p>
+            </div>
 
+            {/* Add OSU item input */}
+            <div className="flex flex-col sm:flex-row gap-3 max-w-lg bg-purple-50/30 p-4 rounded-xl border border-purple-100">
+              <div className="flex-1">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">REGISTER OUT-OF-STOCK ITEM</label>
+                <input
+                  type="text"
+                  value={newOsuItem}
+                  onChange={(e) => setNewOsuItem(e.target.value)}
+                  placeholder="e.g. Yellow Fever Diluents, bOPV Vials, PCM..."
+                  className="w-full p-2.5 rounded-lg border border-purple-100 font-sans text-xs sm:text-sm text-slate-700 outline-none focus:border-[#5C2D91] focus:ring-1 focus:ring-[#5C2D91] shadow-inner bg-white"
+                  onKeyDown={(e) => e.key === 'Enter' && addOsuItem()}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={addOsuItem}
+                className="bg-[#5C2D91] hover:bg-[#3B1A5E] text-white px-5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer h-[38px] sm:self-end text-center"
+              >
+                <PlusCircle className="w-4 h-4" />
+                Add Alert
+              </button>
+            </div>
+
+            {/* List current OSU items */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-[#3B1A5E] uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+                Active Shortage Flagged Supplies:
+              </h3>
+              
+              {osuLoading ? (
+                <div className="text-xs text-slate-500 flex items-center gap-2 py-4">
+                  <RefreshCw className="w-4 h-4 animate-spin text-[#5C2D91]" />
+                  Synchronizing inventory status with main server...
+                </div>
+              ) : osuList.length === 0 ? (
+                <div className="text-xs text-slate-400 italic py-6 bg-slate-50/50 border border-dashed border-slate-200 rounded-xl text-center">
+                  No active out of stock units registered. All medical products are assumed to have solid stock indicators.
+                </div>
+              ) : (
+                <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {osuList.map((item, index) => (
+                    <div key={index} className="flex justify-between items-center bg-rose-50/75 border border-rose-100 rounded-xl p-3 shadow-2xs hover:bg-rose-50 transition">
+                      <span className="text-xs font-mono font-bold text-rose-950 flex items-center gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                        {item}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeOsuItem(item)}
+                        className="text-rose-500 hover:text-rose-800 p-1.5 rounded-lg hover:bg-rose-100 transition cursor-pointer font-bold"
+                        title="Restore Product Stock"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
 
         {/* CHROME COMPANION EXTENSION TERMINAL DOWNLOAD VIEW */}
         {activeTab === 'extension' && (

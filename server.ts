@@ -30,7 +30,13 @@ app.use((req, res, next) => {
 // Local in-memory store for audits
 const audits: any[] = [];
 
-
+// Local in-memory store for simulated out of stock (OSU) units
+let osuItems: string[] = [
+  'ROTA Droppers',
+  'Mosquirix Vaccine',
+  'Yellow Fever Diluents',
+  'BCG Vaccine'
+];
 
 async function getAudits(): Promise<any[]> {
   return audits;
@@ -80,7 +86,7 @@ The user may paste ANY kind of messages or text logs (including general chat, em
    - If an item or claim in WhatsApp is matched perfectly in Fulfillment Confirmation, set status to 'match'. If they differ, set status to 'quantity mismatch' or 'missing item' or 'extra item' accordingly, and write a clear, actionable directive in the 'action' field (e.g. "Align system details with requested message text").
 2. COMPULSORY VS NON-COMPULSORY METADATA AUDITING RULES:
    You MUST extract and audit these metadata fields in the following format:
-   - "date": E.g. "Date: 15-06-2026" or similar. Extract from the inputs if written. If missing, set to "N/A". (NOT COMPULSORY. Always set its status strictly to "match" so it never flags a mismatch or lowers the confidence score. It is purely informational).
+   - "date": E.g. "Date: 15-06-2026" or similar. Extract from the inputs if written. If missing, set to "N/A".
    - "ordererName": Under "Name of Orderer". Extract orderer name from both inputs. Keep in sync with "customerName" for legacy compliance.
    - "facilityName": Under "Name of Health Facility". Extract health center/facility name from both inputs. Keep in sync with "facility" for legacy compliance.
    - "dropArea": Under "Delivery / Drop area". (NOT COMPULSORY. If missing, set both whatsappValue and fulfillmentValue to "N/A" and status to "match". Never log an error/mismatch for this being absent).
@@ -92,9 +98,9 @@ The user may paste ANY kind of messages or text logs (including general chat, em
      - "facility": identical value as "facilityName".
      - "phone": standard contact phone number (or "N/A" if missing; missing contact phone is NOT compulsory and shouldn't trigger mismatch errors).
 
-   - If any optional/non-compulsory field (date, dropArea, district, deliveryTime) is missing, not provided, or differs:
-     - You MUST boycott/omit raising error/mismatches for them. Set their value fields to "N/A" (or current parsed value) and status strictly to "match".
-     - Do NOT let missing/discrepant optional fields lower confidence score or set allMatch to false. Keep allMatch true and issueCount at 0 if everything else is clean!
+   - If any optional/non-compulsory field (dropArea, district, deliveryTime) is missing or not provided:
+     - You MUST boycott/omit raising error/mismatches for them. Set their value fields to "N/A" and status strictly to "match".
+     - Do NOT let missing optional fields lower confidence score or set allMatch to false. Keep allMatch true and issueCount at 0 if everything else is clean!
 
 ==================================================
 CRITICAL DOMAIN RULES & ABBREVIATION CATEGORIES (WHEN MEDICAL/CLINICAL):
@@ -195,12 +201,8 @@ ADDITIONAL AUDIT CONSTRAINTS:
    - If a requested item matches any registered out-of-stock item (or standard abbreviation representing it), you MUST set its verification item "status" to 'out of stock' (instead of 'match' or 'quantity mismatch').
    - For any 'out of stock' status item, set the item's action to: "OSU ALERT: [Item Name] is out of stock in the inventory registry. Advise facility of supply delay."
    - ZERO-MISTAKE CLEARANCE EXEMPTION: If the ONLY anomalies/non-match items found in the entire verification process are 'out of stock' items, and there are absolutely NO OTHER mistakes (meaning all other items have perfect status: 'match', and there is no phone number, names, or facility name mismatch), you MUST consider the order cleared!
-   - OUT-OF-STOCK EXCLUSION: Out of stock (status: 'out of stock') items are NEVER recorded as discrepancies, and MUST NOT count toward the discrepancy 'issueCount' or make 'allMatch' false. They should just be highlighted as out of stock for operators to see.
-
-12. PRODUCT ORDER LIMIT PROCESSING (CRITICAL COMPLIANCE RULES):
-   - When customers order above the product order limit, the fulfillment system registers a lower quantity entry compared to the WhatsApp request (e.g. requested '20 packs', found '10 packs').
-   - If you find any item with a quantity mismatch where the found quantity has a lower number entry than requested, you MUST mark 'suspectedOrderLimit' strictly to true for that item.
-   - Initially, do NOT add this to the active discrepancies 'issueCount', and do not set 'allMatch' to false for the order limit candidate, because we will ask the agent in the frontend using user interaction whether the order limit was used. If indeed used, it is NOT a discrepancy. If not used, it is a discrepancy.
+     In this zero-mistake out-of-stock case, you MUST set output variable 'allMatch' to true, and output variable 'issueCount' to 0 (or count only actual mistakes in issueCount, excluding out-of-stock items so they do not block dispatch). This grants compliance clearance for takeoff/launch since no packaging errors exist, but still preserves the out-of-stock visual alert to notify the clinical facility. Set 'verdict' to something like: 'Cleared for dispatch: No packing mistakes, but some items are out of stock.'
+   - If there is any actual packing mistake (like quantity mismatch, missing item, extra item, or facility name/phone mismatch) in addition to out of stock items, then set 'allMatch' to false and include them in the issueCount.
   `;
 
 // Helper function to call Gemini model with exponential backoff and multi-model fallbacks on transient errors (like 503 high demand)
@@ -391,7 +393,10 @@ app.post('/api/verify', async (req, res) => {
           === FULFILMENT RECIPIENT SYSTEM LOG ===
           ${fulfillmentConfirmation}
 
-
+          === ACTIVE OUT-OF-STOCK (OSU) ITEMS (IF IN MEDICAL CONTEXT) ===
+          The following items are currently OUT OF STOCK in the supply warehouse.
+          If any item requested in the WhatsApp Message is listed below (or has a matching generic/abbreviation), you MUST set its status to 'out of stock' and write an action advising the operator of the OSU shortage:
+          [${osuItems.join(', ')}]
           `,
       config: {
         systemInstruction: SYSTEM_INSTRUCTIONS,
@@ -445,10 +450,6 @@ app.post('/api/verify', async (req, res) => {
                   action: {
                     type: Type.STRING,
                     description: "Short specific directive/action for the user, e.g. 'Change amount to 10 cards' or 'OSU ALERT: OPV is out of stock'."
-                  },
-                  suspectedOrderLimit: {
-                    type: Type.BOOLEAN,
-                    description: "True if the quantity is a quantity mismatch where the found quantity in fulfillment confirmation has a lower number entry compared to the requested WhatsApp quantity."
                   }
                 },
                 required: ['name', 'requested', 'found', 'status', 'category']
@@ -558,63 +559,6 @@ app.post('/api/verify', async (req, res) => {
     }
 
     const payload = JSON.parse(response.text.trim());
-    
-    // Safety post-processing validation for out of stock / order limit (Requirement 1 & 2)
-    if (payload && Array.isArray(payload.items)) {
-      payload.items.forEach((item: any) => {
-        // Enforce out of stock rules programmatically
-        if (item.status === 'out of stock') {
-          item.suspectedOrderLimit = false;
-        } else if (item.status === 'quantity mismatch') {
-          // Detect if found quantity is less than requested quantity programmatically
-          const reqMatch = String(item.requested || '').match(/\d+/);
-          const foundMatch = String(item.found || '').match(/\d+/);
-          const reqNum = reqMatch ? parseInt(reqMatch[0], 10) : 0;
-          const foundNum = foundMatch ? parseInt(foundMatch[0], 10) : 0;
-          if (foundNum > 0 && foundNum < reqNum) {
-            item.suspectedOrderLimit = true;
-          } else {
-            item.suspectedOrderLimit = !!item.suspectedOrderLimit;
-          }
-        } else {
-          item.suspectedOrderLimit = false;
-        }
-      });
-      
-      // Calculate server-side issueCount and allMatch cleanly
-      // Exclude 'out of stock' items, and initially exclude suspected order limit items
-      const itemDiscrepancies = payload.items.filter((item: any) => {
-        if (item.status === 'out of stock') return false;
-        if (item.status === 'match') return false;
-        if (item.suspectedOrderLimit) return false; // Handled programmatically via frontend question prompt first
-        return true; 
-      });
-
-      const metaDiscrepancies = [
-        payload.meta?.customerName,
-        payload.meta?.facility,
-        payload.meta?.ordererName,
-        payload.meta?.facilityName
-      ].filter((metaField: any) => metaField && metaField.status === 'mismatch');
-
-      payload.issueCount = itemDiscrepancies.length + metaDiscrepancies.length;
-      
-      // Check if there are any pending questions or active discrepancies
-      const hasSuspectedLimits = payload.items.some((item: any) => item.suspectedOrderLimit);
-      if (payload.issueCount === 0) {
-        if (hasSuspectedLimits) {
-          payload.allMatch = false; // False because we must ask the agent first to confirm order limit usage
-          payload.verdict = 'Awaiting agent check: Suspected product order limits';
-        } else {
-          payload.allMatch = true;
-          payload.verdict = payload.verdict || 'All items match — ready for dispatch';
-        }
-      } else {
-        payload.allMatch = false;
-        payload.verdict = payload.verdict || `${payload.issueCount} discrepancy issues found — review required`;
-      }
-    }
-
     const durationSec = Number(((Date.now() - startTime) / 1000).toFixed(2));
 
     // Construct final audit record with database metadata
@@ -803,9 +747,29 @@ app.get('/api/analytics', async (req, res) => {
 });
 
 
+// simulated OSU items API endpoints
+app.get('/api/osu', (req, res) => {
+  res.json(osuItems);
+});
 
+app.post('/api/osu', (req, res) => {
+  const { item } = req.body;
+  if (item && typeof item === 'string') {
+    const trimmed = item.trim();
+    if (trimmed && !osuItems.includes(trimmed)) {
+      osuItems.push(trimmed);
+    }
+  }
+  res.json(osuItems);
+});
 
-
+app.delete('/api/osu', (req, res) => {
+  const { item } = req.body;
+  if (item && typeof item === 'string') {
+    osuItems = osuItems.filter(i => i.toLowerCase() !== item.trim().toLowerCase());
+  }
+  res.json(osuItems);
+});
 
 
 // Compile companion Chrome extension into packaged ZIP and output on the fly
@@ -990,63 +954,6 @@ app.get('/api/download-extension', (req, res) => {
     }
     .badge-error { background-color: #FEE2E2; color: #991B1B; }
     .badge-success { background-color: #D1FAE5; color: #065F46; }
-    .badge-indigo { background-color: #E2E8F0; color: #3730A3; }
-    .badge-sky { background-color: #E0F2FE; color: #0369A1; }
-    .order-limit-box {
-      background-color: #F5F3FF;
-      border: 1px solid #E0D7FF;
-      border-radius: 6px;
-      padding: 8px;
-      margin-top: 6px;
-    }
-    .order-limit-title {
-      font-weight: bold;
-      color: #3B1A5E;
-      font-size: 10px;
-      margin-bottom: 3.5px;
-    }
-    .order-limit-desc {
-      font-size: 8.5px;
-      color: #5C2D91;
-      margin-bottom: 6px;
-      line-height: 1.25;
-    }
-    .btn-group {
-      display: flex;
-      gap: 6px;
-    }
-    .btn-small {
-      font-size: 8.5px;
-      padding: 3px 6px;
-      border-radius: 4px;
-      font-weight: bold;
-      cursor: pointer;
-      transition: background 0.2s, border-color 0.2s;
-    }
-    .btn-small-indigo {
-      background-color: #EEF2FF;
-      color: #4338CA;
-      border: 1px solid #C7D2FE;
-    }
-    .btn-small-indigo:hover {
-      background-color: #E0E7FF;
-    }
-    .btn-small-emerald {
-      background-color: #E6FDF5;
-      color: #047857;
-      border: 1px solid #A7F3D0;
-    }
-    .btn-small-emerald:hover {
-      background-color: #D1FAE5;
-    }
-    .btn-small-rose {
-      background-color: #FFF5F5;
-      color: #DC2626;
-      border: 1px solid #FECACA;
-    }
-    .btn-small-rose:hover {
-      background-color: #FEE2E2;
-    }
     .server-status {
       font-size: 9px;
       color: #6B7280;
@@ -1131,25 +1038,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const debouncedCheck = () => {
     if (checkTimer) clearTimeout(checkTimer);
     checkTimer = setTimeout(checkConnection, 500);
-  };
-
-  let currentData = null;
-  let orderLimitAnswers = {};
-  let syncedAudits = {};
-
-  const isSuspectedOrderLimit = (item) => {
-    if (!item) return false;
-    if (typeof item.suspectedOrderLimit === 'boolean') {
-      return item.suspectedOrderLimit;
-    }
-    if (item.status === 'quantity mismatch') {
-      const reqMatch = String(item.requested || '').match(/\\d+/);
-      const foundMatch = String(item.found || '').match(/\\d+/);
-      const reqNum = reqMatch ? parseInt(reqMatch[0], 10) : 0;
-      const foundNum = foundMatch ? parseInt(foundMatch[0], 10) : 0;
-      return foundNum > 0 && foundNum < reqNum;
-    }
-    return false;
   };
 
   const checkConnection = async () => {
@@ -1268,8 +1156,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btnClear.addEventListener('click', () => {
       whatsappText.value = '';
       fulfillmentText.value = '';
-      currentData = null;
-      orderLimitAnswers = {};
       chrome.storage.local.set({ whatsappText: '', fulfillmentText: '' }, () => {
         results.innerHTML = '<p style="color:#6B7280; margin:0; text-align:center;">Inputs cleared. Ready for new audit data!</p>';
       });
@@ -1355,223 +1241,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Capture selection trigger click
   btnCapture.addEventListener('click', captureSelection);
 
-  const attachOrderLimitListeners = () => {
-    if (!results) return;
-    results.querySelectorAll('.btn-order-limit-yes').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const itemName = btn.getAttribute('data-item');
-        orderLimitAnswers[itemName] = 'yes';
-        renderResults();
-      });
-    });
-    results.querySelectorAll('.btn-order-limit-no').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const itemName = btn.getAttribute('data-item');
-        orderLimitAnswers[itemName] = 'no';
-        renderResults();
-      });
-    });
-  };
-
-  const renderResults = () => {
-    if (!currentData) return;
-
-    const data = currentData;
-    
-    // Dynamic compliance calculations matching web App perfectly
-    const hasPendingOrderLimitAnswers = data.items.some(item => 
-      isSuspectedOrderLimit(item) && orderLimitAnswers[item.name] === undefined
-    );
-
-    const computedItemsIssues = data.items.filter(item => {
-      if (item.status === 'out of stock') return false;
-      if (item.status === 'match') return false;
-      if (isSuspectedOrderLimit(item)) {
-        const answer = orderLimitAnswers[item.name];
-        if (answer === 'yes') return false; // Confirmed order limit -> exempt
-        if (answer === 'no') return true;  // Confirmed mismatch
-        return false; // Awaiting answer
-      }
-      return true;
-    });
-
-    const computedMetaIssues = data.meta ? [
-      data.meta.customerName,
-      data.meta.facility,
-      data.meta.ordererName,
-      data.meta.facilityName
-    ].filter(metaField => metaField && metaField.status === 'mismatch') : [];
-
-    const computedIssueCount = computedItemsIssues.length + computedMetaIssues.length;
-    const computedAllMatch = computedIssueCount === 0 && !hasPendingOrderLimitAnswers;
-    const isAllOutOfStock = data && data.items && data.items.length > 0 && data.items.every(it => it.status === 'out of stock');
-
-    if (!hasPendingOrderLimitAnswers && data && data.id) {
-       const syncKey = data.id + '_' + JSON.stringify(orderLimitAnswers);
-       if (!syncedAudits[syncKey]) {
-         syncedAudits[syncKey] = true;
-         let activeUrl = backendUrlInput ? backendUrlInput.value.trim() : SERVER_URL;
-         if (activeUrl) {
-           if (activeUrl.indexOf('http://') !== 0 && activeUrl.indexOf('https://') !== 0) {
-              activeUrl = 'https://' + activeUrl;
-           }
-           const cleanActiveUrl = activeUrl.replace(/\/+$/, '');
-           const notes = isAllOutOfStock
-             ? 'All items are out of stock. Case closed.'
-             : computedAllMatch 
-               ? 'Order Limit/Out-of-Stock approved in Extension Companion. Permission to Fly: GRANTED.'
-               : 'Operator confirmed mismatch discrepancy in Companion: order limit was NOT used.';
-           
-           fetch(\`\${cleanActiveUrl}/api/audits/\${data.id}\`, {
-             method: 'PATCH',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({
-               status: 'resolved',
-               resolutionNotes: notes
-             })
-           }).catch(err => console.error('[Extension Auto Clearance] Failed to sync audit:', err));
-         }
-       }
-     }
-
-    let html = '';
-    if (isAllOutOfStock) {
-       html += '<div class="badge badge-error">🚫 ALL OUT OF STOCK</div>';
-       html += '<p style="color:#DC2626; font-weight:bold; margin:4px 0 0 0;">Cancelled: ALL PRODUCTS OUT OF STOCK (No Flight Required)</p>';
-    } else if (computedAllMatch) {
-       html += '<div class="badge badge-success">✓ PERMISSION TO FLY: GRANTED 🚀</div>';
-       html += '<p style="color:#065F46; font-weight:bold; margin:4px 0 0 0;">Cleared: PERMISSION TO FLY GRANTED 🚀</p>';
-    } else if (hasPendingOrderLimitAnswers) {
-       html += '<div class="badge badge-indigo">● VERIFY SUSPECTED LIMIT</div>';
-       html += '<p style="color:#3730A3; font-weight:bold; margin:4px 0 0 0;">Verify Suspected Order Limit: fulfillment quantity is lower than WhatsApp</p>';
-    } else {
-       html += '<div class="badge badge-error">✗ DISCREPANCY ALERT (' + computedIssueCount + ')</div>';
-       html += '<p style="color:#991B1B; font-weight:bold; margin:4px 0;">Compliance issue found — review required</p>';
-    }
-
-    // Display non-match items/status as summary table
-    html += '<div style="margin-top:8px; border-top: 1px solid #F3E8FF; padding-top:6px;">';
-    data.items.forEach(it => {
-      const isOOS = it.status === 'out of stock';
-      const isLimit = isSuspectedOrderLimit(it);
-      const answer = orderLimitAnswers[it.name];
-
-      let itemColor = '#DC2626'; // Mismatch red
-      let itemSymbol = '✗';
-      let statusLabel = it.status.toUpperCase();
-      let badgeStyle = 'badge-error';
-
-      if (it.status === 'match') {
-        itemColor = '#047857';
-        itemSymbol = '✓';
-        statusLabel = 'MATCH';
-        badgeStyle = 'badge-success';
-      } else if (isOOS) {
-        itemColor = '#0284C7'; // Sky-600
-        itemSymbol = '❄';
-        statusLabel = 'OUT OF STOCK';
-        badgeStyle = 'badge-sky';
-      } else if (isLimit) {
-        if (answer === 'yes') {
-          itemColor = '#047857';
-          itemSymbol = '✓';
-          statusLabel = 'ORDER LIMIT EXEMPT';
-          badgeStyle = 'badge-success';
-        } else if (answer === 'no') {
-          itemColor = '#DC2626';
-          itemSymbol = '✗';
-          statusLabel = 'QUANTITY MISMATCH';
-          badgeStyle = 'badge-error';
-        } else {
-          itemColor = '#4F46E5';
-          itemSymbol = '❓';
-          statusLabel = 'ORDER LIMIT SUSPECTED';
-          badgeStyle = 'badge-indigo';
-        }
-      }
-
-      html += '<div style="border-bottom:1px solid #FAF5FF; padding:6px 0; font-size:10.5px;">';
-      html += '  <div>';
-      html += '    <strong style="color:#3B1A5E;">' + itemSymbol + ' ' + it.name + '</strong>';
-      html += '    (Req: ' + it.requested + ' | Sys: ' + it.found + ')';
-      html += '  </div>';
-      
-      html += '  <div style="margin-top:2px; display:flex; align-items:center; gap:4px; flex-wrap:wrap;">';
-      html += '    <span class="badge ' + badgeStyle + '" style="margin-bottom:0; font-size:8px; padding:1px 4px;">' + statusLabel + '</span>';
-      if (it.category) {
-        html += '    <span style="font-size:8px; color:#5C2D91; background-color:#F5F3FF; padding:1px 4px; border-radius:3px; font-weight:600;">' + it.category.toUpperCase() + '</span>';
-      }
-      html += '  </div>';
-
-      if (it.action) {
-        html += '  <div style="color:#5C2D91; font-size:9.5px; font-weight:500; margin-top:2px;">➔ ' + (isOOS ? 'OUT OF STOCK: Highlighted for clinical dispatch notice' : it.action) + '</div>';
-      }
-
-      // Render Interactive Ask Sub-Panel for Suspected Product Order Limit
-      if (isLimit && answer === undefined) {
-        html += '  <div class="order-limit-box">';
-        html += '    <div class="order-limit-title">❓ Check: Was Product Order Limit used?</div>';
-        html += '    <div class="order-limit-desc">Fulfillment is lower than requested. If limit was used, it is not a mistake.</div>';
-        html += '    <div class="btn-group">';
-        html += '      <button class="btn-small btn-small-emerald btn-order-limit-yes" data-item="' + it.name.replace(/"/g, '&quot;') + '">✓ Yes, limit used</button>';
-        html += '      <button class="btn-small btn-small-rose btn-order-limit-no" data-item="' + it.name.replace(/"/g, '&quot;') + '">✗ No, it is a mismatch</button>';
-        html += '    </div>';
-        html += '  </div>';
-      } else if (isLimit) {
-        html += '  <div style="font-size:8.5px; color:#475569; margin-top:2px; padding:2px 6px; background:#F1F5F9; border-radius:3px; display:inline-block;">';
-        html += '    Selected: ' + (answer === 'yes' ? 'Limit Used (Exempt)' : 'A mismatch') + ' ';
-        html += '    (<span class="btn-order-limit-' + (answer === 'yes' ? 'no' : 'yes') + '" data-item="' + it.name.replace(/"/g, '&quot;') + '" style="color:#5C2D91; cursor:pointer; text-decoration:underline; font-weight:bold;">Change</span>)';
-        html += '  </div>';
-      }
-
-      html += '</div>';
-    });
-    html += '</div>';
-
-    if (data.insights && data.insights.length > 0) {
-      html += '<div style="margin-top:8px; padding-top:6px; border-top:1px solid #F3E8FF; color:#555; font-size:10px;"><strong>Key Insights:</strong><ul style="padding-left:12px; margin:4px 0 0 0;">';
-      data.insights.forEach(ins => {
-        html += '<li style="margin-bottom:3px;">' + ins + '</li>';
-      });
-      html += '</ul></div>';
-    }
-
-    if (data.meta) {
-       html += '<div style="margin-top:8px; border-top:1px dashed #D6C2EB; padding-top:6px; font-size:10px; color:#1E1B4B; background:#FAF5FF; padding:5px; border-radius:4px;">';
-       html += '<strong style="color:#5C2D91; display:block; margin-bottom:3px;">Audited Metadata Details:</strong>';
-       
-       const showConflict = (label, field) => {
-         if (!field) return '';
-         const isMismatch = field.status === 'mismatch';
-         const valStr = field.whatsappValue || 'N/A';
-         const matchStr = field.fulfillmentValue ? ' | Sys: ' + field.fulfillmentValue : '';
-         const color = isMismatch ? '#DC2626' : '#1E1B4B';
-         const mark = isMismatch ? ' ✗' : '';
-         return '<div style="color:' + color + ';">• <strong>' + label + ':</strong> ' + valStr + matchStr + mark + '</div>';
-       };
-
-       html += showConflict('Date', data.meta.date);
-       html += showConflict('Orderer Name', data.meta.ordererName);
-       html += showConflict('Facility Name', data.meta.facilityName);
-
-       if (data.meta.dropArea && data.meta.dropArea.whatsappValue && data.meta.dropArea.whatsappValue !== 'N/A' && data.meta.dropArea.whatsappValue.trim() !== '') {
-         html += '<br/>• <strong>Delivery / Drop area:</strong> ' + data.meta.dropArea.whatsappValue;
-       }
-       if (data.meta.district && data.meta.district.whatsappValue && data.meta.district.whatsappValue !== 'N/A' && data.meta.district.whatsappValue.trim() !== '') {
-         html += '<br/>• <strong>District:</strong> ' + data.meta.district.whatsappValue;
-       }
-       if (data.meta.deliveryTime && data.meta.deliveryTime.whatsappValue && data.meta.deliveryTime.whatsappValue !== 'N/A' && data.meta.deliveryTime.whatsappValue.trim() !== '') {
-         html += '<br/>• <strong>Preferred time for Delivery:</strong> ' + data.meta.deliveryTime.whatsappValue;
-       }
-       html += '</div>';
-    }
-
-    results.innerHTML = html;
-    
-    // Attach dynamic click listeners for the order limit questions
-    attachOrderLimitListeners();
-  };
-
   btnVerify.addEventListener('click', async () => {
     const wa = whatsappText.value.trim();
     const ff = fulfillmentText.value.trim();
@@ -1611,10 +1280,61 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const data = await res.json();
-      currentData = data;
-      orderLimitAnswers = {};
-      renderResults();
+      
+      let html = '';
+      if (data.allMatch) {
+         html += '<div class="badge badge-success">CLEARED FOR LAUNCH</div>';
+         html += '<p style="color:#065F46; font-weight:bold; margin:4px 0 0 0;">' + data.verdict + '</p>';
+      } else {
+         html += '<div class="badge badge-error">DISCREPANCY ALERT (' + data.issueCount + ')</div>';
+         html += '<p style="color:#991B1B; font-weight:bold; margin:4px 0;">' + data.verdict + '</p>';
+      }
 
+      // Display non-match items/status as summary table
+      html += '<div style="margin-top:8px; border-top: 1px solid #F3E8FF; padding-top:6px;">';
+      data.items.forEach(it => {
+        const itemColor = it.status === 'match' ? '#047857' : (it.status === 'out of stock' ? '#D97706' : '#DC2626');
+        const itemSymbol = it.status === 'match' ? '✓' : (it.status === 'out of stock' ? '⚠' : '✗');
+        
+        html += '<div style="border-bottom:1px solid #FAF5FF; padding:4px 0; font-size:10.5px;">';
+        html += '<strong style="color:#3B1A5E;">' + itemSymbol + ' ' + it.name + '</strong>';
+        html += ' (Req: ' + it.requested + ' | Sys: ' + it.found + ')';
+        html += '<br/><span style="color:' + itemColor + '; font-size:9.5px; font-weight:600;">Status: ' + it.status.toUpperCase() + '</span>';
+        if (it.action) {
+          html += '<br/><span style="color:#5C2D91; font-size:9.5px; font-weight:500;">➔ ' + it.action + '</span>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+
+      if (data.insights && data.insights.length > 0) {
+        html += '<div style="margin-top:8px; padding-top:6px; border-top:1px solid #F3E8FF; color:#555; font-size:10px;"><strong>Key Insights:</strong><ul style="padding-left:12px; margin:4px 0 0 0;">';
+        data.insights.forEach(ins => {
+          html += '<li style="margin-bottom:3px;">' + ins + '</li>';
+        });
+        html += '</ul></div>';
+      }
+
+      if (data.meta) {
+         html += '<div style="margin-top:8px; border-top:1px dashed #D6C2EB; padding-top:6px; font-size:10px; color:#1E1B4B; background:#FAF5FF; padding:5px; border-radius:4px;">';
+         html += '<strong style="color:#5C2D91; display:block; margin-bottom:3px;">Audited Metadata Details:</strong>';
+         html += '• <strong>Date:</strong> ' + (data.meta.date ? data.meta.date.whatsappValue || 'N/A' : 'N/A');
+         html += '<br/>• <strong>Name of Orderer:</strong> ' + (data.meta.ordererName ? data.meta.ordererName.whatsappValue || 'N/A' : 'N/A');
+         html += '<br/>• <strong>Name of Health Facility:</strong> ' + (data.meta.facilityName ? data.meta.facilityName.whatsappValue || 'N/A' : 'N/A');
+
+         if (data.meta.dropArea && data.meta.dropArea.whatsappValue && data.meta.dropArea.whatsappValue !== 'N/A' && data.meta.dropArea.whatsappValue.trim() !== '') {
+           html += '<br/>• <strong>Delivery / Drop area:</strong> ' + data.meta.dropArea.whatsappValue;
+         }
+         if (data.meta.district && data.meta.district.whatsappValue && data.meta.district.whatsappValue !== 'N/A' && data.meta.district.whatsappValue.trim() !== '') {
+           html += '<br/>• <strong>District:</strong> ' + data.meta.district.whatsappValue;
+         }
+         if (data.meta.deliveryTime && data.meta.deliveryTime.whatsappValue && data.meta.deliveryTime.whatsappValue !== 'N/A' && data.meta.deliveryTime.whatsappValue.trim() !== '') {
+           html += '<br/>• <strong>Preferred time for Delivery:</strong> ' + data.meta.deliveryTime.whatsappValue;
+         }
+         html += '</div>';
+      }
+
+      results.innerHTML = html;
     } catch (err) {
       results.innerHTML = '<span style="color:red">Error from OrderCheck: ' + err.message + '</span>';
     }
