@@ -43,11 +43,11 @@ import {
   Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { OrderCheckResult, AuditRecord, AuditAnalytics } from './types';
+import { OrderCheckResult, AuditRecord, AuditAnalytics, VerificationItem } from './types';
 
 export default function App() {
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'auditor' | 'osu' | 'extension'>('auditor');
+  const [activeTab, setActiveTab] = useState<'auditor' | 'extension'>('auditor');
 
   // WhatsApp input modes: 'text' represents raw typing, 'screenshot' represents visual scan
   const [whatsappInputMode, setWhatsappInputMode] = useState<'text' | 'screenshot'>('text');
@@ -229,6 +229,72 @@ export default function App() {
   // Active verify results (the client receives full AuditRecord back from server)
   const [result, setResult] = useState<AuditRecord | null>(null);
 
+  // Order limit validation flows
+  const [lastConfirmedItemName, setLastConfirmedItemName] = useState<string | null>(null);
+  const [promptedItems, setPromptedItems] = useState<string[]>([]);
+  const [autoClearCountdown, setAutoClearCountdown] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (result && result.allMatch) {
+      setAutoClearCountdown(4); // Start 4-second auto-clear countdown
+    } else {
+      setAutoClearCountdown(null);
+    }
+  }, [result]);
+
+  useEffect(() => {
+    if (autoClearCountdown === null) return;
+    if (autoClearCountdown <= 0) {
+      handleLogApprovedDispatch();
+      setAutoClearCountdown(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setAutoClearCountdown(prev => (prev !== null ? prev - 1 : null));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [autoClearCountdown]);
+
+  const handleDeclineOrderLimit = (targetItem: VerificationItem) => {
+    setPromptedItems(prev => [...prev, targetItem.name]);
+  };
+
+  const confirmOrderLimit = (targetItem: VerificationItem) => {
+    if (!result) return;
+
+    const updatedItems = result.items.map(item => {
+      if (item.name === targetItem.name) {
+        return {
+          ...item,
+          status: 'match' as const, // Resolve status as match since limit is confirmed
+          action: `Order Limit Confirmed. Limit of ${item.found} units locked and applied successfully.`,
+        };
+      }
+      return item;
+    });
+
+    const anyRemainingIssues = updatedItems.some(it => it.status !== 'match' && it.status !== 'out of stock');
+    const issueCount = updatedItems.filter(it => it.status !== 'match' && it.status !== 'out of stock').length;
+
+    const updatedResult: AuditRecord = {
+      ...result,
+      items: updatedItems,
+      allMatch: !anyRemainingIssues,
+      issueCount: issueCount,
+      verdict: !anyRemainingIssues ? 'PASS: Perfect Match Verified (Order Limit Applied)' : result.verdict
+    };
+
+    setResult(updatedResult);
+    setLastConfirmedItemName(targetItem.name);
+    
+    // Also add to prompted list so we don't prompt again
+    setPromptedItems(prev => [...prev, targetItem.name]);
+
+    setTimeout(() => {
+      setLastConfirmedItemName(null);
+    }, 5000);
+  };
+
   // Resolution panel controls
   const [selectedAuditForResolution, setSelectedAuditForResolution] = useState<AuditRecord | null>(null);
   const [resolutionActionNotes, setResolutionActionNotes] = useState('');
@@ -273,6 +339,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setPromptedItems([]);
     setVerificationTime(0);
 
     const startTime = Date.now();
@@ -502,26 +569,6 @@ export default function App() {
           >
             <ShieldCheck className="w-4 h-4" />
             Compliance Auditor
-          </button>
-          
-          <button
-            onClick={() => {
-              setActiveTab('osu');
-              fetchOsuList();
-            }}
-            className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer relative ${
-              activeTab === 'osu'
-                ? 'border-[#5C2D91] text-[#5C2D91]'
-                : 'border-transparent text-slate-500 hover:text-[#5C2D91]'
-            }`}
-          >
-            <AlertTriangle className="w-4 h-4 text-rose-500 animate-bounce" />
-            OSU Warehouse Stock (Simulated)
-            {osuList.length > 0 && (
-              <span className="bg-rose-500 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 ml-1 animate-pulse">
-                {osuList.length}
-              </span>
-            )}
           </button>
           
           <button
@@ -796,6 +843,7 @@ export default function App() {
               <AnimatePresence mode="wait">
                 {result && (
                   <motion.div
+                    key="results-panel"
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -15 }}
@@ -885,47 +933,90 @@ export default function App() {
                             const colors = getStatusColor(item.status);
                             return (
                               <div 
-                                key={idx} 
-                                className={`bg-white border ${colors.border} ${colors.leftBorder} border-l-4 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 transition-all hover:shadow`}
+                                key={`item-${item.name}-${idx}`} 
+                                className={`bg-white border ${colors.border} ${colors.leftBorder} border-l-4 rounded-xl p-4 shadow-sm flex flex-col gap-3.5 transition-all hover:shadow`}
                               >
-                                <div className="space-y-1">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <h4 className="font-bold text-[#3B1A5E] text-base leading-none">{item.name}</h4>
-                                    {item.category && (
-                                      <span className={`text-[9px] uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded-full border ${getCategoryBadgeStyle(item.category).bg}`}>
-                                        {getCategoryBadgeStyle(item.category).label}
+                                {/* Upper row with details and compliance state */}
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 w-full">
+                                  <div className="space-y-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <h4 className="font-bold text-[#3B1A5E] text-base leading-none">{item.name}</h4>
+                                      {item.category && (
+                                        <span className={`text-[9px] uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded-full border ${getCategoryBadgeStyle(item.category).bg}`}>
+                                          {getCategoryBadgeStyle(item.category).label}
+                                        </span>
+                                      )}
+                                      <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded ${colors.bg}`}>
+                                        {item.status}
                                       </span>
-                                    )}
-                                    <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded ${colors.bg}`}>
-                                      {item.status}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-4 text-xs text-slate-500 font-mono mt-1 pt-0.5">
-                                    <div>
-                                      <span className="text-slate-400">WhatsApp Request: </span>
-                                      <span className="text-slate-800 font-semibold">{item.requested}</span>
                                     </div>
-                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-200"></div>
-                                    <div>
-                                      <span className="text-slate-400">Fulfillment Match: </span>
-                                      <span className="text-[#3B1A5E] font-semibold">{item.found}</span>
+                                    <div className="flex items-center gap-4 text-xs text-slate-500 font-mono mt-1 pt-0.5">
+                                      <div>
+                                        <span className="text-slate-400">WhatsApp Request: </span>
+                                        <span className="text-slate-800 font-semibold">{item.requested}</span>
+                                      </div>
+                                      <div className="w-1.5 h-1.5 rounded-full bg-slate-200"></div>
+                                      <div>
+                                        <span className="text-slate-400">Fulfillment Match: </span>
+                                        <span className="text-[#3B1A5E] font-semibold">{item.found}</span>
+                                      </div>
                                     </div>
                                   </div>
+
+                                  {/* Compliance Action Block */}
+                                  {item.action && (
+                                    <div className="bg-[#F9F5FF] p-2.5 rounded-xl border border-purple-100 flex items-start gap-2 max-w-sm w-full mt-2 sm:mt-0 transition-all">
+                                      <div className="p-1 rounded bg-[#5C2D91]/10 text-[#5C2D91] mt-0.5 shrink-0">
+                                        <HelpCircle className="w-3.5 h-3.5 animate-pulse" />
+                                      </div>
+                                      <div className="text-left w-full">
+                                        <span className="text-[9px] uppercase font-bold text-slate-400 flex items-center justify-between tracking-wider w-full">
+                                          Compliance Correction Action
+                                        </span>
+                                        <span className="text-xs font-semibold text-[#5C2D91] leading-tight block mt-0.5">
+                                          {item.action}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
 
-                                {/* Suggested Action Button (if mismatch) */}
-                                {item.action && (
-                                  <div className="bg-[#F9F5FF] p-2.5 rounded-xl border border-purple-100 flex items-start gap-2 max-w-xs self-stretch sm:self-auto justify-center sm:justify-start">
-                                    <div className="p-1 rounded bg-[#5C2D91]/10 text-[#5C2D91] mt-0.5">
-                                      <HelpCircle className="w-3.5 h-3.5" />
+                                {/* Inline Order Limit Validation Panel (Directly Under Product Detail!) */}
+                                {item.status === 'quantity mismatch' && !promptedItems.includes(item.name) && (
+                                  <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    className="bg-[#FFFDF5] p-3.5 rounded-xl border-2 border-amber-300 relative overflow-hidden text-left w-full"
+                                  >
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                      <div className="space-y-1 max-w-md">
+                                        <div className="flex items-center gap-1.5 text-xs font-black text-[#3B1A5E]">
+                                          <AlertTriangle className="w-4 h-4 text-amber-600 animate-pulse" />
+                                          <span>Order Limit Verification Required</span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 leading-normal">
+                                          Is this product subject to an <strong>order limit of {item.found} units</strong> instead of a dispatch discrepancy?
+                                        </p>
+                                      </div>
+                                      
+                                      <div className="flex gap-2 w-full sm:w-auto shrink-0 pt-1 sm:pt-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeclineOrderLimit(item)}
+                                          className="flex-1 sm:flex-initial bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-1.5 px-3.5 rounded-lg text-xs font-bold transition cursor-pointer"
+                                        >
+                                          No, Discrepancy
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => confirmOrderLimit(item)}
+                                          className="flex-1 sm:flex-initial bg-[#5C2D91] hover:bg-[#3B1A5E] text-white py-1.5 px-3.5 rounded-lg text-xs font-bold transition cursor-pointer shadow-sm text-center"
+                                        >
+                                          Yes, Apply Limit
+                                        </button>
+                                      </div>
                                     </div>
-                                    <div className="text-left">
-                                      <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Compliance Correction Action</span>
-                                      <span className="text-xs font-semibold text-[#5C2D91] leading-tight block">
-                                        {item.action}
-                                      </span>
-                                    </div>
-                                  </div>
+                                  </motion.div>
                                 )}
                               </div>
                             );
@@ -1149,7 +1240,7 @@ export default function App() {
 
                           <ul className="text-xs space-y-2.5 opacity-90 leading-relaxed font-sans relative z-10">
                             {result.insights.map((note, idx) => (
-                              <li key={idx} className="flex gap-2.5 items-start">
+                              <li key={`insight-${idx}`} className="flex gap-2.5 items-start">
                                 <ArrowRight className="w-3.5 h-3.5 text-purple-300 shrink-0 mt-0.5" />
                                 <span>{note}</span>
                               </li>
@@ -1167,86 +1258,6 @@ export default function App() {
           </div>
         )}
 
-        {/* OUT OF STOCK UNIT MANAGEMENT ACTIVE TAB VIEW */}
-        {activeTab === 'osu' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="bg-white rounded-2xl p-6 border border-purple-100 shadow-sm space-y-6 animate-in fade-in duration-300"
-          >
-            <div className="border-b border-purple-50 pb-4">
-              <h2 className="text-lg font-extrabold text-[#3B1A5E] flex items-center gap-2">
-                <AlertTriangle className="text-rose-500 w-5 h-5 animate-pulse" />
-                Warehouse Out-Of-Stock Unit (OSU) Inventory Alert Registry
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Manage the list of medical supplies that are currently out of stock. When a WhatsApp message contains an item on this list, the Compliance Auditor automatically flags it as a critical <b className="text-rose-700">"out of stock" (shortage)</b> scenario and generates compliant actions.
-              </p>
-            </div>
-
-            {/* Add OSU item input */}
-            <div className="flex flex-col sm:flex-row gap-3 max-w-lg bg-purple-50/30 p-4 rounded-xl border border-purple-100">
-              <div className="flex-1">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">REGISTER OUT-OF-STOCK ITEM</label>
-                <input
-                  type="text"
-                  value={newOsuItem}
-                  onChange={(e) => setNewOsuItem(e.target.value)}
-                  placeholder="e.g. Yellow Fever Diluents, bOPV Vials, PCM..."
-                  className="w-full p-2.5 rounded-lg border border-purple-100 font-sans text-xs sm:text-sm text-slate-700 outline-none focus:border-[#5C2D91] focus:ring-1 focus:ring-[#5C2D91] shadow-inner bg-white"
-                  onKeyDown={(e) => e.key === 'Enter' && addOsuItem()}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={addOsuItem}
-                className="bg-[#5C2D91] hover:bg-[#3B1A5E] text-white px-5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer h-[38px] sm:self-end text-center"
-              >
-                <PlusCircle className="w-4 h-4" />
-                Add Alert
-              </button>
-            </div>
-
-            {/* List current OSU items */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-[#3B1A5E] uppercase tracking-wider flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
-                Active Shortage Flagged Supplies:
-              </h3>
-              
-              {osuLoading ? (
-                <div className="text-xs text-slate-500 flex items-center gap-2 py-4">
-                  <RefreshCw className="w-4 h-4 animate-spin text-[#5C2D91]" />
-                  Synchronizing inventory status with main server...
-                </div>
-              ) : osuList.length === 0 ? (
-                <div className="text-xs text-slate-400 italic py-6 bg-slate-50/50 border border-dashed border-slate-200 rounded-xl text-center">
-                  No active out of stock units registered. All medical products are assumed to have solid stock indicators.
-                </div>
-              ) : (
-                <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {osuList.map((item, index) => (
-                    <div key={index} className="flex justify-between items-center bg-rose-50/75 border border-rose-100 rounded-xl p-3 shadow-2xs hover:bg-rose-50 transition">
-                      <span className="text-xs font-mono font-bold text-rose-950 flex items-center gap-2">
-                        <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                        {item}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeOsuItem(item)}
-                        className="text-rose-500 hover:text-rose-800 p-1.5 rounded-lg hover:bg-rose-100 transition cursor-pointer font-bold"
-                        title="Restore Product Stock"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
 
         {/* CHROME COMPANION EXTENSION TERMINAL DOWNLOAD VIEW */}
         {activeTab === 'extension' && (
@@ -1351,7 +1362,13 @@ export default function App() {
       {/* RESOLUTION WORKFLOW DRAW PANEL / MODAL OVERLAY */}
       <AnimatePresence>
         {selectedAuditForResolution && (
-          <div className="fixed inset-0 z-50 bg-[#2C1349]/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div
+            key="resolution-modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-[#2C1349]/70 backdrop-blur-sm flex items-center justify-center p-4"
+          >
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -1380,8 +1397,8 @@ export default function App() {
                 <div className="space-y-1">
                   <span className="font-bold text-[#3B1A5E]">Unmatched Items Status:</span>
                   <div className="divide-y divide-purple-50 font-mono text-[11px] bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                    {selectedAuditForResolution.items.filter(it => it.status !== 'match').map((it, idx) => (
-                      <div key={idx} className="py-1.5 flex flex-wrap justify-between items-center gap-1">
+                    {selectedAuditForResolution.items.filter(it => it.status !== 'match' && it.status !== 'out of stock').map((it, idx) => (
+                      <div key={`unmatched-${it.name}-${idx}`} className="py-1.5 flex flex-wrap justify-between items-center gap-1">
                         <div className="flex items-center gap-1.5">
                           {it.category && (
                             <span className="text-[8px] font-mono leading-none font-bold uppercase bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">
@@ -1438,7 +1455,50 @@ export default function App() {
                 </button>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
+        )}
+
+
+
+        {/* Confirmation banner message toast */}
+        {lastConfirmedItemName && (
+          <motion.div
+            key="confirm-item-toast"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white font-bold p-4 rounded-xl shadow-2xl border border-emerald-500 flex items-center gap-2.5"
+          >
+            <CheckCircle className="w-5 h-5 shrink-0" />
+            <span className="text-xs">
+              Order limit verified and applied for <strong className="underline">{lastConfirmedItemName}</strong>!
+            </span>
+          </motion.div>
+        )}
+
+        {autoClearCountdown !== null && (
+          <motion.div
+            key="auto-clear-timer-toast"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 left-6 z-50 bg-slate-900 text-white font-bold p-4 rounded-xl shadow-2xl border border-purple-500 flex items-center gap-3 max-w-sm"
+          >
+            <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-purple-500 text-white font-extrabold text-xs animate-pulse">
+              {autoClearCountdown}
+            </div>
+            <div className="text-left flex-1 min-w-0">
+              <span className="text-xs uppercase tracking-wider font-extrabold text-purple-300 block">Auto-Clearing Order</span>
+              <span className="text-[10px] text-slate-300 block font-normal">Everything is successful! Prepping workspace in {autoClearCountdown}s...</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAutoClearCountdown(null)}
+              className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-1 rounded cursor-pointer uppercase font-bold"
+            >
+              Pause
+            </button>
+          </motion.div>
         )}
       </AnimatePresence>
 
