@@ -232,28 +232,6 @@ export default function App() {
   // Order limit validation flows
   const [lastConfirmedItemName, setLastConfirmedItemName] = useState<string | null>(null);
   const [promptedItems, setPromptedItems] = useState<string[]>([]);
-  const [autoClearCountdown, setAutoClearCountdown] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (result && result.allMatch) {
-      setAutoClearCountdown(4); // Start 4-second auto-clear countdown
-    } else {
-      setAutoClearCountdown(null);
-    }
-  }, [result]);
-
-  useEffect(() => {
-    if (autoClearCountdown === null) return;
-    if (autoClearCountdown <= 0) {
-      handleLogApprovedDispatch();
-      setAutoClearCountdown(null);
-      return;
-    }
-    const timer = setTimeout(() => {
-      setAutoClearCountdown(prev => (prev !== null ? prev - 1 : null));
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [autoClearCountdown]);
 
   const handleDeclineOrderLimit = (targetItem: VerificationItem) => {
     setPromptedItems(prev => [...prev, targetItem.name]);
@@ -1473,31 +1451,6 @@ export default function App() {
             <span className="text-xs">
               Order limit verified and applied for <strong className="underline">{lastConfirmedItemName}</strong>!
             </span>
-          </motion.div>
-        )}
-
-        {autoClearCountdown !== null && (
-          <motion.div
-            key="auto-clear-timer-toast"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-6 left-6 z-50 bg-slate-900 text-white font-bold p-4 rounded-xl shadow-2xl border border-purple-500 flex items-center gap-3 max-w-sm"
-          >
-            <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-purple-500 text-white font-extrabold text-xs animate-pulse">
-              {autoClearCountdown}
-            </div>
-            <div className="text-left flex-1 min-w-0">
-              <span className="text-xs uppercase tracking-wider font-extrabold text-purple-300 block">Auto-Clearing Order</span>
-              <span className="text-[10px] text-slate-300 block font-normal">Everything is successful! Prepping workspace in {autoClearCountdown}s...</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAutoClearCountdown(null)}
-              className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-1 rounded cursor-pointer uppercase font-bold"
-            >
-              Pause
-            </button>
           </motion.div>
         )}
       </AnimatePresence>

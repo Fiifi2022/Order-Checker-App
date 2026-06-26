@@ -203,6 +203,220 @@ ADDITIONAL AUDIT CONSTRAINTS:
    - ZERO-MISTAKE CLEARANCE EXEMPTION: If the ONLY anomalies/non-match items found in the entire verification process are 'out of stock' items, and there are absolutely NO OTHER mistakes (meaning all other items have perfect status: 'match', and there is no phone number, names, or facility name mismatch), you MUST consider the order cleared!
      In this zero-mistake out-of-stock case, you MUST set output variable 'allMatch' to true, and output variable 'issueCount' to 0 (or count only actual mistakes in issueCount, excluding out-of-stock items so they do not block dispatch). This grants compliance clearance for takeoff/launch since no packaging errors exist, but still preserves the out-of-stock visual alert to notify the clinical facility. Set 'verdict' to something like: 'Cleared for dispatch: No packing mistakes, but some items are out of stock.'
    - If there is any actual packing mistake (like quantity mismatch, missing item, extra item, or facility name/phone mismatch) in addition to out of stock items, then set 'allMatch' to false and include them in the issueCount.
+
+12. PRODUCT INTERNAL QUANTITY EQUIVALENCY RULE (CRITICAL FOR DISCREPANCY MINIMIZATION):
+   - The fulfillment system might register quantities of certain products in terms of individual tablets, capsules, vials, syringes, or items (representing their "internal quantity" within a pack/box/bottle), whereas WhatsApp requests describe bulk packs/boxes/containers, or vice-versa.
+   - You MUST consult the official Product Internal Quantities Catalog below to check the equivalency factor (internal_quantity) for each product name.
+   - If the requested quantity (Q_r) in WhatsApp and the found quantity (Q_f) in the fulfillment system differ:
+     * Check if either: (Q_f = Q_r * internal_quantity) OR (Q_r = Q_f * internal_quantity).
+     * If either of these mathematical equations holds true (with minor text allowances, e.g., "1 box" matches "100 tablets" for a product with an internal quantity of 100, "2 cards" matches "20 tablets" for an internal quantity of 10, "500 capsules" matches "1 pack" for an internal quantity of 500, or "24 tablets" matches "1 pack" for an internal quantity of 24):
+       + You MUST treat this as a PERFECT MATCH!
+       + Set the item's status strictly to "match".
+       + Do NOT flag it as "quantity mismatch" or any other discrepancy.
+       + Do NOT increment "issueCount" or lower the confidence score.
+       + In the returned "items" entry, specify the original descriptions from both messages (e.g., requested: "1 box", found: "100 tablets") so the user understands the conversion, but mark the status strictly as "match".
+   
+   Official Product Internal Quantities Catalog (Any product not listed here has a default internal_quantity of 1):
+   * "Abacavir/Lamivudine 120mg/60mg Tablet": 60
+   * "(Tantala CHPS) Albendazole Tablet, 400mg": 20
+   * "(Jadema HC) Albendazole Tablet, 400mg": 20
+   * "Aluminium Hydroxide 500mg Tablet": 100
+   * "Amlodipine 5mg Tablet": 100
+   * "Amlodipine 10mg Tablet": 100
+   * "Amodiaquine/Artesunate 50mg/135mg Tablet": 30
+   * "Amodiaquine + Artesunate Tablet, 50mg +135 mg (1 - 5 yrs)": 75
+   * "Amodiaquine/Artesunate 100mg/270mg Tablet": 60
+   * "Amodiaquine + Artesunate Tablet 25mg + 67.5mg < 1yr [30] *": 3
+   * "Amodiaquine/Artesunate 25mg/67.5mg Tablet": 30
+   * "Amoxicillin Capsule, 250 mg [100]*": 10
+   * "Amoxicillin Capsule, 250 mg": 500
+   * "(Katigri CHPS) Amoxicillin Capsule, 250 mg": 500
+   * "(Nangrumah CHPS) Amoxicillin Capsule, 250 mg [10]": 500
+   * "(Soo CHPS) Amoxicillin Capsule, 250 mg": 500
+   * "Amoxicillin 500mg Capsule": 10
+   * "Amoxicillin 250mg Capsule": 100
+   * "(Gbintiri HC) Amoxicillin Capsule, 250 mg [10]": 10
+   * "(Sakogu HC) Amoxicillin Capsule, 250 mg [10]": 10
+   * "(Jadema HC) Amoxicillin Capsule, 250 mg [10]": 500
+   * "(Yagba HC) Amoxicillin Capsule, 250 mg [10]": 500
+   * "Artemether 40mg/mL Injection": 6
+   * "Artemether 80mg/mL Injection": 5
+   * "Artesunate 500mg Suppository": 6
+   * "Artesunate 100mg Suppository": 2
+   * "Artemether + Lumefantrine Tablet, 20 mg + 120 mg [24*10]*": 24
+   * "Artemether/Lumefantrine 20mg/120mg Tablet, 24's": 240
+   * "Artemether/Lumefantrine 20mg/120mg Dispersible Tablet, 18's": 180
+   * "Artemether/Lumefantrine 20mg/120mg Dispersible Tablet, 6's": 60
+   * "(Soo CHPS) Artemether + Lumefantrine Tablet, 20 mg + 120 mg (Dispersible) 3-8yrs": 360
+   * "Artemether + Lumefantrine Tablet, 20 mg + 120 mg (Dispersible) [6] <3yrs": 6
+   * "Artemether + Lumefantrine Tablet, 20 mg + 120 mg (Dispersible) [12*10] 3-8yrs*": 12
+   * "(Gbintiri HC) Artemether + Lumefantrine Tablet, 20 mg + 120 mg [24]": 24
+   * "(Gbintiri HC) Artemether + Lumefantrine Tablet, 20 mg + 120 mg (Dispersible) [6]": 6
+   * "(Sakogu HC) Artemether + Lumefantrine Tablet, 20 mg + 120 mg [24]": 24
+   * "(Jadema HC) Artemether + Lumefantrine Tablet, 20 mg + 120 mg (Dispersible) [12] 3-8yrs": 360
+   * "Artemether + Lumefantrine Tablet, 20 mg + 120 mg (Dispersible) [18] 3-8yrs": 18
+   * "Artemether/Lumefantrine 20mg/120mg Dispersible Tablet, 12's": 120
+   * "Artesunate Suppository, 100mg": 2
+   * "Atropine 0.6mg/mL Injection": 5
+   * "Cefuroxime 500mg Tablet": 10
+   * "Chlorpromazine 25mg/mL Injection, 2mL": 10
+   * "Chlorpheniramine 4mg Tablet": 10
+   * "Chlorpheniramine Tablet, 4mg [100]": 100
+   * "Ciprofloxacin 500mg Tablet": 100
+   * "Ciprofloxacin Tablet, 500mg [10]": 10
+   * "(Gbintiri HC) Ciprofloxacin Tablet, 500mg": 10
+   * "(Sakogu HC) Ciprofloxacin Tablet, 500mg [100]": 100
+   * "Clindamycin Injection, 300mg/ml in 2ml [10]": 10
+   * "Clotrimazole 100mg Pessary": 6
+   * "Amoxicillin/Clavulanic acid 500mg/125mg Tablet": 14
+   * "Amoxicillin/Clavulanic acid 875mg/125mg Tablet": 10
+   * "(Gbintiri HC) Amoxycillin + Clavulanic Acid Tablet, 500mg + 125mg [14]": 14
+   * "(Sakogu HC) Amoxycillin + Clavulanic Acid Tablet, 500mg + 125mg [14]": 14
+   * "(Janga HSP) Amoxycillin + Clavulanic Acid Tablet, 500mg + 125mg [14]": 14
+   * "Umbilical Cord Clamp": 5
+   * "Sulphamethoxazole/Trimethoprim 400mg/80mg Tablet": 100
+   * "Covid - 19 Hologram Strip [100]": 100
+   * "Dihydroartemisinin/Piperaquine 20mg/160mg Tablet": 3
+   * "Dihydroartemisinin/Piperaquine 40mg/320mg Tablet": 3
+   * "Dihydroartemisinin/Piperaquine 60mg/480mg Tablet": 3
+   * "Dihydroartemisinin/Piperaquine 80mg/640mg Tablet": 3
+   * "(Gbintiri HC) Diazepam Injection, 5 mg/mL in 2ml [10]": 10
+   * "(Katigri CHPS) Diazepam Injection, 5 mg/mL in 2ml [10]": 10
+   * "(Nangrumah CHPS) Diazepam Injection, 5 mg/mL in 2ml [10]": 10
+   * "(Sakogu HC) Diazepam Injection, 5 mg/mL in 2ml [10]": 10
+   * "Diazepam 10mg/mL Injection, 1mL": 10
+   * "Diazepam 5mg Tablet": 50
+   * "Diazepam 10mg Tablet": 50
+   * "Diclofenac 75mg Capsule": 20
+   * "(Tantala CHPS) Diclofenac Gel, 30mg": 12
+   * "(Tantala CHPS) Diclofenac Injection, 25mg/ml In 3ml[5]": 5
+   * "(Nangrumah CHPS) Diclofenac Injection, 25mg/ml In 3ml[5]": 5
+   * "Diclofenac Injection, 25mg/ml In 3ml [5]": 5
+   * "(Gbintiri HC) Diclofenac Injection, 25mg/ml In 3ml[5]": 5
+   * "(Sakogu HC) Diclofenac Injection, 25mg/ml In 3ml[5]": 5
+   * "(Jadema HC) Diclofenac Injection, 25mg/ml In 3ml[5]": 5
+   * "Diclofenac 50mg Suppository": 100
+   * "Diclofenac 100mg Suppository": 10
+   * "Diclofenac Suppository, 50mg [10]": 10
+   * "(Janga HSP) Diclofenac Suppository, 100mg [10]": 10
+   * "Diclofenac 100mg Tablet": 50
+   * "(Tantala CHPS) Diclofenac Tablet, 50mg": 500
+   * "Diclofenac 50mg Tablet": 100
+   * "(Gbintiri HC) Diclofenac Tablet, 50mg [10]": 10
+   * "(Sakogu HC) Diclofenac Tablet, 50mg [10]": 10
+   * "(Jadema HC) Diclofenac Tablet, 50mg [10]": 10
+   * "(Yagba HC) Diclofenac Tablet, 50mg": 500
+   * "Dolutegravir/Lamivudine/Tenofovir 50mg/300mg/300mg Tablet": 30
+   * "Dolutegravir 50mg Tablet": 30
+   * "Erythromycin 250mg Tablet": 100
+   * "(Jadema HC) Erythromycin Tablet, 250mg": 500
+   * "Ferrous Sulphate 200mg Tablet": 10
+   * "(Tantala CHPS) Ferrous Fumarate Tablet, 200 mg (Elemental Iron)": 1000
+   * "Ferrous Fumarate 200mg Tablet": 500
+   * "Ferrous Sulphate Tablet, 200 mg (Elemental Iron) [500]": 500
+   * "(Jadema HC) Ferrous Fumarate Tablet, 200 mg (Elemental Iron)": 1000
+   * "(Yagba HC) Ferrous Fumarate Tablet, 200 mg (Elemental Iron)": 1000
+   * "Ferrous Sulphate Tablet, 60 mg (Elemental Iron)": 1000
+   * "Fluconazole 150mg Capsule": 10
+   * "Fluoxetine Capsule 20mg": 100
+   * "Fluphenazine 25mg/mL Injection": 10
+   * "Folic acid 5mg Tablet": 10
+   * "(Tantala CHPS) Folic Acid Tablet 5mg [10]": 1000
+   * "(Nangrumah CHPS) Folic Acid Tablet 5mg [10]": 1000
+   * "Folic Acid Tablet 5mg [100]": 100
+   * "Folic Acid Tablet 5mg [500]": 500
+   * "(Gbintiri HC) Folic Acid Tablet 5mg [10]": 10
+   * "(Sakogu HC) Folic Acid Tablet 5mg [10]": 10
+   * "(Jadema HC) Folic Acid Tablet 5mg [10]": 1000
+   * "(Yagba HC) Folic Acid Tablet 5mg [10]": 1000
+   * "Furosemide 40mg Tablet": 10
+   * "(Janga HSP) Furosemide Tablet, 40mg [10]": 10
+   * "Surgical Gloves Size 7.5\"[10]": 10
+   * "Surgical Gloves Size 7\"[10]": 10
+   * "Surgical Gloves Size 8\"[10]": 10
+   * "Examination Gloves M/S [100]": 100
+   * "Hydroxycarbamide 500mg Capsule": 100
+   * "(Gbintiri HC) Hyoscine Butylbromide Tablet, 10mg": 10
+   * "Hyoscine Butylbromide 10mg Tablet": 10
+   * "Hyoscine Butylbromide Tablet, 10mg [100]": 100
+   * "(Gbintiri HC) Hyoscine Butylbromide Tablet, 10mg [10]": 10
+   * "(Sakogu HC) Hyoscine Butylbromide Tablet, 10mg [10]": 10
+   * "(Janga HSP) Hyoscine Butylbromide Tablet, 10mg [10]": 10
+   * "Ibuprofen 200mg Tablet": 100
+   * "Ibuprofen 400mg Tablet": 100
+   * "Iron (III) Hydroxide Polymaltose Complex Capsule": 30
+   * "Levonogestrel/Ethinylestradiol 150mcg/30mcg Tablet": 84
+   * "Levonorgestrel/Ethinylestrastradiol 0.15mg/0.03mg Tablet": 84
+   * "Lisinopril 10mg Tablet": 500
+   * "Medroxyprogesterone Acetate 104mg/0.65mL Injection": 10
+   * "Metformin 500mg Tablet": 100
+   * "Methyldopa 250mg Tablet": 100
+   * "Metronidazole 200mg Tablet": 10
+   * "(Janga HSP) Metronidazole Tablet, 200mg [10]": 10
+   * "(Yagba HC) Metronidazole Tablet, 200mg": 500
+   * "(Yagba HC) Metronidazole Tablet, 400mg": 500
+   * "(Tantala CHPS) Metronidazole Tablet, 200mg": 500
+   * "(Tantala CHPS) Metronidazole Tablet, 400mg": 500
+   * "(Katigri CHPS) Metronidazole Tablet, 200mg": 500
+   * "(Katigri CHPS) Metronidazole Tablet, 400mg": 500
+   * "(Nangrumah CHPS) Metronidazole Tablet, 200mg [10]": 500
+   * "Metronidazole 400mg Tablet": 10
+   * "Metronidazole Tablet, 200mg [100]": 100
+   * "Metronidazole Tablet, 400mg [100]": 100
+   * "(Gbintiri HC) Metronidazole Tablet, 200mg [10]": 10
+   * "(Sakogu HC) Metronidazole Tablet, 200mg [10]": 10
+   * "(Sakogu HC) Metronidazole Tablet, 400mg [10]": 10
+   * "(Jadema HC) Metronidazole Tablet, 200mg [10]": 500
+   * "(Jadema HC) Metronidazole Tablet, 400mg": 500
+   * "Levonorgestrel 30mcg Tablet": 105
+   * "Multivitamin Tablet": 10
+   * "(Tantala CHPS) Multivitamin Tablet": 1000
+   * "(Katigri CHPS) Multivitamin Tablet": 1000
+   * "(Nangrumah CHPS) Multivitamin Tablet [10]": 1000
+   * "Multivitamin Tablet[10*10]": 100
+   * "(Gbintiri HC) Multivitamin Tablet [10]": 10
+   * "(Sakogu HC) Multivitamin Tablet [10]": 10
+   * "(Jadema HC) Multivitamin Tablet [10]": 1000
+   * "(Yagba HC) Multivitamin Tablet [10]": 1000
+   * "Nifedipine 20mg Tablet": 100
+   * "(Sakogu HC) Nifedipine Retard Tablet, 20mg": 100
+   * "(Yagba HC) Nifedipine Retard Tablet, 20mg": 1000
+   * "Olanzapine 5mg Tablet": 200
+   * "Oral Rehydration Salt Powder": 25
+   * "Oral Rehydration Salt Powder (Flavoured)": 25
+   * "(Gbintiri HC) Oral Rehydration Salt Powder": 25
+   * "(Sakogu HC) Oral Rehydration Salt Powder": 25
+   * "Paracetamol 125mg Suppository": 10
+   * "Paracetamol 250mg Suppository": 100
+   * "Paracetamol Suppository, 500mg[100]": 100
+   * "Paracetamol Suppository, 250mg[10]": 10
+   * "Paracetamol 500mg Suppository": 10
+   * "Paracetamol 1000mg Suppository": 10
+   * "Paracetamol 500 mg Tablet": 100
+   * "(Tantala CHPS) Paracetamol Tablet, 500 mg": 1000
+   * "(Katigri CHPS) Paracetamol Tablet, 500 mg": 1000
+   * "(Nangrumah CHPS) Paracetamol Tablet, 500 mg [10]": 1000
+   * "(Soo CHPS) Paracetamol Tablet, 500 mg": 1000
+   * "(Gbintiri HC) Paracetamol Tablet, 500 mg [10]": 10
+   * "(Sakogu HC) Paracetamol Tablet, 500 mg [10]": 10
+   * "(Jadema HC) Paracetamol Tablet, 500 mg [10]": 1000
+   * "(Janga HSP) Paracetamol Tablet, 500 mg [10]": 10
+   * "(Yagba HC) Paracetamol Tablet, 500 mg [10]": 1000
+   * "Promethazine Hydrocloride 1mg/0.5mL Injection": 10
+   * "Risperidone 2mg Tablet": 10
+   * "Salbutamol 4mg Tablet": 10
+   * "Salbutamol Tablet, 4mg [5*10]": 50
+   * "Sulphadoxine/Pyrimethamine/Amodiaquine, 250mg/12.5mg/75mg Tablet": 4
+   * "Sulphadoxine/Pyrimethamine /Amodiaquine, 500mg/25mg/153mg Tablet": 4
+   * "Sulphadoxine/Pyrimethamine 500mg/25mg Tablet": 3
+   * "Sulphadoxine+Pyrimethamine Tablet, 525mg (IPT) [30]": 30
+   * "Sulphadoxine + Pyrimethamine 500mg+25mg Tablet": 150
+   * "Soloshots (Syringes & Needles)1ml [FP]": 5
+   * "Syringes & Needles 5ml [5]": 5
+   * "Vitamin A 100,000IU Capsule": 100
+   * "Vitamin A 200,000IU Capsule": 500
+   * "Zinc 10mg Tablet": 100
+   * "Zinc 20mg Tablet": 10
   `;
 
 // Helper function to call Gemini model with exponential backoff and multi-model fallbacks on transient errors (like 503 high demand)
