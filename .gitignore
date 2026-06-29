@@ -1,2 +1,3 @@
 .env
 server.ts
+/__pycache__
