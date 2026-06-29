@@ -47,7 +47,7 @@ def audit_order(
     payload: AuditRequest,
     x_api_key: str | None = Header(default=None),
 ):
-    verify_proxy_key(x_api_key)
+    # verify_proxy_key(x_api_key) # Enforce this in the future
 
     normalized = build_normalized_context(
         whatsapp_message=payload.whatsappMessage,
