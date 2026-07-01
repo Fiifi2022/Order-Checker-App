@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 340px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 12px;
+      background-color: #FDFBFF;
+      color: #1e1e24;
+    }
+    .header {
+      background-color: #3B1A5E;
+      color: white;
+      padding: 10px;
+      margin: -12px -12px 12px -12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-keep-open {
+      margin-left: auto;
+      background: #D6C2EB;
+      color: #3B1A5E;
+      border: none;
+      font-size: 8.5px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      transition: background 0.2s, color 0.2s;
+    }
+    .btn-keep-open:hover {
+      background: #FFFFFF;
+      color: #3B1A5E;
+    }
+    .header h3 {
+      font-size: 14px;
+      margin: 0;
+    }
+    .header p {
+      font-size: 9px;
+      margin: 2px 0 0 0;
+      opacity: 0.8;
+    }
+    .section-title {
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: bold;
+      color: #5C2D91;
+      margin: 8px 0 4px 0;
+      letter-spacing: 0.5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    textarea {
+      width: 100%;
+      height: 70px;
+      font-size: 11px;
+      font-family: monospace;
+      padding: 6px;
+      border: 1px solid #E5E7EB;
+      border-radius: 6px;
+      box-sizing: border-box;
+      resize: vertical;
+      background-color: #FAFAFA;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: #5C2D91;
+      background-color: #FFFFFF;
+    }
+    .btn-primary {
+      width: 100%;
+      background-color: #5C2D91;
+      color: white;
+      font-weight: bold;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-top: 10px;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover {
+      background-color: #3B1A5E;
+    }
+    .btn-secondary {
+      width: 100%;
+      background-color: #F3E8FF;
+      color: #5C2D91;
+      font-weight: 500;
+      padding: 6px;
+      border: 1px solid #D6C2EB;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 10px;
+      margin-top: 4px;
+      transition: background 0.2s;
+    }
+    .btn-secondary:hover {
+      background-color: #E9D5FF;
+    }
+    .btn-clear {
+      width: 100%;
+      background-color: #FEE2E2;
+      color: #991B1B;
+      font-weight: 500;
+      padding: 6px;
+      border: 1px solid #FCA5A5;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 10px;
+      margin-top: 4px;
+      transition: background 0.2s;
+    }
+    .btn-clear:hover {
+      background-color: #FCA5A5;
+    }
+    .result-box {
+      margin-top: 10px;
+      background: white;
+      border: 1px solid #E5E7EB;
+      border-radius: 6px;
+      padding: 8px;
+      max-height: 150px;
+      overflow-y: auto;
+      font-size: 11px;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: bold;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-bottom: 4px;
+    }
+    .badge-error { background-color: #FEE2E2; color: #991B1B; }
+    .badge-success { background-color: #D1FAE5; color: #065F46; }
+    .server-status {
+      font-size: 9px;
+      color: #6B7280;
+      text-align: right;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div style="background-color:#5C2D91; padding:4px; border-radius:4px;">⚡</div>
+    <div>
+      <h3>OrderCheck Companion</h3>
+      <p>Clinical Dispatch Audit Extension v1.2</p>
+    </div>
+    <button id="btnKeepOpen" class="btn-keep-open" title="📌 Open in a standalone stay-open window, so it won't auto-close when clicking outside!">📌 Keep Open</button>
+  </div>
+
+  <div class="section-title">
+    <span>WhatsApp Message Log</span>
+    <span style="font-size:8px; color:#888; font-weight:normal;">Paste or auto-extract</span>
+  </div>
+  <textarea id="whatsappText" placeholder="Pasted or extracted WhatsApp message goes here..."></textarea>
+
+  <div class="section-title">
+    <span>Fulfillment system log</span>
+    <span style="font-size:8px; color:#888; font-weight:normal;">Will pull highlighted text</span>
+  </div>
+  <textarea id="fulfillmentText" placeholder="Highlight text on the fulfillment page and click button below..."></textarea>
+  
+  <div style="display: flex; gap: 8px;">
+    <button id="btnCapture" class="btn-secondary" style="margin-top: 4px; flex: 1;">✨ Grab Active Page</button>
+    <button id="btnClear" class="btn-clear" style="margin-top: 4px; flex: 1;">🗑 Clear Inputs</button>
+  </div>
+
+  <button id="btnVerify" class="btn-primary">Analyze For Discrepancies</button>
+
+  <div class="section-title">Audit Cross-Examination</div>
+  <div id="results" class="result-box">
+    <p style="color:#6B7280; margin:0; text-align:center;">Highlight fulfillment data, ensure WhatsApp is pasted, and click Analyze!</p>
+  </div>
+
+  <div class="server-status" id="serverInfo" style="margin-top: 12px; border-top: 1px dashed #D6C2EB; padding-top: 8px; text-align: left;">
+    <div style="display: flex; gap: 4px; align-items: center; margin-bottom: 4px;">
+      <span style="font-size: 9px; font-weight: bold; color: #5C2D91; white-space: nowrap;">Backend:</span>
+      <input type="text" id="backendUrlInput" style="flex: 1; min-width: 0; font-size: 9px; padding: 2px 4px; border: 1px solid #D6C2EB; border-radius: 3px;" value="https://ordercheck-507802192766.europe-west2.run.app" />
+      <button id="btnSaveBackend" style="font-size: 8px; padding: 2px 4px; background: #5C2D91; color: white; border: none; border-radius: 3px; cursor: pointer; white-space: nowrap;">Save</button>
+      <button id="btnResetBackend" style="font-size: 8px; padding: 2px 4px; background: #E5E7EB; color: #374151; border: 1px solid #D1D5DB; border-radius: 3px; cursor: pointer; white-space: nowrap;">Reset</button>
+    </div>
+    <div id="backendSaveMsg" style="font-size: 8px; color: #059669; font-weight: 500; display: none; margin-bottom: 4px;">URL updated successfully!</div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+      <span id="connectionBadge" style="font-size: 8px; font-weight: bold; color: #991B1B; padding: 1px 4px; border-radius: 3px; background-color: #FEE2E2; display: inline-block;">● Pinging...</span>
+      <span style="font-size: 8px; color: #5C2D91; font-weight: 500;">Saved automatically</span>
+    </div>
+    <div style="font-size: 8.5px; color: #6B7280; text-align: left; line-height: 1.2;">
+      Verify this matches your current app's Dev/Shared tab URL if you get fetch failures.
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

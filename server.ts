@@ -6,7 +6,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import fs from 'fs/promises';
 import AdmZip from 'adm-zip';
 const app = express();
@@ -86,7 +86,7 @@ The user may paste ANY kind of messages or text logs (including general chat, em
    - If an item or claim in WhatsApp is matched perfectly in Fulfillment Confirmation, set status to 'match'. If they differ, set status to 'quantity mismatch' or 'missing item' or 'extra item' accordingly, and write a clear, actionable directive in the 'action' field (e.g. "Align system details with requested message text").
 2. COMPULSORY VS NON-COMPULSORY METADATA AUDITING RULES:
    You MUST extract and audit these metadata fields in the following format:
-   - "date": E.g. "Date: 15-06-2026" or similar. Extract from the inputs if written. If missing, set to "N/A".
+   - "date": (EXCLUDED FROM AUDITING. Always set both whatsappValue and fulfillmentValue to "N/A" and status strictly to "match" so it never flags any mismatch).
    - "ordererName": Under "Name of Orderer". Extract orderer name from both inputs. Keep in sync with "customerName" for legacy compliance.
    - "facilityName": Under "Name of Health Facility". Extract health center/facility name from both inputs. Keep in sync with "facility" for legacy compliance.
    - "dropArea": Under "Delivery / Drop area". (NOT COMPULSORY. If missing, set both whatsappValue and fulfillmentValue to "N/A" and status to "match". Never log an error/mismatch for this being absent).
@@ -98,9 +98,9 @@ The user may paste ANY kind of messages or text logs (including general chat, em
      - "facility": identical value as "facilityName".
      - "phone": standard contact phone number (or "N/A" if missing; missing contact phone is NOT compulsory and shouldn't trigger mismatch errors).
 
-   - If any optional/non-compulsory field (dropArea, district, deliveryTime) is missing or not provided:
+   - If any optional/non-compulsory field (date, dropArea, district, deliveryTime) is missing or not provided:
      - You MUST boycott/omit raising error/mismatches for them. Set their value fields to "N/A" and status strictly to "match".
-     - Do NOT let missing optional fields lower confidence score or set allMatch to false. Keep allMatch true and issueCount at 0 if everything else is clean!
+     - Do NOT let missing optional fields or excluded fields like date lower confidence score or set allMatch to false. Keep allMatch true and issueCount at 0 if everything else is clean!
 
 ==================================================
 CRITICAL DOMAIN RULES & ABBREVIATION CATEGORIES (WHEN MEDICAL/CLINICAL):
@@ -419,7 +419,7 @@ ADDITIONAL AUDIT CONSTRAINTS:
 
 // Helper function to call Gemini model with exponential backoff and multi-model fallbacks on transient errors (like 503 high demand)
 async function generateContentWithRetry(ai: any, options: any): Promise<any> {
-  const modelSequence = options.model === 'gemini-3.5-flash'
+  const modelSequence = options.model === 'gemini-3.5-flash' || options.model === 'gemini-2.5-flash'
     ? ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest']
     : [options.model];
 
@@ -427,7 +427,7 @@ async function generateContentWithRetry(ai: any, options: any): Promise<any> {
 
   for (const currentModel of modelSequence) {
     let attempt = 0;
-    const maxAttemptsForModel = currentModel === 'gemini-3.5-flash' ? 1 : 2; // Try gemini-3.5-flash once and instantly fallback on error to save latency
+    const maxAttemptsForModel = currentModel.startsWith('gemini-3.5') ? 1 : 2; // Fast initial try for flash models to instantly fallback on error to save latency
     const initialDelay = 150; // Fast initial delay for low latency
 
     while (attempt < maxAttemptsForModel) {
@@ -440,6 +440,17 @@ async function generateContentWithRetry(ai: any, options: any): Promise<any> {
           ...options,
           model: currentModel
         };
+
+        // If using standard non-thinking flash models (like gemini-3.1-flash-lite or gemini-flash-latest),
+        // we MUST remove thinkingConfig to avoid API schema errors and maintain high speed.
+        if (currentOptions.config) {
+          currentOptions.config = { ...currentOptions.config };
+          if (currentModel.includes('-flash') && !currentModel.includes('thinking')) {
+            if (currentOptions.config.thinkingConfig) {
+              delete currentOptions.config.thinkingConfig;
+            }
+          }
+        }
         
         return await ai.models.generateContent(currentOptions);
       } catch (error: any) {
@@ -482,7 +493,7 @@ async function generateContentWithRetry(ai: any, options: any): Promise<any> {
   // If we exhausted all fallback models and all attempts
   if (lastError) {
     const errorMsg = lastError.message || String(lastError);
-    const customError = new Error(`The Gemini verification service is currently experiencing extreme demand across all available model pathways (tried gemini-3.5-flash, gemini-3.1-flash-lite, and gemini-flash-latest). Details: ${errorMsg}`);
+    const customError = new Error(`The Gemini verification service is currently experiencing extreme demand across all available model pathways (tried ${modelSequence.join(', ')}). Details: ${errorMsg}`);
     (customError as any).status = lastError.status || 'UNAVAILABLE';
     (customError as any).code = lastError.code || 503;
     throw customError;
@@ -494,606 +505,30 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date() });
 });
 
-// =============================================================================
-// FAST TEXT-BASED VERIFICATION ENGINE
-// Encodes all domain rules from SYSTEM_INSTRUCTIONS as deterministic TypeScript.
-// No AI calls — runs in < 10ms. Same output schema as the Gemini /api/verify path.
-// =============================================================================
-
-/** Canonical synonym map: every alias → its canonical name (lowercased keys) */
-const SYNONYM_MAP: Record<string, string> = {
-  // --- Vaccines ---
-  'bcg': 'BCG Vaccine',
-  'opv': 'OPV Vaccine', 'bopv': 'OPV Vaccine', 'ipv': 'OPV Vaccine',
-  'pcv': 'PCV Vaccine', 'pcv13': 'PCV Vaccine', 'pneumococcal': 'PCV Vaccine',
-  'mr': 'MR Vaccine', 'measles rubella': 'MR Vaccine', 'measles-rubella': 'MR Vaccine', 'measles': 'MR Vaccine',
-  'yf': 'Yellow Fever Vaccine', 'yfv': 'Yellow Fever Vaccine', 'yellow fever': 'Yellow Fever Vaccine',
-  'penta': 'Pentavalent Vaccine', 'pentavalent': 'Pentavalent Vaccine', 'pentaxim': 'Pentavalent Vaccine',
-  'td': 'Tetanus Vaccine', 'tt': 'Tetanus Vaccine', 'tetanus': 'Tetanus Vaccine', 'tetanus toxoid': 'Tetanus Vaccine',
-  'rota': 'ROTA Vaccine', 'rotavirus': 'ROTA Vaccine',
-  'hpv': 'HPV Vaccine', 'human papillomavirus': 'HPV Vaccine',
-  'men': 'Meningitis Vaccine', 'menafrivac': 'Meningitis Vaccine', 'meningitis': 'Meningitis Vaccine',
-  "rts,s": 'Mosquirix Vaccine', 'mosquirix': 'Mosquirix Vaccine', 'malaria vaccine': 'Mosquirix Vaccine',
-  'moderna': 'COVID-19 Vaccine', 'pfizer': 'COVID-19 Vaccine', 'janssen': 'COVID-19 Vaccine', 'covishield': 'COVID-19 Vaccine',
-  'covid 19 vaccine': 'COVID-19 Vaccine', 'covid-19 vaccine': 'COVID-19 Vaccine',
-  // Diluents / droppers
-  'diluents': 'Diluents', 'diluent': 'Diluents', 'diluents vials': 'Diluents',
-  'droppers': 'Droppers', 'dropper': 'Droppers',
-  // --- Medical Products ---
-  'act': 'Artemether Lumefantrine', 'al': 'Artemether Lumefantrine', 'coartem': 'Artemether Lumefantrine',
-  'artemether lumefantrine': 'Artemether Lumefantrine', 'artemether + lumefantrine': 'Artemether Lumefantrine',
-  'artemether/lumefantrine': 'Artemether Lumefantrine',
-  'pcm': 'Paracetamol', 'apap': 'Paracetamol', 'paracetamol': 'Paracetamol',
-  'panadol': 'Paracetamol', 'acetaminophen': 'Paracetamol',
-  'amox': 'Amoxicillin', 'amoxicillin': 'Amoxicillin', 'amoxil': 'Amoxicillin',
-  'oxy': 'Oxytocin', 'oxytocin': 'Oxytocin', 'syntocinon': 'Oxytocin',
-  'as': 'Artesunate', 'artesunate': 'Artesunate', 'inj artesunate': 'Artesunate',
-  'ifa': 'Iron Folic Acid', 'iron folic acid': 'Iron Folic Acid', 'feso4 + folic': 'Iron Folic Acid',
-  'ferrous sulfate': 'Iron Folic Acid', 'ferrous sulphate': 'Iron Folic Acid',
-  'ors': 'ORS', 'ort': 'ORS', 'oral rehydration': 'ORS', 'oral rehydration salts': 'ORS',
-  'zinc dt': 'Zinc Tablets', 'zinc dispersible': 'Zinc Tablets', 'zinc tablets': 'Zinc Tablets', 'zinc': 'Zinc Tablets',
-  // IV Fluids
-  'ns': 'Normal Saline', 'normal saline': 'Normal Saline', 'saline': 'Normal Saline',
-  '0.9% sodium chloride': 'Normal Saline', 'saline water': 'Normal Saline', 'saline iv': 'Normal Saline', 'iv saline': 'Normal Saline',
-  'd5': 'Dextrose 5%', 'dextrose 5%': 'Dextrose 5%', 'dextrose 5': 'Dextrose 5%',
-  'rl': 'Ringers Lactate', 'ringers lactate': 'Ringers Lactate', 'ringer lactate': 'Ringers Lactate',
-  'hartmanns': 'Ringers Lactate', "hartmann's": 'Ringers Lactate', 'ringer\'s lactate': 'Ringers Lactate',
-  'dns': 'Dextrose Normal Saline', 'dextrose normal saline': 'Dextrose Normal Saline',
-  // --- Blood Products ---
-  'wb': 'Whole Blood', 'whole blood': 'Whole Blood',
-  'prbc': 'Packed Red Blood Cells', 'packed cells': 'Packed Red Blood Cells', 'packed red blood cells': 'Packed Red Blood Cells',
-  'ffp': 'Fresh Frozen Plasma', 'fresh frozen plasma': 'Fresh Frozen Plasma',
-  'plt': 'Platelets', 'pc': 'Platelets', 'platelets': 'Platelets', 'platelet concentration': 'Platelets',
-  // Blood types
-  'o positive': 'O+', 'o pos': 'O+', 'o+': 'O+',
-  'o negative': 'O-', 'o neg': 'O-', 'o-': 'O-',
-  'a positive': 'A+', 'a pos': 'A+', 'a+': 'A+',
-  'a negative': 'A-', 'a neg': 'A-', 'a-': 'A-',
-  'b positive': 'B+', 'b pos': 'B+', 'b+': 'B+',
-  'b negative': 'B-', 'b neg': 'B-', 'b-': 'B-',
-  'ab positive': 'AB+', 'ab pos': 'AB+', 'ab+': 'AB+',
-  'ab negative': 'AB-', 'ab neg': 'AB-', 'ab-': 'AB-',
-  // --- Consumables ---
-  'mrdt': 'Malaria RDT', 'rdt': 'Malaria RDT', 'malaria rdt': 'Malaria RDT',
-  'giving set': 'Giving Set', 'iv giving set': 'Giving Set', 'blood giving set': 'Giving Set', 'infusion set': 'Giving Set',
-  'cotton': 'Cotton Wool', 'cotton wool': 'Cotton Wool',
-  'gauze': 'Gauze Bandage', 'gauze bandage': 'Gauze Bandage',
-};
-
-/** Vaccines that require diluents (MR, YF) */
-const DILUENT_REQUIRING_VACCINES = new Set(['mr vaccine', 'yellow fever vaccine', 'measles vaccine']);
-/** Vaccines that require droppers (OPV, ROTA) */
-const DROPPER_REQUIRING_VACCINES = new Set(['opv vaccine', 'rota vaccine']);
-
-/**
- * Resolve a raw item name to its canonical form via SYNONYM_MAP.
- * Strips common packaging words, lowercases, trims, then looks up.
- */
-function normalizeName(raw: string): string {
-  let s = raw.toLowerCase()
-    .replace(/\(.*?\)/g, '')       // remove parenthetical annotations
-    .replace(/\b(units?|vials?|packs?|pack|boxes?|box|cards?|card|tabs?|tablets?|capsules?|caps?|injections?|inj|doses?|dose|sachets?|sachet|pieces?|piece|pcs|rolls?|roll)\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // Direct lookup first
-  if (SYNONYM_MAP[s]) return SYNONYM_MAP[s];
-
-  // Strip trailing dosage/strength spec (e.g. "20/120mg", "500 mg", "10 iu/ml") and retry
-  const withoutDosage = s.replace(/\s*[\d.,/]+\s*(?:mg|mcg|g|ml|iu|iu\/ml|%|mmol)?(?:\/[\d.,]+\s*(?:mg|mcg|g|ml|iu)?)?$/i, '').trim();
-  if (withoutDosage && withoutDosage !== s && SYNONYM_MAP[withoutDosage]) return SYNONYM_MAP[withoutDosage];
-
-  return raw.trim();
-}
-
-/**
- * Extract a leading numeric quantity from a raw quantity string.
- * e.g. "20 packs" → 20, "5" → 5, "0/10" → 0, "None" → 0
- */
-function extractQty(qtyStr: string): number {
-  if (!qtyStr || qtyStr.toLowerCase() === 'none') return 0;
-  // Handle "X/Y" zero-load patterns — take the numerator
-  const slashMatch = qtyStr.match(/^(\d+)\s*\/\s*\d+/);
-  if (slashMatch) return parseInt(slashMatch[1], 10);
-  const numMatch = qtyStr.match(/(\d+(?:\.\d+)?)/);
-  return numMatch ? parseFloat(numMatch[1]) : 0;
-}
-
-/** Parse inline quantity string like "10 vials" or "20" from a line fragment */
-function parseInlineQty(fragment: string): { qty: number; unit: string } {
-  const m = fragment.match(/(\d+(?:\.\d+)?)\s*([a-z]*)/i);
-  if (!m) return { qty: 1, unit: '' };
-  return { qty: parseFloat(m[1]), unit: m[2].toLowerCase() };
-}
-
-interface ParsedItem {
-  name: string;
-  canonicalName: string;
-  qty: number;
-  unit: string;
-  rawLine: string;
-  category: string;
-}
-
-/** Determine a rough category from a canonical name */
-function inferCategory(canonical: string): string {
-  const c = canonical.toLowerCase();
-  if (c.includes('vaccine') || c === 'diluents' || c === 'droppers') return 'Vaccine';
-  if (['whole blood', 'packed red blood cells', 'fresh frozen plasma', 'platelets', 'o+', 'o-', 'a+', 'a-', 'b+', 'b-', 'ab+', 'ab-'].includes(canonical)) return 'Blood Product';
-  if (['malaria rdt', 'giving set', 'cotton wool', 'gauze bandage'].includes(canonical) ||
-      c.includes('syringe') || c.includes('cannula') || c.includes('glove') || c.includes('needle')) return 'Consumable';
-  return 'Medical Product';
-}
-
-/**
- * Parse an order text block into structured line items.
- * Handles bullet lists (-, *, •, numbered), colon-separated "Item: qty" formats,
- * and bare "qty x Item" patterns.
- */
-function parseOrderText(text: string): ParsedItem[] {
-  const items: ParsedItem[] = [];
-  const lines = text.split('\n');
-
-  // Meta-field label patterns — skip these lines
-  const metaLabels = /^(name|phone|contact|facility|health center|hospital|clinic|date|district|district|drop area|delivery|requester|recipient|customer|orderer|ref|whatsapp|tel|address|preferred time|time|location|sender|from|chps)[\s:]/i;
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line || line.length < 2) continue;
-    if (metaLabels.test(line)) continue;
-    // Skip pure header/separator lines
-    if (/^[=\-*_]{3,}/.test(line)) continue;
-    // Skip lines that look like section headers (all caps, no digits)
-    if (/^[A-Z\s:]{5,}$/.test(line) && !/\d/.test(line)) continue;
-
-    // Strip leading bullet / list markers
-    const stripped = line.replace(/^[-*•·]\s*/, '').replace(/^\d+[.)]\s*/, '').trim();
-    if (!stripped) continue;
-
-    // Pattern 1: "ItemName: qty unit" or "ItemName - qty unit"
-    const colonSplit = stripped.match(/^(.+?)\s*[:\-–]\s*(\d[\d\s\w/.]*)$/);
-    if (colonSplit) {
-      const namePart = colonSplit[1].trim();
-      const qtyPart = colonSplit[2].trim();
-      const { qty, unit } = parseInlineQty(qtyPart);
-      const canonical = normalizeName(namePart);
-      if (canonical && qty >= 0) {
-        items.push({ name: namePart, canonicalName: canonical, qty, unit, rawLine, category: inferCategory(canonical) });
-        continue;
-      }
-    }
-
-    // Pattern 2: "qty unit of ItemName" or "qty x ItemName"
-    const qtyFirst = stripped.match(/^(\d+(?:\.\d+)?)\s*(?:x\s+|units?\s+of\s+|vials?\s+of\s+|packs?\s+of\s+|doses?\s+of\s+|boxes?\s+of\s+|cards?\s+of\s+)?(.+)$/i);
-    if (qtyFirst) {
-      const qty = parseFloat(qtyFirst[1]);
-      const namePart = qtyFirst[2].replace(/^(?:of|x)\s+/i, '').trim();
-      const canonical = normalizeName(namePart);
-      if (canonical && qty >= 0) {
-        items.push({ name: namePart, canonicalName: canonical, qty, unit: '', rawLine, category: inferCategory(canonical) });
-        continue;
-      }
-    }
-
-    // Pattern 3: plain item line without explicit qty — treat as qty=1
-    const canonical = normalizeName(stripped);
-    if (canonical && stripped.length > 2) {
-      items.push({ name: stripped, canonicalName: canonical, qty: 1, unit: '', rawLine, category: inferCategory(canonical) });
-    }
-  }
-
-  return items;
-}
-
-interface MetaField { whatsappValue: string; fulfillmentValue: string; status: 'match' | 'mismatch'; }
-interface RawMeta {
-  name: string; phone: string; facility: string; date: string;
-  ordererName: string; facilityName: string; dropArea: string; district: string; deliveryTime: string;
-}
-interface ParsedMeta {
-  customerName: MetaField; phone: MetaField; facility: MetaField; date: MetaField;
-  ordererName: MetaField; facilityName: MetaField; dropArea: MetaField; district: MetaField; deliveryTime: MetaField;
-}
-
-/** Extract a single field value from text using an array of label patterns */
-function extractField(text: string, patterns: RegExp[]): string {
-  for (const pattern of patterns) {
-    const m = text.match(pattern);
-    if (m && m[1] && m[1].trim()) return m[1].trim();
-  }
-  return 'N/A';
-}
-
-/**
- * Normalize a phone number to its last 9 digits for comparison.
- * Handles: 0244…, +233244…, 233244…
- */
-function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (!digits) return '';
-  // Strip leading country code 233 if present and number is long enough
-  if (digits.startsWith('233') && digits.length >= 12) return digits.slice(3);
-  // Strip leading 0 for local format
-  if (digits.startsWith('0') && digits.length >= 10) return digits.slice(1);
-  return digits;
-}
-
-/** Compare two name/facility strings loosely (case-insensitive, strip common suffixes) */
-function compareNames(a: string, b: string): boolean {
-  if (a === 'N/A' && b === 'N/A') return true;
-  if (a === 'N/A' || b === 'N/A') return false;
-  const strip = (s: string) => s.toLowerCase()
-    .replace(/\b(clinic|hospital|chps|health center|health centre|compound|rch|community|district)\b/gi, '')
-    .replace(/[^a-z0-9]/g, '')
-    .trim();
-  return strip(a) === strip(b) || a.toLowerCase().includes(b.toLowerCase()) || b.toLowerCase().includes(a.toLowerCase());
-}
-
-/** Parse all 9 meta fields from a text block — returns raw string values */
-function parseMetaFields(text: string): RawMeta {
-  const name = extractField(text, [
-    /(?:name|requester|recipient|customer|orderer|orderer name|name of orderer)\s*[:\-]\s*([^\n,]+)/i,
-    /^from\s*[:\-]\s*([^\n,]+)/im,
-  ]);
-  const phone = extractField(text, [
-    /(?:phone|contact|tel|ref phone|reference phone|mobile|number)\s*[:\-]\s*([+\d\s\-()]{7,})/i,
-  ]);
-  const facility = extractField(text, [
-    /(?:facility|health center|health centre|hospital|clinic|chps|site|location)\s*[:\-]\s*([^\n,]+)/i,
-  ]);
-  const date = extractField(text, [
-    /(?:date|order date|dated)\s*[:\-]\s*([^\n,]+)/i,
-  ]);
-  const ordererName = name; // spec: keep in sync with customerName
-  const facilityName = extractField(text, [
-    /(?:name of health facility|health facility name|facility name)\s*[:\-]\s*([^\n,]+)/i,
-    /(?:facility|hospital|clinic|health center)\s*[:\-]\s*([^\n,]+)/i,
-  ]) || facility;
-  const dropArea = extractField(text, [
-    /(?:drop area|delivery area|delivery\s*\/?\s*drop area|drop)\s*[:\-]\s*([^\n,]+)/i,
-  ]);
-  const district = extractField(text, [
-    /(?:district)\s*[:\-]\s*([^\n,]+)/i,
-  ]);
-  const deliveryTime = extractField(text, [
-    /(?:preferred time|delivery time|time|preferred time for delivery)\s*[:\-]\s*([^\n,]+)/i,
-  ]);
-  return { name, phone, facility, date, ordererName, facilityName, dropArea, district, deliveryTime };
-}
-
-interface VerificationItem {
-  name: string; requested: string; found: string;
-  status: 'match' | 'quantity mismatch' | 'missing item' | 'extra item' | 'out of stock';
-  action?: string; category?: string;
-}
-
-/** Build the cross-comparison items array from WA and FF parsed items */
-function matchItems(waItems: ParsedItem[], ffItems: ParsedItem[], osuList: string[]): VerificationItem[] {
-  const results: VerificationItem[] = [];
-  const ffUsed = new Set<number>();
-
-  // Normalize the OSU list for matching
-  const osuNormalized = osuList.map(o => normalizeName(o).toLowerCase());
-
-  for (const waItem of waItems) {
-    const waCanon = waItem.canonicalName.toLowerCase();
-
-    // OSU list check
-    const isOsu = osuNormalized.some(o =>
-      o === waCanon || o.includes(waCanon) || waCanon.includes(o) ||
-      normalizeName(o).toLowerCase() === waCanon
-    );
-
-    // Find best match in fulfillment by canonical name
-    let matchIdx = -1;
-    let matchScore = 0;
-    for (let i = 0; i < ffItems.length; i++) {
-      if (ffUsed.has(i)) continue;
-      const ffCanon = ffItems[i].canonicalName.toLowerCase();
-      if (ffCanon === waCanon) { matchIdx = i; matchScore = 100; break; }
-      // Partial containment fallback
-      if (ffCanon.includes(waCanon) || waCanon.includes(ffCanon)) {
-        const score = 60;
-        if (score > matchScore) { matchIdx = i; matchScore = score; }
-      }
-    }
-
-    if (matchIdx === -1) {
-      // Not found in FF at all
-      if (isOsu) {
-        results.push({
-          name: waItem.canonicalName, requested: String(waItem.qty || 1), found: '0',
-          status: 'out of stock',
-          action: `OSU ALERT: ${waItem.canonicalName} is currently out of stock in the warehouse.`,
-          category: waItem.category
-        });
-      } else {
-        results.push({
-          name: waItem.canonicalName, requested: String(waItem.qty || 1), found: 'None',
-          status: 'missing item',
-          action: `Add ${waItem.canonicalName} to the fulfillment order.`,
-          category: waItem.category
-        });
-      }
-    } else {
-      ffUsed.add(matchIdx);
-      const ffItem = ffItems[matchIdx];
-      const waQty = waItem.qty;
-      const ffQty = ffItem.qty;
-
-      // OSU: explicit zero load
-      if (ffQty === 0 && waQty > 0) {
-        results.push({
-          name: waItem.canonicalName, requested: String(waQty), found: '0',
-          status: 'out of stock',
-          action: `OSU ALERT: ${waItem.canonicalName} shows zero load in fulfillment (0/${waQty}).`,
-          category: waItem.category
-        });
-        continue;
-      }
-
-      if (waQty === ffQty) {
-        results.push({
-          name: waItem.canonicalName, requested: `${waQty} ${waItem.unit}`.trim(), found: `${ffQty} ${ffItem.unit}`.trim(),
-          status: 'match', category: waItem.category
-        });
-      } else if (waQty > 0 && ffQty > 0 && ffQty < waQty) {
-        results.push({
-          name: waItem.canonicalName, requested: `${waQty} ${waItem.unit}`.trim(), found: `${ffQty} ${ffItem.unit}`.trim(),
-          status: 'quantity mismatch',
-          action: `Order limit triggered. Correct fulfillment quantity to ${waQty} or confirm order limit.`,
-          category: waItem.category
-        });
-      } else if (waQty > 0 && ffQty > waQty) {
-        results.push({
-          name: waItem.canonicalName, requested: `${waQty} ${waItem.unit}`.trim(), found: `${ffQty} ${ffItem.unit}`.trim(),
-          status: 'quantity mismatch',
-          action: `Correct fulfillment quantity to ${waQty} ${waItem.unit}`.trim() + '.',
-          category: waItem.category
-        });
-      } else {
-        results.push({
-          name: waItem.canonicalName, requested: String(waQty), found: String(ffQty),
-          status: 'quantity mismatch',
-          action: `Verify quantities — requested ${waQty}, found ${ffQty}.`,
-          category: waItem.category
-        });
-      }
-    }
-  }
-
-  // Extra items in FF that weren't matched
-  for (let i = 0; i < ffItems.length; i++) {
-    if (!ffUsed.has(i)) {
-      const ffItem = ffItems[i];
-      results.push({
-        name: ffItem.canonicalName, requested: 'None', found: String(ffItem.qty),
-        status: 'extra item',
-        action: `Remove ${ffItem.canonicalName} from fulfillment — not requested.`,
-        category: ffItem.category
-      });
-    }
-  }
-
-  // --- Vaccine diluent / dropper pairing post-pass ---
-  const foundVaccineNames = new Set(results.map(r => r.name.toLowerCase()));
-  for (const r of results) {
-    const lower = r.name.toLowerCase();
-    if (DILUENT_REQUIRING_VACCINES.has(lower) && r.status === 'match') {
-      const hasDiluents = results.some(x => x.name.toLowerCase().includes('diluent'));
-      if (!hasDiluents) {
-        results.push({
-          name: 'Diluents', requested: String(r.requested), found: 'None',
-          status: 'missing item',
-          action: `Add diluents for ${r.name} — ${r.name} requires matching diluents.`,
-          category: 'Vaccine'
-        });
-      }
-    }
-    if (DROPPER_REQUIRING_VACCINES.has(lower) && r.status === 'match') {
-      const hasDroppers = results.some(x => x.name.toLowerCase().includes('dropper'));
-      if (!hasDroppers) {
-        results.push({
-          name: 'Droppers', requested: String(r.requested), found: 'None',
-          status: 'missing item',
-          action: `Add droppers for ${r.name} — ${r.name} requires matching droppers.`,
-          category: 'Vaccine'
-        });
-      }
-    }
-  }
-
-  return results;
-}
-
-/** Build the 9-field meta comparison object */
-function buildMeta(waMeta: RawMeta, ffMeta: RawMeta): ParsedMeta {
-  const mkField = (wa: string, ff: string, compareFn?: (a: string, b: string) => boolean): MetaField => {
-    const matched = compareFn ? compareFn(wa, ff) : wa.toLowerCase() === ff.toLowerCase();
-    const bothNA = wa === 'N/A' && ff === 'N/A';
-    return { whatsappValue: wa, fulfillmentValue: ff, status: bothNA || matched ? 'match' : 'mismatch' };
-  };
-  const phoneField = (wa: string, ff: string): MetaField => {
-    if (wa === 'N/A' && ff === 'N/A') return { whatsappValue: wa, fulfillmentValue: ff, status: 'match' };
-    if (wa === 'N/A' || ff === 'N/A') return { whatsappValue: wa, fulfillmentValue: ff, status: 'match' }; // optional
-    const waN = normalizePhone(wa); const ffN = normalizePhone(ff);
-    return { whatsappValue: wa, fulfillmentValue: ff, status: waN === ffN ? 'match' : 'mismatch' };
-  };
-  const optionalField = (wa: string, ff: string): MetaField => ({
-    whatsappValue: wa, fulfillmentValue: ff, status: 'match' // optional: never a mismatch
-  });
-
-  const nameCmp = (a: string, b: string) => compareNames(a, b);
-  return {
-    customerName: mkField(waMeta.name, ffMeta.name, nameCmp),
-    phone: phoneField(waMeta.phone, ffMeta.phone),
-    facility: mkField(waMeta.facility, ffMeta.facility, compareNames),
-    date: mkField(waMeta.date, ffMeta.date),
-    ordererName: mkField(waMeta.ordererName, ffMeta.ordererName, nameCmp),
-    facilityName: mkField(waMeta.facilityName, ffMeta.facilityName, compareNames),
-    dropArea: optionalField(waMeta.dropArea, ffMeta.dropArea),
-    district: optionalField(waMeta.district, ffMeta.district),
-    deliveryTime: optionalField(waMeta.deliveryTime, ffMeta.deliveryTime),
-  };
-}
-
-/** Score confidence: start at 100, deduct per issue type */
-function scoreConfidence(items: VerificationItem[], meta: ParsedMeta): number {
-  let score = 100;
-  for (const item of items) {
-    if (item.status === 'quantity mismatch') score -= 10;
-    else if (item.status === 'missing item') score -= 15;
-    else if (item.status === 'extra item') score -= 10;
-    // out of stock: 0 deduction (per OSU clearance rules)
-  }
-  if (meta.customerName.status === 'mismatch') score -= 5;
-  if (meta.phone.status === 'mismatch') score -= 5;
-  if (meta.facility.status === 'mismatch') score -= 5;
-  if (meta.facilityName.status === 'mismatch') score -= 5;
-  return Math.max(0, score);
-}
-
-/** Generate 2–4 human-readable insight notes */
-function buildInsights(waItems: ParsedItem[], ffItems: ParsedItem[], items: VerificationItem[], meta: ParsedMeta, osuList: string[]): string[] {
-  const insights: string[] = [];
-
-  // Synonym resolutions
-  const resolvedPairs: string[] = [];
-  for (const wa of waItems) {
-    if (wa.name.toLowerCase() !== wa.canonicalName.toLowerCase()) {
-      resolvedPairs.push(`'${wa.name}' → '${wa.canonicalName}'`);
-    }
-  }
-  for (const ff of ffItems) {
-    if (ff.name.toLowerCase() !== ff.canonicalName.toLowerCase()) {
-      const exists = resolvedPairs.some(p => p.includes(ff.canonicalName));
-      if (!exists) resolvedPairs.push(`'${ff.name}' → '${ff.canonicalName}'`);
-    }
-  }
-  if (resolvedPairs.length > 0) {
-    insights.push(`Synonym resolution applied: ${resolvedPairs.slice(0, 3).join(', ')}.`);
-  }
-
-  // Phone normalization
-  const waPhone = meta.phone.whatsappValue;
-  const ffPhone = meta.phone.fulfillmentValue;
-  if (waPhone !== 'N/A' && ffPhone !== 'N/A' && waPhone !== ffPhone) {
-    insights.push(`Phone numbers normalized for comparison: '${waPhone}' and '${ffPhone}' — ${meta.phone.status === 'match' ? 'confirmed match after stripping country code' : 'mismatch detected'}.`);
-  }
-
-  // Facility suffix difference
-  const waFacility = meta.facility.whatsappValue;
-  const ffFacility = meta.facility.fulfillmentValue;
-  if (meta.facility.status === 'match' && waFacility !== ffFacility && waFacility !== 'N/A') {
-    insights.push(`Facility suffix difference noted: '${waFacility}' vs '${ffFacility}' — accepted as same location.`);
-  }
-
-  // OSU items
-  const osuHits = items.filter(i => i.status === 'out of stock');
-  if (osuHits.length > 0) {
-    insights.push(`${osuHits.length} item(s) flagged as out-of-stock: ${osuHits.map(i => i.name).join(', ')}.`);
-  }
-
-  // General summary
-  const issueItems = items.filter(i => i.status !== 'match' && i.status !== 'out of stock');
-  if (issueItems.length === 0 && osuHits.length === 0) {
-    insights.push('All items and metadata fields verified successfully — no discrepancies detected.');
-  } else if (issueItems.length > 0) {
-    insights.push(`${issueItems.length} packing issue(s) require resolution before dispatch clearance.`);
-  }
-
-  return insights.slice(0, 4);
-}
-
-/**
- * Main fast text verification orchestrator.
- * Returns an OrderCheckResult compatible with the Gemini /api/verify schema.
- */
-function runTextVerification(waText: string, ffText: string, osuList: string[]): any {
-  const waItems = parseOrderText(waText);
-  const ffItems = parseOrderText(ffText);
-
-  const waMeta = parseMetaFields(waText);
-  const ffMeta = parseMetaFields(ffText);
-
-  const items = matchItems(waItems, ffItems, osuList);
-  const meta = buildMeta(waMeta, ffMeta);
-
-  // OSU clearance rules: if ONLY out-of-stock issues, still clear
-  const nonOsuIssues = items.filter(i => i.status !== 'match' && i.status !== 'out of stock');
-  const osuIssues = items.filter(i => i.status === 'out of stock');
-  const metaIssues = [meta.customerName, meta.phone, meta.facility, meta.facilityName]
-    .filter(f => f.status === 'mismatch');
-
-  const allMatch = nonOsuIssues.length === 0 && metaIssues.length === 0;
-  const issueCount = nonOsuIssues.length + metaIssues.length;
-
-  let verdict: string;
-  if (allMatch && osuIssues.length > 0) {
-    verdict = `Cleared for dispatch: No packing mistakes, but ${osuIssues.length} item(s) are out of stock.`;
-  } else if (allMatch) {
-    verdict = 'PASS: All items and metadata verified — ready for dispatch.';
-  } else {
-    verdict = `${issueCount} issue${issueCount > 1 ? 's' : ''} found — review before dispatch.`;
-  }
-
-  const confidence = scoreConfidence(items, meta);
-  const insights = buildInsights(waItems, ffItems, items, meta, osuList);
-
-  return { confidence, verdict, allMatch, issueCount, items, meta, insights };
-}
-
-// POST /api/verify-fast — fast text-based order verification (no AI, < 10ms)
-app.post('/api/verify-fast', (req, res) => {
-  console.log('[API POST /api/verify-fast] Request received.');
-
-  let body = req.body || {};
-  if (typeof body === 'string') {
-    try { body = JSON.parse(body.trim()); } catch { /* ignore */ }
-  }
-
-  let whatsappMessage: string = body.whatsappMessage || body.whatsapp || body.text1 || '';
-  let fulfillmentConfirmation: string = body.fulfillmentConfirmation || body.fulfillment || body.text2 || '';
-
-  if (typeof whatsappMessage === 'string') whatsappMessage = whatsappMessage.trim();
-  if (typeof fulfillmentConfirmation === 'string') fulfillmentConfirmation = fulfillmentConfirmation.trim();
-
-  if (!whatsappMessage || !fulfillmentConfirmation) {
-    return res.status(400).json({
-      error: 'Validation Error (400): Missing required fields: whatsappMessage and fulfillmentConfirmation.'
+// Speed-test and latency-benchmark endpoint
+app.get('/api/speedtest', async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const ai = getGeminiClient();
+    const response = await generateContentWithRetry(ai, {
+      model: 'gemini-3.5-flash',
+      contents: 'Verify speed. Output exactly: "OK"'
+    });
+    const durationMs = Date.now() - startTime;
+    res.json({
+      success: true,
+      durationMs,
+      message: response.text ? response.text.trim() : 'OK',
+      model: 'gemini-3.5-flash',
+      status: durationMs < 2000 ? 'Excellent' : (durationMs < 5000 ? 'Good' : 'Acceptable')
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err.message || String(err)
     });
   }
-
-  try {
-    const startTime = Date.now();
-    const payload = runTextVerification(whatsappMessage, fulfillmentConfirmation, osuItems);
-    const durationSec = Number(((Date.now() - startTime) / 1000).toFixed(3));
-
-    const auditRecord = {
-      ...payload,
-      id: 'fast_' + Math.random().toString(36).substring(2, 11),
-      timestamp: new Date().toISOString(),
-      durationSec,
-      engine: 'text',
-      whatsappMessage,
-      fulfillmentConfirmation,
-      status: payload.allMatch ? 'resolved' : 'pending',
-      resolutionNotes: payload.allMatch ? 'Matched perfectly upon entry (fast engine)' : '',
-      resolvedAt: payload.allMatch ? new Date().toISOString() : undefined
-    };
-
-    audits.unshift(auditRecord);
-    console.log(`[API POST /api/verify-fast] Completed in ${durationSec}s.`);
-    return res.json(auditRecord);
-  } catch (error: any) {
-    console.error('Fast verification error:', error);
-    return res.status(500).json({ error: error.message || 'An error occurred during fast text verification.' });
-  }
 });
-
-// =============================================================================
-// END FAST TEXT VERIFICATION ENGINE
-// =============================================================================
 
 // Helper endpoint for Order Verification
 app.post('/api/verify', async (req, res) => {
@@ -1304,7 +739,7 @@ app.post('/api/verify', async (req, res) => {
                   properties: {
                     whatsappValue: { type: Type.STRING, description: 'Date of order on WhatsApp' },
                     fulfillmentValue: { type: Type.STRING, description: 'Date of order on confirmation' },
-                    status: { type: Type.STRING, description: "Must be 'match' or 'mismatch'" }
+                    status: { type: Type.STRING, description: "Must always be 'match' as order date is excluded from auditing" }
                   },
                   required: ['whatsappValue', 'fulfillmentValue', 'status']
                 },
@@ -1585,8 +1020,8 @@ app.delete('/api/osu', (req, res) => {
 });
 
 
-// Compile companion Chrome extension into packaged ZIP and output on the fly
-app.get('/api/download-extension', (req, res) => {
+// Compile companion Chrome extension into packaged ZIP on the fly
+app.get('/api/download-extension', async (req, res) => {
   try {
     // Robustly determine correct secure protocol.
     // Remote servers deployed on Cloud Run are strictly HTTPS, regardless of internal proxy routing.
@@ -1597,31 +1032,53 @@ app.get('/api/download-extension', (req, res) => {
     }
     const hostUrl = req.headers.host ? `${protocol}://${req.headers.host}` : 'https://ais-dev-ksv3oiifrmnhdib3nb7awh-944779874869.europe-west2.run.app';
     
-    // 1. Extension manifest.json
-    const manifest = {
-      manifest_version: 3,
-      name: "OrderCheck Compliance Companion",
-      version: "1.2.0",
-      description: "Direct Zipline compliance cross-examiner. Scans orders across tabs and matches logs.",
-      permissions: ["activeTab", "scripting", "storage"],
-      host_permissions: [
-        "http://*/*",
-        "https://*/*"
-      ],
-      action: {
-        "default_popup": "popup.html",
-        "default_icon": "icon.png"
-      },
-      content_scripts: [
-        {
-          "matches": ["http://*/*", "https://*/*"],
-          "js": ["content.js"]
-        }
-      ]
-    };
+    const extDir = path.join(process.cwd(), 'extension');
+    
+    let manifestStr: string;
+    let popupHtml: string;
+    let popupJs: string;
+    let contentJs: string;
+    let iconBuffer: Buffer;
 
-    // 2. Extension popup.html
-    const popupHtml = `<!DOCTYPE html>
+    try {
+      manifestStr = await fs.readFile(path.join(extDir, 'manifest.json'), 'utf-8');
+      popupHtml = await fs.readFile(path.join(extDir, 'popup.html'), 'utf-8');
+      
+      const rawPopupJs = await fs.readFile(path.join(extDir, 'popup.js'), 'utf-8');
+      // Replace hardcoded development SERVER_URL with the active dynamic hostUrl
+      popupJs = rawPopupJs.replace('https://ordercheck-507802192766.europe-west2.run.app', hostUrl);
+      
+      contentJs = await fs.readFile(path.join(extDir, 'content.js'), 'utf-8');
+      iconBuffer = await fs.readFile(path.join(extDir, 'icon.png'));
+    } catch (fsErr) {
+      console.warn("Fell back to built-in extension assets:", fsErr);
+      
+      // 1. Extension manifest.json
+      const manifest = {
+        manifest_version: 3,
+        name: "OrderCheck Compliance Companion",
+        version: "1.2.0",
+        description: "Direct Zipline compliance cross-examiner. Scans orders across tabs and matches logs.",
+        permissions: ["activeTab", "scripting", "storage"],
+        host_permissions: [
+          "http://*/*",
+          "https://*/*"
+        ],
+        action: {
+          "default_popup": "popup.html",
+          "default_icon": "icon.png"
+        },
+        content_scripts: [
+          {
+            "matches": ["http://*/*", "https://*/*"],
+            "js": ["content.js"]
+          }
+        ]
+      };
+      manifestStr = JSON.stringify(manifest, null, 2);
+
+      // 2. Extension popup.html
+      popupHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -1830,9 +1287,9 @@ app.get('/api/download-extension', (req, res) => {
 </body>
 </html>`;
 
-    // 3. Extension popup.js
-    const popupJs = `
-const SERVER_URL = 'https://ordercheck-507802192766.europe-west2.run.app';
+      // 3. Extension popup.js
+      popupJs = `
+const SERVER_URL = '${hostUrl}';
 
 document.addEventListener('DOMContentLoaded', () => {
   const btnVerify = document.getElementById('btnVerify');
@@ -2155,8 +1612,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 `;
 
-    // 4. Extension content.js
-    const contentJs = `
+      // 4. Extension content.js
+      contentJs = `
 console.log("[Compliance Companion] Extension script active.");
 
 // Listen for scrape request
@@ -2190,13 +1647,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true;
 });
 `;
-
-    // 5. Circular purple extension icon base64
-    const base64PixelImage = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMklEQVR42mP8z8AARjYGBgY2NDVMyPhfG0fVUA2MqmECmEC6AmSgK0AGRskwVAMEAABqXg4NshdF9gAAAABJRU5ErkJggg==";
-    const iconBuffer = Buffer.from(base64PixelImage, 'base64');
+      const base64PixelImage = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMklEQVR42mP8z8AARjYGBgY2NDVMyPhfG0fVUA2MqmECmEC6AmSgK0AGRskwVAMEAABqXg4NshdF9gAAAABJRU5ErkJggg==";
+      iconBuffer = Buffer.from(base64PixelImage, 'base64');
+    }
 
     const zip = new AdmZip();
-    zip.addFile("manifest.json", Buffer.from(JSON.stringify(manifest, null, 2)));
+    zip.addFile("manifest.json", Buffer.from(manifestStr));
     zip.addFile("popup.html", Buffer.from(popupHtml));
     zip.addFile("popup.js", Buffer.from(popupJs));
     zip.addFile("content.js", Buffer.from(contentJs));
@@ -2215,6 +1671,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // Setup static file serving & dev environment Vite handling
 async function startServer() {
+  // Ensure extension directory and icon.png exist so the workspace is fully complete
+  try {
+    const extDir = path.join(process.cwd(), 'extension');
+    await fs.mkdir(extDir, { recursive: true });
+    const iconPath = path.join(extDir, 'icon.png');
+    try {
+      await fs.access(iconPath);
+    } catch {
+      const base64PixelImage = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMklEQVR42mP8z8AARjYGBgY2NDVMyPhfG0fVUA2MqmECmEC6AmSgK0AGRskwVAMEAABqXg4NshdF9gAAAABJRU5ErkJggg==";
+      await fs.writeFile(iconPath, Buffer.from(base64PixelImage, 'base64'));
+    }
+  } catch (err) {
+    console.error("Failed to ensure extension folder or icon.png on start:", err);
+  }
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
