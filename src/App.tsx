@@ -47,7 +47,37 @@ import { OrderCheckResult, AuditRecord, AuditAnalytics, VerificationItem } from 
 
 export default function App() {
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'auditor' | 'extension'>('auditor');
+  const [activeTab, setActiveTab] = useState<'auditor' | 'extension' | 'history'>('auditor');
+
+  // Audit Ledger / History states
+  const [auditsHistory, setAuditsHistory] = useState<AuditRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const res = await fetch('/api/audits');
+      if (res.ok) {
+        const data = await res.json();
+        setAuditsHistory(data);
+      } else {
+        setHistoryError('Failed to load audit logs from the database.');
+      }
+    } catch (err) {
+      console.error('Failed to load audit history:', err);
+      setHistoryError('Network error while retrieving audit logs.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchHistory();
+    }
+  }, [activeTab]);
 
   // WhatsApp input modes: 'text' represents raw typing, 'screenshot' represents visual scan
   const [whatsappInputMode, setWhatsappInputMode] = useState<'text' | 'screenshot'>('text');
@@ -403,23 +433,38 @@ export default function App() {
 
     setSubmittingResolution(true);
     
-    // Clear all discrepancy-related input fields immediately upon successful resolution
-    setWhatsappMessage('');
-    setFulfillmentConfirmation('');
-    setScreenshot(null);
-    setScanSuccessMsg(null);
-    setScanAlert(null);
+    try {
+      const res = await fetch(`/api/audits/${selectedAuditForResolution.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'resolved',
+          resolutionNotes: resolutionActionNotes
+        })
+      });
 
-    const updatedResult: AuditRecord = {
-      ...selectedAuditForResolution,
-      status: 'resolved',
-      resolutionNotes: resolutionActionNotes,
-      resolvedAt: new Date().toISOString()
-    };
-    setResult(updatedResult);
-    setSelectedAuditForResolution(null);
-    setResolutionActionNotes('');
-    setSubmittingResolution(false);
+      if (!res.ok) {
+        throw new Error('Failed to update audit log status on the server.');
+      }
+
+      const updatedResult = await res.json();
+      
+      // Clear all discrepancy-related input fields immediately upon successful resolution
+      setWhatsappMessage('');
+      setFulfillmentConfirmation('');
+      setScreenshot(null);
+      setScanSuccessMsg(null);
+      setScanAlert(null);
+
+      setResult(updatedResult);
+      fetchHistory(); // Refresh audit history
+      setSelectedAuditForResolution(null);
+      setResolutionActionNotes('');
+    } catch (err: any) {
+      alert(err.message || 'An error occurred while saving discrepancy clearance.');
+    } finally {
+      setSubmittingResolution(false);
+    }
   };
 
   // Confirm perfect match logs and clean up visual inputs so operator can run the next dispatch immediately
@@ -459,10 +504,10 @@ export default function App() {
         };
       case 'out of stock':
         return {
-          bg: 'bg-rose-200 text-rose-950 border-rose-300 animate-pulse',
-          dot: 'bg-rose-600',
-          border: 'border-rose-300',
-          leftBorder: 'border-l-rose-600'
+          bg: 'bg-slate-100 text-slate-700 border-slate-200',
+          dot: 'bg-slate-400',
+          border: 'border-slate-200',
+          leftBorder: 'border-l-slate-400'
         };
       case 'extra item':
         return {
@@ -593,6 +638,18 @@ export default function App() {
           >
             <PlusCircle className="w-4 h-4" />
             Companion Chrome Extension
+          </button>
+
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'history'
+                ? 'border-[#5C2D91] text-[#5C2D91]'
+                : 'border-transparent text-slate-500 hover:text-[#5C2D91]'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            Audit History Logs
           </button>
         </div>
       </div>
@@ -1416,6 +1473,160 @@ export default function App() {
               </div>
 
             </div>
+          </motion.div>
+        )}
+
+        {/* AUDIT HISTORY LOGS VIEW */}
+        {activeTab === 'history' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="bg-white rounded-2xl p-6 border border-purple-100 shadow-sm space-y-6 animate-in fade-in duration-300"
+          >
+            <div className="border-b border-purple-50 pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <h2 className="text-lg font-extrabold text-[#3B1A5E] flex items-center gap-2">
+                  <History className="text-[#5C2D91] w-5 h-5" />
+                  Compliance Audit Ledger
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Persistent historic audits of all verified dispatches across Zipline Ghana fly buffers.
+                </p>
+              </div>
+              <button
+                onClick={fetchHistory}
+                disabled={historyLoading}
+                className="bg-[#5C2D91] hover:bg-[#3B1A5E] text-white px-4 py-2 rounded-xl font-bold text-xs shadow transition-transform hover:-translate-y-0.5 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${historyLoading ? 'animate-spin' : ''}`} />
+                {historyLoading ? 'Syncing...' : 'Sync Firestore'}
+              </button>
+            </div>
+
+            {historyError && (
+              <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl flex items-start gap-3 shadow-sm">
+                <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+                <div>
+                  <h4 className="font-bold text-sm">Ledger Sync Error</h4>
+                  <p className="text-xs text-red-700 mt-0.5">{historyError}</p>
+                </div>
+              </div>
+            )}
+
+            {historyLoading && auditsHistory.length === 0 ? (
+              <div className="py-20 flex flex-col items-center justify-center text-center space-y-4">
+                <RefreshCw className="w-10 h-10 text-purple-400 animate-spin" />
+                <p className="text-xs text-slate-400 font-mono">Retrieving encrypted audit logs from Firestore database...</p>
+              </div>
+            ) : auditsHistory.length === 0 ? (
+              <div className="py-16 text-center border-2 border-dashed border-purple-100 rounded-2xl bg-slate-50/50 flex flex-col items-center justify-center max-w-md mx-auto">
+                <div className="p-3 bg-purple-100 rounded-full text-purple-600 mb-3">
+                  <History className="w-6 h-6 animate-bounce" />
+                </div>
+                <h3 className="font-bold text-slate-700 text-sm">Ledger is empty</h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto leading-relaxed">
+                  No compliance audit records have been saved yet. Use the <b>Compliance Auditor</b> tab to verify dispatches.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-purple-50 rounded-2xl shadow-inner bg-slate-50/20">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#3B1A5E]/5 border-b border-purple-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                      <th className="p-4">Audit ID / Time</th>
+                      <th className="p-4">Facility & Orderer</th>
+                      <th className="p-4 text-center">Confidence</th>
+                      <th className="p-4">Status / Verdict</th>
+                      <th className="p-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-purple-50 text-xs text-slate-600">
+                    {auditsHistory.map((audit) => {
+                      const dateStr = new Date(audit.timestamp).toLocaleString();
+                      const isPending = audit.status === 'pending';
+                      
+                      const facilityName = audit.meta?.facility?.whatsappValue || 'Unknown Facility';
+                      const ordererName = audit.meta?.customerName?.whatsappValue || 'Unknown Orderer';
+                      
+                      return (
+                        <tr key={audit.id} className="hover:bg-purple-50/20 transition-colors">
+                          <td className="p-4 space-y-1">
+                            <div className="font-mono font-bold text-[#3B1A5E] bg-purple-50/80 px-2 py-0.5 rounded border border-purple-100/50 inline-block text-[10px]">
+                              {audit.id}
+                            </div>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {dateStr}
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                              {facilityName}
+                            </div>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                              <User className="w-3 h-3 text-slate-400" />
+                              Requested by: <span className="font-medium text-slate-600">{ordererName}</span>
+                            </div>
+                          </td>
+                          <td className="p-4 text-center">
+                            <span className={`px-2 py-1 rounded font-mono font-bold text-[11px] ${
+                              audit.confidence >= 90 
+                                ? 'bg-green-100 text-green-800' 
+                                : audit.confidence >= 75 
+                                  ? 'bg-amber-100 text-amber-800' 
+                                  : 'bg-red-100 text-red-800'
+                            }`}>
+                              {audit.confidence}%
+                            </span>
+                          </td>
+                          <td className="p-4 space-y-1 max-w-xs">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-1.5 py-0.5 rounded-full font-extrabold uppercase text-[9px] border ${
+                                !isPending 
+                                  ? 'bg-green-100 text-green-800 border-green-200' 
+                                  : 'bg-amber-100 text-amber-800 border-amber-200 animate-pulse'
+                              }`}>
+                                {isPending ? 'PENDING CLEARANCE' : 'RESOLVED / CLEAR'}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 line-clamp-1">{audit.verdict}</p>
+                          </td>
+                          <td className="p-4 text-right">
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                onClick={() => {
+                                  setResult(audit);
+                                  setActiveTab('auditor');
+                                  setTimeout(() => {
+                                    document.getElementById('results-panel')?.scrollIntoView({ behavior: 'smooth' });
+                                  }, 100);
+                                }}
+                                className="px-3 py-1.5 bg-slate-100 hover:bg-[#5C2D91] hover:text-white rounded-lg font-bold text-[11px] text-slate-600 transition cursor-pointer"
+                              >
+                                View Details
+                              </button>
+                              {isPending && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedAuditForResolution(audit);
+                                    setResolutionActionNotes('');
+                                  }}
+                                  className="px-3 py-1.5 bg-[#5C2D91] hover:bg-[#3B1A5E] text-white rounded-lg font-bold text-[11px] transition cursor-pointer"
+                                >
+                                  Resolve
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </motion.div>
         )}
 

@@ -8,9 +8,37 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import AdmZip from 'adm-zip';
+import { initializeApp as initializeClientApp, getApps as getClientApps, getApp as getClientApp } from 'firebase/app';
+import { getFirestore as getClientFirestore, collection, getDocs, doc, setDoc, getDoc, query, orderBy, limit } from 'firebase/firestore';
+
 const app = express();
 const PORT = 3000;
+
+// Load Firebase configuration
+const firebaseConfig = JSON.parse(
+  fsSync.readFileSync(path.resolve(process.cwd(), 'firebase-applet-config.json'), 'utf-8')
+);
+
+// Explicitly set environment variables for sub-libraries/gRPC
+process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
+process.env.FIRESTORE_DATABASE = firebaseConfig.firestoreDatabaseId;
+
+let firestoreDb: any = null;
+function getFirestoreDb() {
+  if (!firestoreDb) {
+    const apps = getClientApps();
+    let app;
+    if (apps.length === 0) {
+      app = initializeClientApp(firebaseConfig);
+    } else {
+      app = getClientApp();
+    }
+    firestoreDb = getClientFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
+  return firestoreDb;
+}
 
 app.use(express.json());
 app.use(express.text({ type: '*/*' }));
@@ -38,8 +66,87 @@ let osuItems: string[] = [
   'BCG Vaccine'
 ];
 
+const VACCINE_GROUPS_CONFIG = [
+  {
+    vaccineKeywords: [
+      'mr', 'measles', 'measles-rubella', 'measles rubella', 'measles-rubella vaccine',
+      'measles vaccine', 'rubella', 'rubella vaccine', 'mr vaccine', 'measles-rubella (mr)',
+      'mr (measles-rubella)'
+    ],
+    diluentKeywords: [
+      'mr diluent', 'mr vaccine diluent', 'measles diluent', 'measles-rubella diluent',
+      'measles rubella diluent', 'mr diluents', 'mr vaccine diluents', 'measles diluents',
+      'measles-rubella diluents', 'measles rubella diluents', 'diluent for mr', 'diluent for measles',
+      'diluents for mr', 'diluents for measles', 'measles-rubella vaccine diluent', 'measles-rubella vaccine diluents',
+      'measles vaccine diluent', 'measles vaccine diluents', 'rubella diluent', 'rubella diluents'
+    ],
+    preferredDiluentName: 'MR Diluent',
+    vaccineName: 'MR Vaccine'
+  },
+  {
+    vaccineKeywords: ['mena', 'men a', 'men-a', 'men', 'menafrivac', 'meningococcal', 'meningococcal a', 'meningococcal a conjugate vaccine'],
+    diluentKeywords: [
+      'men a diluent', 'mena diluent', 'menafrivac diluent', 'meningococcal a diluent',
+      'men-a diluent', 'men diluent', 'meningococcal diluent', 'men a diluents', 'mena diluents',
+      'men-a diluents', 'men a vaccine diluent', 'mena vaccine diluent', 'men-a vaccine diluent'
+    ],
+    preferredDiluentName: 'Men A Diluent',
+    vaccineName: 'Men A Vaccine'
+  },
+  {
+    vaccineKeywords: [
+      'bcg', 'bcg vaccine', 'bacillus calmette', 'bacillus calmette-guérin', 'bacillus calmette–guérin',
+      'bacillus calmette guerin', 'guerin'
+    ],
+    diluentKeywords: [
+      'bcg diluent', 'bcg vaccine diluent', 'bcg diluents', 'bcg vaccine diluents', 'diluent for bcg',
+      'diluents for bcg', 'bcg vaccine diluent', 'bcg vaccine diluents', 'bacillus calmette-guérin diluent',
+      'bacillus calmette-guérin diluents', 'bacillus calmette–guérin diluent', 'bacillus calmette–guérin diluents',
+      'guerin diluent', 'guerin diluents'
+    ],
+    preferredDiluentName: 'BCG Diluent',
+    vaccineName: 'BCG Vaccine'
+  },
+  {
+    vaccineKeywords: ['opv', 'bopv', 'oral polio', 'oral polio vaccine', 'polio', 'polio vaccine', 'opv vaccine', 'bopv vaccine'],
+    diluentKeywords: [
+      'opv dropper', 'opv droppers', 'bopv dropper', 'bopv droppers', 'oral polio dropper', 'oral polio droppers',
+      'polio dropper', 'polio droppers', 'opv vaccine dropper', 'opv vaccine droppers', 'bopv vaccine dropper',
+      'bopv vaccine droppers', 'dropper for opv', 'droppers for opv', 'dropper for bopv', 'droppers for bopv',
+      'oral polio vaccine dropper', 'oral polio vaccine droppers'
+    ],
+    preferredDiluentName: 'OPV Droppers',
+    vaccineName: 'OPV Vaccine'
+  },
+  {
+    vaccineKeywords: ['rota', 'rotavirus', 'rotavirus vaccine', 'rota vaccine'],
+    diluentKeywords: [
+      'rota dropper', 'rota droppers', 'rotavirus dropper', 'rotavirus droppers',
+      'dropper for rota', 'droppers for rota', 'dropper for rotavirus', 'droppers for rotavirus',
+      'rota vaccine dropper', 'rota vaccine droppers', 'rotavirus vaccine dropper', 'rotavirus vaccine droppers'
+    ],
+    preferredDiluentName: 'ROTA Droppers',
+    vaccineName: 'Rotavirus Vaccine'
+  }
+];
+
 async function getAudits(): Promise<any[]> {
-  return audits;
+  try {
+    const db = getFirestoreDb();
+    const q = query(collection(db, 'audits'), orderBy('timestamp', 'desc'), limit(100));
+    const snapshot = await getDocs(q);
+    const results: any[] = [];
+    snapshot.forEach((docSnapshot: any) => {
+      results.push(docSnapshot.data());
+    });
+    // Sync to local memory list to keep backward compatibility
+    audits.length = 0;
+    audits.push(...results);
+    return results;
+  } catch (err) {
+    console.error('Error fetching audits from Firestore, falling back to memory:', err);
+    return audits;
+  }
 }
 
 // Lazy-initialized Gemini client accessor
@@ -106,18 +213,21 @@ The user may paste ANY kind of messages or text logs (including general chat, em
 CRITICAL DOMAIN RULES & ABBREVIATION CATEGORIES (WHEN MEDICAL/CLINICAL):
 ==================================================
 1. VACCINES (Ailment immunizations, preventives):
-   - "BCG" = Bacillus Calmette–Guérin (Tuberculosis vaccine).
-   - "OPV" = "bOPV" = "IPV" (Polio Vaccines).
-   - "PCV" = "PCV13" (Pneumococcal Conjugate Vaccine).
-   - "MR" = Measles-Rubella vaccine.
-   - "YF" = "YFV" (Yellow Fever vaccine).
-   - "Penta" = "Pentavalent" (Diphtheria-Pertussis-Tetanus-HepB-Hib vaccine).
-   - "Td" = "TT" (Tetanus Toxoid / Tetanus-diphtheria).
-   - "ROTA" = Rotavirus vaccine.
-   - "HPV" = Human Papillomavirus vaccine.
-   - "Men" = "MenAfriVac" (Meningitis vaccine).
-   - "Moderna" = "Pfizer" = "Janssen" = "Covishield" (COVID-19 vaccination products).
-   - "RTS,S" = "Mosquirix" (Malaria Vaccine).
+   You MUST recognize the following routine vaccines and their standard abbreviations as the exact same vaccine, meaning they match perfectly (status: 'match' if quantities correspond) and should NOT be flagged as 'missing item' or 'extra item' discrepancies if one is requested and the other is fulfilled:
+   - "BCG" ↔ "Bacillus Calmette-Guérin" (or "Bacillus Calmette–Guérin")
+   - "OPV" ↔ "Oral Polio Vaccine" (or "bOPV")
+   - "IPV" ↔ "Inactivated Polio Vaccine"
+   - "Penta" ↔ "Pentavalent Vaccine (Diphtheria, Pertussis, Tetanus, Hepatitis B, Hib)" (or "Pentavalent", "Pentavalent Vaccine")
+   - "PCV" ↔ "Pneumococcal Conjugate Vaccine" (or "PCV13")
+   - "Rota" ↔ "Rotavirus Vaccine" (or "ROTA", "rotavirus")
+   - "MR" ↔ "Measles-Rubella Vaccine" (or "Measles-Rubella")
+   - "YF" ↔ "Yellow Fever Vaccine" (or "YFV", "Yellow Fever")
+   - "MenA" ↔ "Meningococcal A Conjugate Vaccine" (or "Men", "MenAfriVac")
+   - "HPV" ↔ "Human Papillomavirus Vaccine" (or "Human Papillomavirus")
+   - "Td" ↔ "Tetanus-Diphtheria Vaccine" (or "TT", "Tetanus Toxoid", "Td Vaccine")
+   - "HepB" or "HepB BD" ↔ "Hepatitis B Vaccine (Birth Dose)" (or "Hepatitis B Vaccine")
+   - "COVID-19" ↔ "COVID-19 Vaccine" (or "Moderna", "Pfizer", "Janssen", "Covishield" where applicable)
+   - "RTS,S" ↔ "Mosquirix" (Malaria Vaccine).
 
 2. MEDICAL PRODUCTS / DRUGS (Active pharmaceuticals, therapeutic molecules, formulations, IV liquids):
    - Anti-malarials: "ACT" = "AL" = "Coartem" = "Artemether Lumefantrine" (or "Artemether + Lumefantrine" e.g., "ACT 20/120mg").
@@ -188,19 +298,24 @@ ADDITIONAL AUDIT CONSTRAINTS:
 
 10. VACCINES WITH DILUENTS & DROPPERS (CRITICAL CLINICAL AUDIT RULES):
    - Some vaccines MUST always be paired with their secondary components (diluents or droppers):
-     e.g., "Measles" or "MR" (Measles-Rubella) and "Yellow Fever" / "YFV" / "YF" require "diluents" (diluent vials).
+     e.g., "Measles" or "MR" (Measles-Rubella), "Yellow Fever" / "YFV" / "YF", and "BCG" require "diluents" (diluent vials).
      e.g., "OPV" / "bOPV" (Polio vaccine) and "ROTA" / "rotavirus" require "droppers".
    - You MUST audit and flag any discrepancies regarding these pairing components:
      a. "Presence Discrepancy" (One side has it and the other does not): If one side of the messages (WhatsApp or Fulfillment Confirmation) lists diluents/droppers for the requested vaccine, but the other side does not list or list 0 of them, you MUST flag it as a mismatch/issue (status: 'missing item' or 'extra item').
-     b. "Number Mismatch": The quantity/count of diluents or droppers MUST match perfectly with the quantity of the corresponding vaccine itself (e.g. 10 doses of MR vaccine must have exactly 10 vials of diluent, and 15 vials of OPV must have exactly 15 droppers). If there is any quantity discrepancy between the vaccine doses and its diluent / dropper count, OR if the requested and fulfillment count of diluents/droppers do not match, you MUST flag this as a 'quantity mismatch'.
-     c. Always list these diluents/droppers as individual line items inside the "items" array in your JSON output.
+     b. "Yellow Fever Diluent Rule" (CRITICAL): If "Yellow Fever vaccine" (or YF / YFV / Yellow Fever Vaccine) is entered, requested, or present in either input (WhatsApp or Fulfillment Confirmation), but the matching "Yellow Fever Diluent" is NOT listed or mentioned anywhere in either input (or has a quantity of 0), you MUST flag this as a "missing item" discrepancy. In the "items" array, list "Yellow Fever Diluent" as a separate line item with category set to "Vaccine", status set strictly to "missing item", requested set to match the vaccine doses (e.g., "10 vials" or similar), found set to "0 vials" (or "None"), and action set to "Missing diluent alert: Add [Vaccine Qty] vials of Yellow Fever Diluent to match vaccine doses."
+     c. "Number Mismatch": The quantity/count of diluents or droppers MUST match perfectly with the quantity of the corresponding vaccine itself (e.g. 10 doses of MR vaccine must have exactly 10 vials of diluent, and 15 vials of OPV must have exactly 15 droppers). If there is any quantity discrepancy between the vaccine doses and its diluent / dropper count, OR if the requested and fulfillment count of diluents/droppers do not match, you MUST flag this as a 'quantity mismatch'.
+     d. Always list these diluents/droppers as individual line items inside the "items" array in your JSON output.
+     e. "BCG Vaccine Diluent Match Rule": All BCG vaccine has a diluent, so the vaccine should match the diluent. If the customer orders "BCG Vaccine" (or similar BCG orders) on WhatsApp, and the system fulfillment lists both "BCG Vaccine" and "BCG Diluent" (or BCG Diluents), do NOT flag the BCG Diluent as an "extra item" or any discrepancy. As long as the quantities correspond, set the BCG Diluent's status strictly to "match" so it is not flagged as a discrepancy alert.
+      f. "Diluent & Dropper Extra Item Exemption" (CRITICAL): You MUST NOT treat "MR diluent" (or MR vaccine diluent), "Men A diluent" (or MenA diluent, MenAfriVac diluent), "BCG Diluent" (or BCG Vaccine Diluent), or "OPV droppers" (or OPV dropper) as extra items or discrepancies when they are not requested or seen in the WhatsApp message but are present/seen in the fulfillment confirmation log. If they are in the fulfillment confirmation but not in WhatsApp, set their status strictly to "match" and clear them of any discrepancy alerts or actions.
 
 11. OUT OF STOCK (OSU) DETECTION & HANDLING (CRITICAL COMPLIANCE RULES):
-   - ONLY RECORD OUT OF STOCK ON EXPLICIT ZERO-LOAD (0/X): You MUST strictly limit 'out of stock' classifications to instances where you explicitly see a zero load in the fulfillment confirmation, represented in formats like "(0/any number)" (e.g., "0/1", "0/10", "0 of 5", "0 loaded", "0 units", "OPV: 0"), or when the requested product name is explicitly listed in the "ACTIVE OUT-OF-STOCK (OSU) ITEMS" list.
+   - ONLY RECORD OUT OF STOCK ON EXPLICIT ZERO-LOAD (0/X): For vaccine products, a vaccine product can be considered as out of stock ONLY if it is explicitly in the form "0/X" (where X is the number requested by the customer). If it is not in this "0/X" form (where X is the requested quantity), you MUST NOT classify it as out of stock. For other non-vaccine products, you must limit 'out of stock' classifications to instances where you explicitly see a zero load in the fulfillment confirmation, represented in formats like "(0/any number)" (e.g., "0/1", "0/10", "0 of 5", "0 loaded", "0 units"), or when the requested product name is explicitly listed in the "ACTIVE OUT-OF-STOCK (OSU) ITEMS" list.
    - WHATSAPP EXCEEDS FULFILLMENT -> ORDER LIMIT / QUANTITY MISMATCH (CRITICAL): If the quantity requested in the WhatsApp section is MORE than the quantity shown in the fulfillment confirmation (e.g., requested 10, found 3, or shown as "3/10"), but the found quantity is greater than 0, you MUST NOT record this as 'out of stock'. Instead, you MUST treat this strictly as a 'quantity mismatch' (which triggers the Order Limit verification flow). Set the status strictly to 'quantity mismatch' and set the action to something like: "Order limit triggered. Correct fulfillment quantity to [Requested Qty] or confirm order limit."
    - ZERO-MISTAKE CLEARANCE EXEMPTION: If the ONLY anomalies/non-match items found in the entire verification process are 'out of stock' items, and there are absolutely NO OTHER mistakes (meaning all other items have perfect status: 'match', and there is no phone number, names, or facility name mismatch), you MUST consider the order cleared!
      In this zero-mistake out-of-stock case, you MUST set output variable 'allMatch' to true, and output variable 'issueCount' to 0 (or count only actual mistakes in issueCount, excluding out-of-stock items so they do not block dispatch). This grants compliance clearance for takeoff/launch since no packaging errors exist, but still preserves the out-of-stock visual alert to notify the clinical facility. Set 'verdict' to something like: 'Cleared for dispatch: No packing mistakes, but some items are out of stock.'
-   - If there is any actual packing mistake (like quantity mismatch, missing item, extra item, or facility name/phone mismatch) in addition to out of stock items, then set 'allMatch' to false and include them in the issueCount.
+   - If there is any actual packing mistake (like quantity mismatch, missing item, extra item, or facility name/phone mismatch) in addition to out of stock items (see the DISCREPANCY FOCUS & SHORTAGE EXCLUSION RULE exceptions below).
+    - DISCREPANCY FOCUS & SHORTAGE EXCLUSION RULE: When an out of stock is detected with other discrepancies (such as a packaging error like quantity mismatch, missing item, extra item, or metadata mismatch like phone or name/facility mismatch), you MUST focus strictly on the other discrepancies and NOT show/treat the out of stock as a discrepancy. In this situation, for any out of stock items, you MUST set their status strictly to 'match' (not 'out of stock') and set their action to something neutral (e.g., "Product out of stock. Shortage noted, but excluded from discrepancies to focus on packaging errors."), and exclude them from your discrepancy lists, allMatch calculation, and issueCount. This ensures the operator can focus solely on the active packing/metadata mistakes.
+    - If there is any actual packing mistake (like quantity mismatch, missing item, extra item, or facility name/phone mismatch) in addition to out of stock items, then set 'allMatch' to false and include them in the issueCount, EXCEPT for those out-of-stock items which are converted to 'match' status under the DISCREPANCY FOCUS & SHORTAGE EXCLUSION RULE above.
 
 12. PRODUCT INTERNAL QUANTITY EQUIVALENCY RULE (CRITICAL FOR DISCREPANCY MINIMIZATION):
    - The fulfillment system might register quantities of certain products in terms of individual tablets, capsules, vials, syringes, or items (representing their "internal quantity" within a pack/box/bottle), whereas WhatsApp requests describe bulk packs/boxes/containers, or vice-versa.
@@ -419,8 +534,8 @@ ADDITIONAL AUDIT CONSTRAINTS:
 
 // Helper function to call Gemini model with exponential backoff and multi-model fallbacks on transient errors (like 503 high demand)
 async function generateContentWithRetry(ai: any, options: any): Promise<any> {
-  const modelSequence = options.model === 'gemini-3.5-flash' || options.model === 'gemini-2.5-flash'
-    ? ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest']
+  const modelSequence = options.model === 'gemini-3.5-flash' || options.model === 'gemini-3.1-flash-lite' || options.model === 'gemini-2.5-flash'
+    ? ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.5-flash']
     : [options.model];
 
   let lastError: any = null;
@@ -441,11 +556,11 @@ async function generateContentWithRetry(ai: any, options: any): Promise<any> {
           model: currentModel
         };
 
-        // If using standard non-thinking flash models (like gemini-3.1-flash-lite or gemini-flash-latest),
+        // If using standard non-thinking models that do not support thinking configuration,
         // we MUST remove thinkingConfig to avoid API schema errors and maintain high speed.
         if (currentOptions.config) {
           currentOptions.config = { ...currentOptions.config };
-          if (currentModel.includes('-flash') && !currentModel.includes('thinking')) {
+          if (currentModel !== 'gemini-3.5-flash') {
             if (currentOptions.config.thinkingConfig) {
               delete currentOptions.config.thinkingConfig;
             }
@@ -511,7 +626,7 @@ app.get('/api/speedtest', async (req, res) => {
   try {
     const ai = getGeminiClient();
     const response = await generateContentWithRetry(ai, {
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.1-flash-lite',
       contents: 'Verify speed. Output exactly: "OK"'
     });
     const durationMs = Date.now() - startTime;
@@ -519,7 +634,7 @@ app.get('/api/speedtest', async (req, res) => {
       success: true,
       durationMs,
       message: response.text ? response.text.trim() : 'OK',
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.1-flash-lite',
       status: durationMs < 2000 ? 'Excellent' : (durationMs < 5000 ? 'Good' : 'Acceptable')
     });
   } catch (err: any) {
@@ -632,7 +747,7 @@ app.post('/api/verify', async (req, res) => {
     const ai = getGeminiClient();
 
     const response = await generateContentWithRetry(ai, {
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.1-flash-lite',
       contents: `Please parse, cross-examine, and verify these two inputs (they could be Zipline Ghana medical logistics orders, or general operational/text logs, custom chat messages, or hello worlds requested vs fulfilled/acted):
           
           === WHATSAPP SOURCE MESSAGE ===
@@ -650,6 +765,9 @@ app.post('/api/verify', async (req, res) => {
         systemInstruction: SYSTEM_INSTRUCTIONS,
         responseMimeType: 'application/json',
         temperature: 0.1,
+        thinkingConfig: {
+          thinkingLevel: ThinkingLevel.LOW
+        },
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -807,6 +925,845 @@ app.post('/api/verify', async (req, res) => {
     }
 
     const payload = JSON.parse(response.text.trim());
+
+    // Post-process payload to handle Diluent & Dropper Extra Item Exemption:
+    // "don't raise discripancy if MR diluent,Men A Diluent and OPV dropper is not added to Whatsapp order but added to fulfilment log."
+    if (payload && Array.isArray(payload.items)) {
+      const whatsappLower = (whatsappMessage || '').toLowerCase();
+      
+      const whatsappHasMrDiluent = whatsappLower.includes('mr diluent') || whatsappLower.includes('measles diluent') || (whatsappLower.includes('diluent') && (whatsappLower.includes('mr') || whatsappLower.includes('measles')));
+      const whatsappHasMenADiluent = whatsappLower.includes('men a diluent') || whatsappLower.includes('mena diluent') || (whatsappLower.includes('diluent') && (whatsappLower.includes('men a') || whatsappLower.includes('mena') || whatsappLower.includes('menafrivac')));
+      const whatsappHasBcgDiluent = whatsappLower.includes('bcg diluent') || (whatsappLower.includes('diluent') && whatsappLower.includes('bcg'));
+      const whatsappHasOpvDropper = whatsappLower.includes('opv dropper') || whatsappLower.includes('opv droppers') || (whatsappLower.includes('dropper') && (whatsappLower.includes('opv') || whatsappLower.includes('bopv') || whatsappLower.includes('polio')));
+      const whatsappHasRotaDropper = whatsappLower.includes('rota dropper') || whatsappLower.includes('rota droppers') || whatsappLower.includes('rotavirus dropper') || whatsappLower.includes('rotavirus droppers') || (whatsappLower.includes('dropper') && (whatsappLower.includes('rota') || whatsappLower.includes('rotavirus')));
+
+      payload.items = payload.items.map((item: any) => {
+        if (!item) return item;
+        const nameLower = (item.name || '').toLowerCase();
+        
+        const isMrDiluent = (nameLower.includes('mr') || nameLower.includes('measles')) && nameLower.includes('diluent');
+        const isMenADiluent = (nameLower.includes('men') || nameLower.includes('mena')) && nameLower.includes('diluent');
+        const isBcgDiluent = nameLower.includes('bcg') && nameLower.includes('diluent');
+        const isOpvDropper = (nameLower.includes('opv') || nameLower.includes('bopv') || nameLower.includes('oral polio')) && nameLower.includes('dropper');
+        const isRotaDropper = (nameLower.includes('rota') || nameLower.includes('rotavirus')) && nameLower.includes('dropper');
+
+        if (isMrDiluent || isMenADiluent || isBcgDiluent || isOpvDropper || isRotaDropper) {
+          const reqEmpty = !item.requested || item.requested === 'None' || item.requested === '0' || item.requested.trim() === '' || item.requested.toLowerCase().includes('none') || item.requested.toLowerCase().includes('0');
+          
+          let notInWhatsapp = reqEmpty;
+          if (isMrDiluent && !whatsappHasMrDiluent) notInWhatsapp = true;
+          if (isMenADiluent && !whatsappHasMenADiluent) notInWhatsapp = true;
+          if (isBcgDiluent && !whatsappHasBcgDiluent) notInWhatsapp = true;
+          if (isOpvDropper && !whatsappHasOpvDropper) notInWhatsapp = true;
+          if (isRotaDropper && !whatsappHasRotaDropper) notInWhatsapp = true;
+
+          const foundPresent = item.found && item.found !== 'None' && item.found !== '0' && item.found.trim() !== '' && !item.found.toLowerCase().includes('none');
+
+          if (notInWhatsapp && foundPresent) {
+            return {
+              ...item,
+              status: 'match',
+              action: `${item.name} is present in fulfillment and exempt from active discrepancy alerts since it was not requested.`
+            };
+          }
+        }
+        return item;
+      });
+    }
+
+    // Post-process payload to flag missing diluents/droppers if corresponding vaccine is requested:
+    // "flag discripancy when a MR diluent, Men A diluent, BCG Diluent and OPV droppers is not added to fulfilment log but has it corresponding vaccines in the Whatsapp message"
+    if (payload && Array.isArray(payload.items)) {
+      const vaccineGroups = [
+        {
+          vaccineKeywords: [
+            'mr', 'measles', 'measles-rubella', 'measles rubella', 'measles-rubella vaccine',
+            'measles vaccine', 'rubella', 'rubella vaccine', 'mr vaccine', 'measles-rubella (mr)',
+            'mr (measles-rubella)'
+          ],
+          diluentKeywords: [
+            'mr diluent', 'mr vaccine diluent', 'measles diluent', 'measles-rubella diluent',
+            'measles rubella diluent', 'mr diluents', 'mr vaccine diluents', 'measles diluents',
+            'measles-rubella diluents', 'measles rubella diluents', 'diluent for mr', 'diluent for measles',
+            'diluents for mr', 'diluents for measles', 'measles-rubella vaccine diluent', 'measles-rubella vaccine diluents',
+            'measles vaccine diluent', 'measles vaccine diluents', 'rubella diluent', 'rubella diluents'
+          ],
+          preferredDiluentName: 'MR Diluent',
+          vaccineName: 'MR Vaccine'
+        },
+        {
+          vaccineKeywords: ['mena', 'men a', 'men-a', 'men', 'menafrivac', 'meningococcal', 'meningococcal a', 'meningococcal a conjugate vaccine'],
+          diluentKeywords: [
+            'men a diluent', 'mena diluent', 'menafrivac diluent', 'meningococcal a diluent',
+            'men-a diluent', 'men diluent', 'meningococcal diluent', 'men a diluents', 'mena diluents',
+            'men-a diluents', 'men a vaccine diluent', 'mena vaccine diluent', 'men-a vaccine diluent'
+          ],
+          preferredDiluentName: 'Men A Diluent',
+          vaccineName: 'Men A Vaccine'
+        },
+        {
+          vaccineKeywords: [
+            'bcg', 'bcg vaccine', 'bacillus calmette', 'bacillus calmette-guérin', 'bacillus calmette–guérin',
+            'bacillus calmette guerin', 'guerin'
+          ],
+          diluentKeywords: [
+            'bcg diluent', 'bcg vaccine diluent', 'bcg diluents', 'bcg vaccine diluents', 'diluent for bcg',
+            'diluents for bcg', 'bcg vaccine diluent', 'bcg vaccine diluents', 'bacillus calmette-guérin diluent',
+            'bacillus calmette-guérin diluents', 'bacillus calmette–guérin diluent', 'bacillus calmette–guérin diluents',
+            'guerin diluent', 'guerin diluents'
+          ],
+          preferredDiluentName: 'BCG Diluent',
+          vaccineName: 'BCG Vaccine'
+        },
+        {
+          vaccineKeywords: ['opv', 'bopv', 'oral polio', 'oral polio vaccine', 'polio', 'polio vaccine', 'opv vaccine', 'bopv vaccine'],
+          diluentKeywords: [
+            'opv dropper', 'opv droppers', 'bopv dropper', 'bopv droppers', 'oral polio dropper', 'oral polio droppers',
+            'polio dropper', 'polio droppers', 'opv vaccine dropper', 'opv vaccine droppers', 'bopv vaccine dropper',
+            'bopv vaccine droppers', 'dropper for opv', 'droppers for opv', 'dropper for bopv', 'droppers for bopv',
+            'oral polio vaccine dropper', 'oral polio vaccine droppers'
+          ],
+          preferredDiluentName: 'OPV Droppers',
+          vaccineName: 'OPV Vaccine'
+        },
+        {
+          vaccineKeywords: ['rota', 'rotavirus', 'rotavirus vaccine', 'rota vaccine'],
+          diluentKeywords: [
+            'rota dropper', 'rota droppers', 'rotavirus dropper', 'rotavirus droppers',
+            'dropper for rota', 'droppers for rota', 'dropper for rotavirus', 'droppers for rotavirus',
+            'rota vaccine dropper', 'rota vaccine droppers', 'rotavirus vaccine dropper', 'rotavirus vaccine droppers'
+          ],
+          preferredDiluentName: 'ROTA Droppers',
+          vaccineName: 'Rotavirus Vaccine'
+        }
+      ];
+
+      for (const group of vaccineGroups) {
+        // Find if the vaccine is in payload.items and requested (not out of stock)
+        const vaccineItem = payload.items.find((item: any) => {
+          if (!item) return false;
+          const nameLower = (item.name || '').toLowerCase();
+          // Ensure it's the vaccine itself, not a diluent/dropper
+          if (nameLower.includes('diluent') || nameLower.includes('dropper')) return false;
+          return group.vaccineKeywords.some(keyword => {
+            return nameLower === keyword || 
+                   nameLower.startsWith(keyword + ' ') || 
+                   nameLower.endsWith(' ' + keyword) ||
+                   (keyword.length > 3 && nameLower.includes(keyword));
+          });
+        });
+
+        // Check if vaccine keywords exist in WhatsApp message text directly
+        const lowerWa = (whatsappMessage || '').toLowerCase();
+        const hasVaccineInMsg = group.vaccineKeywords.some(keyword => {
+          return lowerWa.includes(keyword);
+        });
+
+        const isVaccineRequested = vaccineItem 
+          ? (vaccineItem.status !== 'out of stock' && vaccineItem.requested && vaccineItem.requested !== 'None' && vaccineItem.requested !== '0')
+          : hasVaccineInMsg;
+
+        if (isVaccineRequested) {
+          // Verify vaccine is not out of stock
+          const isVaccineOsu = payload.items.some((item: any) => {
+            if (!item) return false;
+            const nameLower = (item.name || '').toLowerCase();
+            if (nameLower.includes('diluent') || nameLower.includes('dropper')) return false;
+            const isMatched = group.vaccineKeywords.some(keyword => {
+              return nameLower === keyword || 
+                     nameLower.startsWith(keyword + ' ') || 
+                     nameLower.endsWith(' ' + keyword) ||
+                     (keyword.length > 3 && nameLower.includes(keyword));
+            });
+            return isMatched && item.status === 'out of stock';
+          });
+
+          if (!isVaccineOsu) {
+            // Check if diluent/dropper is in fulfillment confirmation log
+            const lowerFf = (fulfillmentConfirmation || '').toLowerCase();
+
+            let diluentItem = payload.items.find((item: any) => {
+              if (!item) return false;
+              const nameLower = (item.name || '').toLowerCase();
+              return group.diluentKeywords.some(keyword => nameLower.includes(keyword));
+            });
+
+            // A robust check: check if fulfillment text contains the diluent/dropper for this vaccine
+            const hasFoundDiluentInItems = !!(diluentItem && 
+              diluentItem.found && 
+              diluentItem.found !== 'None' && 
+              diluentItem.found !== '0' && 
+              diluentItem.found.trim() !== '' && 
+              !diluentItem.found.toLowerCase().includes('none') && 
+              !diluentItem.found.toLowerCase().includes('0'));
+
+            const ffLinesForCheck = lowerFf.split('\n');
+            const hasMatchedLineInFf = ffLinesForCheck.some(line => {
+              const lineHasDiluentOrDropper = group.preferredDiluentName.toLowerCase().includes('dropper')
+                ? line.includes('dropper')
+                : line.includes('diluent');
+              const lineHasVaccineKeyword = group.vaccineKeywords.some(kw => line.includes(kw));
+              return group.diluentKeywords.some(keyword => line.includes(keyword)) || (lineHasDiluentOrDropper && lineHasVaccineKeyword);
+            });
+
+            const isDiluentInFfLog = hasFoundDiluentInItems || hasMatchedLineInFf;
+
+            // Extract actual quantity from fulfillment log if present
+            let ffQty = 'None';
+            if (diluentItem && diluentItem.found && diluentItem.found !== 'None' && diluentItem.found !== '0' && !diluentItem.found.toLowerCase().includes('none')) {
+              ffQty = diluentItem.found;
+            } else if (isDiluentInFfLog) {
+              const lines = lowerFf.split('\n');
+              for (const line of lines) {
+                const lineHasDiluentOrDropper = group.preferredDiluentName.toLowerCase().includes('dropper')
+                  ? line.includes('dropper')
+                  : line.includes('diluent');
+                const lineHasVaccineKeyword = group.vaccineKeywords.some(kw => line.includes(kw));
+                const isLineMatched = group.diluentKeywords.some(keyword => line.includes(keyword)) || (lineHasDiluentOrDropper && lineHasVaccineKeyword);
+                
+                if (isLineMatched) {
+                  const match = line.match(/(\d+)/);
+                  if (match) {
+                    ffQty = match[1];
+                    break;
+                  }
+                }
+              }
+              // If we saw it but no number was found, let's assume it matches the vaccine requested quantity to be safe and avoid false alarms
+              if (ffQty === 'None') {
+                const reqVal = vaccineItem ? (vaccineItem.requested || '10') : '10';
+                const matchNum = reqVal.match(/\d+/);
+                ffQty = matchNum ? matchNum[0] : '10';
+              }
+            }
+
+            // If the diluent is present in fulfillment, update its found quantity and set status to match
+            if (isDiluentInFfLog && ffQty !== '0') {
+              const reqQty = vaccineItem ? (vaccineItem.requested || '10 vials') : '10 vials';
+              if (diluentItem) {
+                diluentItem.found = ffQty;
+                diluentItem.status = 'match';
+                diluentItem.action = 'None';
+              } else {
+                payload.items.push({
+                  name: group.preferredDiluentName,
+                  category: 'Vaccine',
+                  requested: reqQty,
+                  found: ffQty,
+                  status: 'match',
+                  action: 'None'
+                });
+              }
+            } else {
+              // Diluent is missing or has 0 quantity in fulfillment
+              const reqQty = vaccineItem ? (vaccineItem.requested || '10 vials') : '10 vials';
+              if (diluentItem) {
+                diluentItem.status = 'missing item';
+                diluentItem.found = 'None';
+                diluentItem.requested = reqQty;
+                diluentItem.action = `Missing secondary component: Add matching ${group.preferredDiluentName} to fulfillment to pair with ${group.vaccineName}.`;
+              } else {
+                payload.items.push({
+                  name: group.preferredDiluentName,
+                  category: 'Vaccine',
+                  requested: reqQty,
+                  found: 'None',
+                  status: 'missing item',
+                  action: `Missing secondary component: Add matching ${group.preferredDiluentName} to fulfillment to pair with ${group.vaccineName}.`
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Post-process payload to strictly enforce the "Vaccine out-of-stock format (0/requested)" rule:
+    // "A vaccine product can be considered as out of stock only if it is in this form(X/the number requested). note x is also the number requested by customer"
+    if (payload && Array.isArray(payload.items)) {
+      payload.items = payload.items.map((item: any) => {
+        if (!item) return item;
+
+        // If the item has a positive found quantity, it CANNOT be out of stock or missing!
+        // Correct status to match or quantity mismatch accordingly.
+        if (item.status === 'out of stock' || item.status === 'missing item') {
+          const foundVal = (item.found || '').trim().toLowerCase();
+          const hasFoundQty = foundVal && foundVal !== 'none' && foundVal !== '0' && !foundVal.includes('none') && !foundVal.includes('0');
+          if (hasFoundQty) {
+            const numReqMatch = (item.requested || '').match(/\d+/);
+            const numFoundMatch = (item.found || '').match(/\d+/);
+            if (numReqMatch && numFoundMatch) {
+              const numReq = parseInt(numReqMatch[0], 10);
+              const numFound = parseInt(numFoundMatch[0], 10);
+              if (numReq === numFound) {
+                return {
+                  ...item,
+                  status: 'match',
+                  action: 'None'
+                };
+              } else {
+                return {
+                  ...item,
+                  status: 'quantity mismatch',
+                  action: `Correct fulfillment quantity to ${item.requested}.`
+                };
+              }
+            } else {
+              return {
+                ...item,
+                status: 'match',
+                action: 'None'
+              };
+            }
+          }
+        }
+
+        if (item.status === 'out of stock') {
+          const nameLower = (item.name || '').toLowerCase();
+          const isVaccine = (item.category || '').toLowerCase() === 'vaccine' || 
+                            ['yellow fever', 'yf', 'yfv', 'measles', 'mr', 'opv', 'bopv', 'ipv', 'pcv', 'penta', 'td', 'tt', 'rota', 'rotavirus', 'hpv', 'men', 'moderna', 'pfizer', 'janssen', 'covishield', 'rts,s', 'mosquirix'].some(v => nameLower.includes(v));
+          
+          if (isVaccine) {
+            // Find the requested quantity number
+            const matchNum = (item.requested || '').match(/\d+/);
+            if (matchNum) {
+              const numStr = matchNum[0];
+              // Check if fulfillmentConfirmation contains 0/numStr or 0 / numStr or similar
+              const regex = new RegExp('0\\s*/\\s*' + numStr);
+              const isFormPresent = regex.test(fulfillmentConfirmation || '');
+              
+              if (!isFormPresent) {
+                // If the required 0/X form is not present in fulfillmentConfirmation, it CANNOT be considered out of stock!
+                // Change it to missing item instead
+                return {
+                  ...item,
+                  status: 'missing item',
+                  action: `Missing item: Add requested quantity of ${item.name} to fulfillment. (Vaccines are only considered out of stock if explicitly marked as 0/${numStr} in fulfillment confirmation)`
+                };
+              }
+            } else {
+              // If there's no quantity number in requested, we also can't verify 0/X form, but let's be safe. Let's fallback to missing item if 0/X is not found with any number
+              const regex = /0\s*\/\s*\d+/;
+              if (!regex.test(fulfillmentConfirmation || '')) {
+                return {
+                  ...item,
+                  status: 'missing item',
+                  action: `Missing item: Add requested quantity of ${item.name} to fulfillment.`
+                };
+              }
+            }
+          }
+        }
+        return item;
+      });
+    }
+
+    // Post-process payload to handle the Out-Of-Stock Vaccine Diluent/Dropper Exemption:
+    // "When a vaccine order is entered and it is out of stock (N/0) and there is no diluent or dropper attached, since it is out of stock do not flag the diluent or dropper as missing."
+    if (payload && Array.isArray(payload.items)) {
+      const outOfStockVaccines = payload.items.filter((item: any) => {
+        if (!item) return false;
+        const nameLower = (item.name || '').toLowerCase();
+        const isVaccine = (item.category || '').toLowerCase() === 'vaccine' || 
+                          ['yellow fever', 'yf', 'yfv', 'measles', 'mr', 'opv', 'bopv', 'ipv', 'pcv', 'penta', 'td', 'tt', 'rota', 'rotavirus', 'hpv', 'men', 'moderna', 'pfizer', 'janssen', 'covishield', 'rts,s', 'mosquirix'].some(v => nameLower.includes(v));
+        return isVaccine && item.status === 'out of stock';
+      });
+
+      if (outOfStockVaccines.length > 0) {
+        payload.items = payload.items.map((item: any) => {
+          if (!item) return item;
+          const nameLower = (item.name || '').toLowerCase();
+          const isDiluent = nameLower.includes('diluent');
+          const isDropper = nameLower.includes('dropper');
+
+          if (isDiluent || isDropper) {
+            let hasMatchingOsuVaccine = false;
+            if (isDiluent) {
+              hasMatchingOsuVaccine = outOfStockVaccines.some((v: any) => {
+                const vName = (v.name || '').toLowerCase();
+                return ['yellow fever', 'yf', 'yfv', 'measles', 'mr'].some(keyword => vName.includes(keyword));
+              });
+            } else if (isDropper) {
+              hasMatchingOsuVaccine = outOfStockVaccines.some((v: any) => {
+                const vName = (v.name || '').toLowerCase();
+                return ['opv', 'bopv', 'rota', 'rotavirus'].some(keyword => vName.includes(keyword));
+              });
+            }
+
+            if (hasMatchingOsuVaccine && (item.status === 'missing item' || item.status === 'quantity mismatch')) {
+              return {
+                ...item,
+                status: 'match',
+                action: `Vaccine is out of stock. Matching secondary component (${isDiluent ? 'diluent' : 'dropper'}) is excluded from active discrepancies.`
+              };
+            }
+          }
+          return item;
+        });
+      }
+    }
+
+    // Post-process payload to handle BCG Vaccine & BCG Diluent matching:
+    // "All BCG vaccine has a diluent so the vaccine should match the diluent. don't flag it if the customer orders for BCG vaccine and the system gives vaccine and BCG diluents."
+    if (payload && Array.isArray(payload.items)) {
+      const hasBcgVaccine = payload.items.some((item: any) => {
+        if (!item) return false;
+        const nameLower = (item.name || '').toLowerCase();
+        return nameLower.includes('bcg') && !nameLower.includes('diluent') && !nameLower.includes('dropper');
+      });
+
+      if (hasBcgVaccine) {
+        payload.items = payload.items.map((item: any) => {
+          if (!item) return item;
+          const nameLower = (item.name || '').toLowerCase();
+          if (nameLower.includes('bcg') && nameLower.includes('diluent')) {
+            if (item.status === 'extra item' || item.status === 'missing item') {
+              return {
+                ...item,
+                status: 'match',
+                action: 'BCG Diluent matched perfectly with BCG Vaccine.'
+              };
+            }
+          }
+          return item;
+        });
+      }
+    }
+
+    // Post-process payload to enforce Rule 10.c: Vaccine Diluents & Droppers Quantity Matching
+    if (payload && Array.isArray(payload.items)) {
+      const vaccineGroupsConfig = [
+        {
+          vaccineKeywords: [
+            'mr', 'measles', 'measles-rubella', 'measles rubella', 'measles-rubella vaccine',
+            'measles vaccine', 'rubella', 'rubella vaccine', 'mr vaccine', 'measles-rubella (mr)',
+            'mr (measles-rubella)'
+          ],
+          diluentKeywords: [
+            'mr diluent', 'mr vaccine diluent', 'measles diluent', 'measles-rubella diluent',
+            'measles rubella diluent', 'mr diluents', 'mr vaccine diluents', 'measles diluents',
+            'measles-rubella diluents', 'measles rubella diluents', 'diluent for mr', 'diluent for measles',
+            'diluents for mr', 'diluents for measles', 'measles-rubella vaccine diluent', 'measles-rubella vaccine diluents',
+            'measles vaccine diluent', 'measles vaccine diluents', 'rubella diluent', 'rubella diluents'
+          ],
+          preferredDiluentName: 'MR Diluent',
+          vaccineName: 'MR Vaccine'
+        },
+        {
+          vaccineKeywords: ['mena', 'men a', 'men-a', 'men', 'menafrivac', 'meningococcal', 'meningococcal a', 'meningococcal a conjugate vaccine'],
+          diluentKeywords: [
+            'men a diluent', 'mena diluent', 'menafrivac diluent', 'meningococcal a diluent',
+            'men-a diluent', 'men diluent', 'meningococcal diluent', 'men a diluents', 'mena diluents',
+            'men-a diluents', 'men a vaccine diluent', 'mena vaccine diluent', 'men-a vaccine diluent'
+          ],
+          preferredDiluentName: 'Men A Diluent',
+          vaccineName: 'Men A Vaccine'
+        },
+        {
+          vaccineKeywords: [
+            'bcg', 'bcg vaccine', 'bacillus calmette', 'bacillus calmette-guérin', 'bacillus calmette–guérin',
+            'bacillus calmette guerin', 'guerin'
+          ],
+          diluentKeywords: [
+            'bcg diluent', 'bcg vaccine diluent', 'bcg diluents', 'bcg vaccine diluents', 'diluent for bcg',
+            'diluents for bcg', 'bcg vaccine diluent', 'bcg vaccine diluents', 'bacillus calmette-guérin diluent',
+            'bacillus calmette-guérin diluents', 'bacillus calmette–guérin diluent', 'bacillus calmette–guérin diluents',
+            'guerin diluent', 'guerin diluents'
+          ],
+          preferredDiluentName: 'BCG Diluent',
+          vaccineName: 'BCG Vaccine'
+        },
+        {
+          vaccineKeywords: ['opv', 'bopv', 'oral polio', 'oral polio vaccine', 'polio', 'polio vaccine', 'opv vaccine', 'bopv vaccine'],
+          diluentKeywords: [
+            'opv dropper', 'opv droppers', 'bopv dropper', 'bopv droppers', 'oral polio dropper', 'oral polio droppers',
+            'polio dropper', 'polio droppers', 'opv vaccine dropper', 'opv vaccine droppers', 'bopv vaccine dropper',
+            'bopv vaccine droppers', 'dropper for opv', 'droppers for opv', 'dropper for bopv', 'droppers for bopv',
+            'oral polio vaccine dropper', 'oral polio vaccine droppers'
+          ],
+          preferredDiluentName: 'OPV Droppers',
+          vaccineName: 'OPV Vaccine'
+        },
+        {
+          vaccineKeywords: ['rota', 'rotavirus', 'rotavirus vaccine', 'rota vaccine'],
+          diluentKeywords: [
+            'rota dropper', 'rota droppers', 'rotavirus dropper', 'rotavirus droppers',
+            'dropper for rota', 'droppers for rota', 'dropper for rotavirus', 'droppers for rotavirus',
+            'rota vaccine dropper', 'rota vaccine droppers', 'rotavirus vaccine dropper', 'rotavirus vaccine droppers'
+          ],
+          preferredDiluentName: 'ROTA Droppers',
+          vaccineName: 'Rotavirus Vaccine'
+        }
+      ];
+
+      const getNum = (str: any) => {
+        if (!str) return null;
+        const m = String(str).match(/(\d+)/);
+        return m ? parseInt(m[1], 10) : null;
+      };
+
+      payload.items = payload.items.map((item: any) => {
+        if (!item) return item;
+        const nameLower = (item.name || '').toLowerCase();
+
+        // Check if this item is a diluent or dropper
+        const matchedGroup = vaccineGroupsConfig.find(g =>
+          g.diluentKeywords.some(dk => nameLower.includes(dk)) ||
+          (nameLower.includes('diluent') && g.vaccineKeywords.some(vk => nameLower.includes(vk))) ||
+          (nameLower.includes('dropper') && g.vaccineKeywords.some(vk => nameLower.includes(vk)))
+        );
+
+        if (matchedGroup) {
+          // Find the corresponding vaccine in the items
+          const correspondingVaccine = payload.items.find((v: any) => {
+            if (!v || v === item) return false;
+            const vNameLower = (v.name || '').toLowerCase();
+            // Ensure it's not a diluent/dropper itself
+            if (vNameLower.includes('diluent') || vNameLower.includes('dropper')) return false;
+            return matchedGroup.vaccineKeywords.some(vk => vNameLower.includes(vk));
+          });
+
+          if (correspondingVaccine) {
+            // Verify vaccine is not out of stock
+            const isVaccineOsu = correspondingVaccine.status === 'out of stock';
+            if (!isVaccineOsu) {
+              const numDiluent = getNum(item.found);
+              const numVaccine = getNum(correspondingVaccine.found);
+
+              if (numDiluent !== null && numVaccine !== null && numDiluent !== numVaccine) {
+                return {
+                  ...item,
+                  status: 'quantity mismatch',
+                  action: `Quantity mismatch: ${item.name} quantity (${numDiluent}) must match ${correspondingVaccine.name} quantity (${numVaccine}).`
+                };
+              }
+            }
+          }
+        }
+        return item;
+      });
+    }
+
+    // Post-process payload to reconcile routine vaccine abbreviations:
+    if (payload && Array.isArray(payload.items)) {
+      const vaccineSynonymsGroup = [
+        ['bcg', 'bacillus calmette-guérin', 'bacillus calmette–guérin'],
+        ['opv', 'oral polio vaccine', 'bopv'],
+        ['ipv', 'inactivated polio vaccine'],
+        ['penta', 'pentavalent', 'pentavalent vaccine', 'pentavalent vaccine (diphtheria, pertussis, tetanus, hepatitis b, hib)'],
+        ['pcv', 'pcv13', 'pneumococcal conjugate vaccine'],
+        ['rota', 'rotavirus', 'rotavirus vaccine'],
+        ['mr', 'measles-rubella', 'measles-rubella vaccine'],
+        ['yf', 'yfv', 'yellow fever', 'yellow fever vaccine'],
+        ['mena', 'men', 'menafrivac', 'meningococcal a conjugate vaccine'],
+        ['hpv', 'human papillomavirus', 'human papillomavirus vaccine'],
+        ['td', 'tt', 'tetanus-diphtheria', 'tetanus-diphtheria vaccine', 'tetanus toxoid', 'td vaccine'],
+        ['hepb', 'hepb bd', 'hepatitis b', 'hepatitis b vaccine', 'hepatitis b vaccine (birth dose)'],
+        ['covid-19', 'covid-19 vaccine', 'moderna', 'pfizer', 'janssen', 'covishield']
+      ];
+
+      const getVaccineGroupIndex = (name: string): number => {
+        if (!name) return -1;
+        const lower = name.toLowerCase().trim();
+        if (lower.includes('diluent') || lower.includes('dropper')) {
+          return -1;
+        }
+        for (let idx = 0; idx < vaccineSynonymsGroup.length; idx++) {
+          for (const syn of vaccineSynonymsGroup[idx]) {
+            if (lower === syn || 
+                lower.startsWith(syn + ' ') || 
+                lower.endsWith(' ' + syn) ||
+                (syn.length > 3 && lower.includes(syn))) {
+              return idx;
+            }
+          }
+        }
+        return -1;
+      };
+
+      const extractNumber = (qtyStr: string): number | null => {
+        if (!qtyStr) return null;
+        const matches = qtyStr.match(/(\d+)/);
+        return matches ? parseInt(matches[1], 10) : null;
+      };
+
+      const originalItems = [...payload.items];
+      const mergedIndices = new Set<number>();
+      const processedItems: any[] = [];
+
+      for (let i = 0; i < originalItems.length; i++) {
+        if (mergedIndices.has(i)) continue;
+        const itemA = originalItems[i];
+        if (!itemA) continue;
+
+        const groupA = getVaccineGroupIndex(itemA.name);
+        if (groupA !== -1 && (itemA.status === 'missing item' || itemA.status === 'extra item' || itemA.status === 'quantity mismatch')) {
+          let foundPartner = false;
+          for (let j = i + 1; j < originalItems.length; j++) {
+            if (mergedIndices.has(j)) continue;
+            const itemB = originalItems[j];
+            if (!itemB) continue;
+
+            const groupB = getVaccineGroupIndex(itemB.name);
+            if (groupB === groupA) {
+              const reqVal = (itemA.status === 'missing item' || itemA.status === 'quantity mismatch') ? itemA.requested : itemB.requested;
+              const foundVal = (itemB.status === 'extra item' || itemB.status === 'quantity mismatch') ? itemB.found : itemA.found;
+
+              const numReq = extractNumber(reqVal);
+              const numFound = extractNumber(foundVal);
+              const isQtyMatch = numReq !== null && numFound !== null && numReq === numFound;
+
+              const status = isQtyMatch ? 'match' : 'quantity mismatch';
+              const action = isQtyMatch 
+                ? `Vaccine abbreviation match: verified successfully.`
+                : `Quantity mismatch between requested ${reqVal} and fulfilled ${foundVal}.`;
+
+              processedItems.push({
+                name: itemB.name,
+                category: 'Vaccine',
+                requested: reqVal || 'None',
+                found: foundVal || 'None',
+                status: status,
+                action: action
+              });
+
+              mergedIndices.add(j);
+              foundPartner = true;
+              break;
+            }
+          }
+
+          if (foundPartner) {
+            mergedIndices.add(i);
+          } else {
+            processedItems.push(itemA);
+          }
+        } else {
+          processedItems.push(itemA);
+        }
+      }
+
+      // Deduplicate payload.items by name or vaccine/diluent groups to prevent duplicate rows
+      const uniqueItems: any[] = [];
+      for (const item of processedItems) {
+        if (!item || !item.name) continue;
+        const nameLower = item.name.toLowerCase().trim();
+        
+        let existingIdx = uniqueItems.findIndex((ex: any) => {
+          const exLower = ex.name.toLowerCase().trim();
+          if (exLower === nameLower) return true;
+          if (exLower + 's' === nameLower || nameLower + 's' === exLower) return true;
+          if (exLower.replace(/s$/, '') === nameLower.replace(/s$/, '')) return true;
+          
+          // Check if both are diluents/droppers of the same group
+          for (const group of VACCINE_GROUPS_CONFIG) {
+            const isExDil = group.diluentKeywords.some(dk => exLower.includes(dk));
+            const isItemDil = group.diluentKeywords.some(dk => nameLower.includes(dk));
+            if (isExDil && isItemDil) return true;
+            
+            const isExVac = group.vaccineKeywords.some(vk => exLower.includes(vk)) && !exLower.includes('diluent') && !exLower.includes('dropper');
+            const isItemVac = group.vaccineKeywords.some(vk => nameLower.includes(vk)) && !nameLower.includes('diluent') && !nameLower.includes('dropper');
+            if (isExVac && isItemVac) return true;
+          }
+          return false;
+        });
+
+        if (existingIdx === -1) {
+          uniqueItems.push(item);
+        } else {
+          const existingItem = uniqueItems[existingIdx];
+          const finalName = item.name.length > existingItem.name.length ? item.name : existingItem.name;
+          const finalCategory = existingItem.category || item.category || 'Vaccine';
+          
+          const isEmptyVal = (val: any) => !val || val === 'None' || val === '0' || val.trim() === '' || val.toLowerCase().includes('none') || val.toLowerCase().includes('0');
+          
+          const finalRequested = isEmptyVal(existingItem.requested) && !isEmptyVal(item.requested) ? item.requested : existingItem.requested;
+          const finalFound = isEmptyVal(existingItem.found) && !isEmptyVal(item.found) ? item.found : existingItem.found;
+          
+          let finalStatus = existingItem.status;
+          if (existingItem.status === 'match' && item.status !== 'match') {
+            finalStatus = item.status;
+          }
+          
+          const finalAction = (existingItem.action && existingItem.action !== 'None' && existingItem.action !== '') ? existingItem.action : item.action;
+          
+          uniqueItems[existingIdx] = {
+            name: finalName,
+            category: finalCategory,
+            requested: finalRequested || 'None',
+            found: finalFound || 'None',
+            status: finalStatus,
+            action: finalAction || 'None'
+          };
+        }
+      }
+
+      payload.items = uniqueItems;
+
+      // Recalculate issueCount, allMatch, and verdict after resolving abbreviations and deduplicating:
+      const remainingIssues = payload.items.filter((item: any) => 
+        item && item.status && item.status !== 'match' && item.status !== 'out of stock'
+      ).length;
+      
+      let metaIssuesCount = 0;
+      const activeMetaIssues: string[] = [];
+      if (payload.meta) {
+        // Group similar metadata fields to prevent duplicate discrepancies
+        const mismatchedGroups = new Set<string>();
+        
+        // 1. Name: customerName and ordererName are the same
+        if ((payload.meta.customerName && payload.meta.customerName.status === 'mismatch') || 
+            (payload.meta.ordererName && payload.meta.ordererName.status === 'mismatch')) {
+          mismatchedGroups.add('name');
+          activeMetaIssues.push('Customer Name Mismatch');
+        }
+        
+        // 2. Facility: facility and facilityName are the same
+        if ((payload.meta.facility && payload.meta.facility.status === 'mismatch') || 
+            (payload.meta.facilityName && payload.meta.facilityName.status === 'mismatch')) {
+          mismatchedGroups.add('facility');
+          activeMetaIssues.push('Facility Name Mismatch');
+        }
+        
+        // 3. Other fields
+        const otherFields: Record<string, string> = {
+          phone: 'Phone Number',
+          dropArea: 'Drop Area',
+          district: 'District',
+          deliveryTime: 'Delivery Time'
+        };
+        for (const key of Object.keys(otherFields)) {
+          if (payload.meta[key] && payload.meta[key].status === 'mismatch') {
+            mismatchedGroups.add(key);
+            activeMetaIssues.push(`${otherFields[key]} Mismatch`);
+          }
+        }
+        metaIssuesCount = mismatchedGroups.size;
+      }
+
+      payload.issueCount = remainingIssues + metaIssuesCount;
+      payload.allMatch = payload.issueCount === 0;
+
+      const activeItemIssues = payload.items
+        .filter((item: any) => item && item.status && item.status !== 'match' && item.status !== 'out of stock')
+        .map((item: any) => {
+          const statusLabel = item.status === 'quantity mismatch' ? 'quantity mismatch' : item.status;
+          return `${item.name} (${statusLabel})`;
+        });
+
+      const allIssues = Array.from(new Set([...activeItemIssues, ...activeMetaIssues]));
+      if (allIssues.length > 0) {
+        payload.verdict = `Discrepancy: ${allIssues.join(', ')}.`;
+      } else {
+        const hasOsu = payload.items.some((item: any) => item && item.status === 'out of stock');
+        if (hasOsu) {
+          payload.verdict = `Cleared for dispatch: No packing mistakes, but some items are out of stock.`;
+        } else {
+          payload.verdict = `All active packaging and compliance details match perfectly.`;
+        }
+      }
+    }
+
+    // Post-process payload to strictly enforce the "Discrepancy Focus & Shortage Exclusion" rule:
+    // "when an out of stock is detected with other discrepancies, focus on the other discrepancies and dont show the out of stock as a discrepancy"
+    if (payload && Array.isArray(payload.items)) {
+      const hasOtherItemDiscrepancies = payload.items.some((item: any) => 
+        item && item.status && ['quantity mismatch', 'missing item', 'extra item'].includes(item.status)
+      );
+
+      let hasOtherMetaDiscrepancies = false;
+      if (payload.meta) {
+        const compFields = ['customerName', 'phone', 'facility', 'ordererName', 'facilityName', 'dropArea', 'district', 'deliveryTime'];
+        for (const field of compFields) {
+          if (payload.meta[field] && payload.meta[field].status === 'mismatch') {
+            hasOtherMetaDiscrepancies = true;
+            break;
+          }
+        }
+      }
+
+      const hasOtherDiscrepancies = hasOtherItemDiscrepancies || hasOtherMetaDiscrepancies;
+      const hasOutOfStock = payload.items.some((item: any) => item && item.status === 'out of stock');
+
+      if (hasOutOfStock) {
+        if (hasOtherDiscrepancies) {
+          // Rule: Convert out of stock items to 'match' so we don't show or treat them as discrepancies
+          payload.items = payload.items.map((item: any) => {
+            if (item && item.status === 'out of stock') {
+              return {
+                ...item,
+                status: 'match',
+                action: `Product out of stock. Shortage noted, but excluded from active discrepancies to focus on packaging errors.`
+              };
+            }
+            return item;
+          });
+
+          // Recalculate issueCount and verdict
+          const remainingIssues = payload.items.filter((item: any) => 
+            item && item.status && item.status !== 'match'
+          ).length;
+          
+          let metaIssuesCount = 0;
+          const activeMetaIssues: string[] = [];
+          if (payload.meta) {
+            // Group similar metadata fields to prevent duplicate discrepancies
+            const mismatchedGroups = new Set<string>();
+            
+            // 1. Name: customerName and ordererName are the same
+            if ((payload.meta.customerName && payload.meta.customerName.status === 'mismatch') || 
+                (payload.meta.ordererName && payload.meta.ordererName.status === 'mismatch')) {
+              mismatchedGroups.add('name');
+              activeMetaIssues.push('Customer Name Mismatch');
+            }
+            
+            // 2. Facility: facility and facilityName are the same
+            if ((payload.meta.facility && payload.meta.facility.status === 'mismatch') || 
+                (payload.meta.facilityName && payload.meta.facilityName.status === 'mismatch')) {
+              mismatchedGroups.add('facility');
+              activeMetaIssues.push('Facility Name Mismatch');
+            }
+            
+            // 3. Other fields
+            const otherFields: Record<string, string> = {
+              phone: 'Phone Number',
+              dropArea: 'Drop Area',
+              district: 'District',
+              deliveryTime: 'Delivery Time'
+            };
+            for (const key of Object.keys(otherFields)) {
+              if (payload.meta[key] && payload.meta[key].status === 'mismatch') {
+                mismatchedGroups.add(key);
+                activeMetaIssues.push(`${otherFields[key]} Mismatch`);
+              }
+            }
+            metaIssuesCount = mismatchedGroups.size;
+          }
+
+          payload.issueCount = remainingIssues + metaIssuesCount;
+          payload.allMatch = payload.issueCount === 0;
+
+          const activeItemIssues = payload.items
+            .filter((item: any) => item && item.status && item.status !== 'match')
+            .map((item: any) => {
+              const statusLabel = item.status === 'quantity mismatch' ? 'quantity mismatch' : item.status;
+              return `${item.name} (${statusLabel})`;
+            });
+
+          const allIssues = Array.from(new Set([...activeItemIssues, ...activeMetaIssues]));
+          if (allIssues.length > 0) {
+            payload.verdict = `Discrepancy: ${allIssues.join(', ')}.`;
+          } else {
+            payload.verdict = `All active packaging and compliance details match perfectly.`;
+          }
+        } else {
+          // Out of stock is the ONLY issue, so it's a pass with no active discrepancy alert!
+          payload.issueCount = 0;
+          payload.allMatch = true;
+          payload.verdict = `Cleared for dispatch: No packing mistakes, but some items are out of stock.`;
+        }
+      }
+    }
     const durationSec = Number(((Date.now() - startTime) / 1000).toFixed(2));
 
     // Construct final audit record with database metadata
@@ -824,6 +1781,19 @@ app.post('/api/verify', async (req, res) => {
 
     // Save to local in-memory store (most recent first)
     audits.unshift(auditRecord);
+
+    // Save to Firestore
+    try {
+      const db = getFirestoreDb();
+      const cleanRecord = { ...auditRecord };
+      if (cleanRecord.resolutionNotes === undefined) cleanRecord.resolutionNotes = '';
+      if (cleanRecord.resolvedAt === undefined) delete cleanRecord.resolvedAt;
+      
+      await setDoc(doc(db, 'audits', auditRecord.id), cleanRecord);
+      console.log(`Successfully recorded audit log ${auditRecord.id} to Firestore.`);
+    } catch (dbErr) {
+      console.error('Failed to write audit log to Firestore:', dbErr);
+    }
 
     return res.json(auditRecord);
   } catch (error: any) {
@@ -906,12 +1876,27 @@ app.patch('/api/audits/:id', async (req, res) => {
   const { status, resolutionNotes } = req.body;
 
   try {
+    let currentData: any = null;
     const auditIndex = audits.findIndex(a => a.id === id);
-    if (auditIndex === -1) {
+    if (auditIndex !== -1) {
+      currentData = audits[auditIndex];
+    } else {
+      // Try fetching from Firestore if not in-memory
+      try {
+        const db = getFirestoreDb();
+        const docSnap = await getDoc(doc(db, 'audits', id));
+        if (docSnap.exists()) {
+          currentData = docSnap.data();
+        }
+      } catch (dbErr) {
+        console.error('Failed to fetch from Firestore during patch:', dbErr);
+      }
+    }
+
+    if (!currentData) {
       return res.status(404).json({ error: 'Audit record not found' });
     }
 
-    const currentData = audits[auditIndex];
     const updatedData: any = {
       ...currentData,
       status: status || currentData.status,
@@ -919,7 +1904,22 @@ app.patch('/api/audits/:id', async (req, res) => {
       resolvedAt: status === 'resolved' ? new Date().toISOString() : (currentData.resolvedAt || null)
     };
 
-    audits[auditIndex] = updatedData;
+    // Update in-memory
+    if (auditIndex !== -1) {
+      audits[auditIndex] = updatedData;
+    } else {
+      audits.unshift(updatedData);
+    }
+
+    // Update in Firestore
+    try {
+      const db = getFirestoreDb();
+      await setDoc(doc(db, 'audits', id), updatedData, { merge: true });
+      console.log(`Successfully updated audit log ${id} in Firestore.`);
+    } catch (dbErr) {
+      console.error('Failed to update audit log in Firestore:', dbErr);
+    }
+
     return res.json(updatedData);
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
@@ -1046,7 +2046,7 @@ app.get('/api/download-extension', async (req, res) => {
       
       const rawPopupJs = await fs.readFile(path.join(extDir, 'popup.js'), 'utf-8');
       // Replace hardcoded development SERVER_URL with the active dynamic hostUrl
-      popupJs = rawPopupJs.replace('https://ordercheck-507802192766.europe-west2.run.app', hostUrl);
+      popupJs = rawPopupJs.replace(/const SERVER_URL = '.*';/, `const SERVER_URL = '${hostUrl}';`);
       
       contentJs = await fs.readFile(path.join(extDir, 'content.js'), 'utf-8');
       iconBuffer = await fs.readFile(path.join(extDir, 'icon.png'));
@@ -1269,7 +2269,7 @@ app.get('/api/download-extension', async (req, res) => {
   <div class="server-status" id="serverInfo" style="margin-top: 12px; border-top: 1px dashed #D6C2EB; padding-top: 8px; text-align: left;">
     <div style="display: flex; gap: 4px; align-items: center; margin-bottom: 4px;">
       <span style="font-size: 9px; font-weight: bold; color: #5C2D91; white-space: nowrap;">Backend:</span>
-      <input type="text" id="backendUrlInput" style="flex: 1; min-width: 0; font-size: 9px; padding: 2px 4px; border: 1px solid #D6C2EB; border-radius: 3px;" value="https://ordercheck-507802192766.europe-west2.run.app" />
+      <input type="text" id="backendUrlInput" style="flex: 1; min-width: 0; font-size: 9px; padding: 2px 4px; border: 1px solid #D6C2EB; border-radius: 3px;" value="https://ais-dev-ksv3oiifrmnhdib3nb7awh-944779874869.europe-west2.run.app" />
       <button id="btnSaveBackend" style="font-size: 8px; padding: 2px 4px; background: #5C2D91; color: white; border: none; border-radius: 3px; cursor: pointer; white-space: nowrap;">Save</button>
       <button id="btnResetBackend" style="font-size: 8px; padding: 2px 4px; background: #E5E7EB; color: #374151; border: 1px solid #D1D5DB; border-radius: 3px; cursor: pointer; white-space: nowrap;">Reset</button>
     </div>

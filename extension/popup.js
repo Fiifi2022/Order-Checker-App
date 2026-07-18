@@ -1,4 +1,4 @@
-const SERVER_URL = 'https://ordercheck-507802192766.europe-west2.run.app';
+const SERVER_URL = 'https://ais-dev-ksv3oiifrmnhdib3nb7awh-944779874869.europe-west2.run.app';
 
 document.addEventListener('DOMContentLoaded', () => {
   const btnVerify = document.getElementById('btnVerify');
@@ -57,6 +57,119 @@ document.addEventListener('DOMContentLoaded', () => {
       connectionBadge.style.color = '#DC2626';
       connectionBadge.style.backgroundColor = '#FEE2E2';
     }
+  };
+
+  // State variables for dynamic interactive flows
+  let activeResult = null;
+  let declinedLimitItems = [];
+
+  const renderResults = () => {
+    if (!activeResult) return;
+
+    let html = '';
+    if (activeResult.allMatch) {
+       html += '<div class="badge badge-success">CLEARED FOR LAUNCH</div>';
+       html += '<p style="color:#065F46; font-weight:bold; margin:4px 0 0 0; font-size:11px;">' + activeResult.verdict + '</p>';
+    } else {
+       html += '<div class="badge badge-error">DISCREPANCY ALERT (' + activeResult.issueCount + ')</div>';
+       html += '<p style="color:#991B1B; font-weight:bold; margin:4px 0; font-size:11px;">' + activeResult.verdict + '</p>';
+    }
+
+    // Display compared items list
+    html += '<div style="margin-top:8px; border-top: 1px solid #F3E8FF; padding-top:6px;">';
+    activeResult.items.forEach((it, idx) => {
+      const itemColor = it.status === 'match' ? '#047857' : (it.status === 'out of stock' ? '#D97706' : '#DC2626');
+      const itemSymbol = it.status === 'match' ? '✓' : (it.status === 'out of stock' ? '⚠' : '✗');
+      
+      html += '<div style="border-bottom:1px solid #FAF5FF; padding:6px 0; font-size:10.5px;">';
+      html += '<strong style="color:#3B1A5E;">' + itemSymbol + ' ' + it.name + '</strong>';
+      html += ' (Req: ' + it.requested + ' | Sys: ' + it.found + ')';
+      html += '<br/><span style="color:' + itemColor + '; font-size:9.5px; font-weight:600;">Status: ' + it.status.toUpperCase() + '</span>';
+      
+      if (it.action) {
+        html += '<br/><span style="color:#5C2D91; font-size:9.5px; font-weight:500;">➔ ' + it.action + '</span>';
+      }
+
+      // Inline Order Limit confirmation block (matching React app's interactive behavior)
+      if (it.status === 'quantity mismatch' && !declinedLimitItems.includes(it.name)) {
+        html += '<div class="order-limit-prompt" style="background:#FFFDF5; border:1px solid #FCD34D; border-radius:6px; padding:6px; margin:6px 0; font-size:10px; text-align:left;">';
+        html += '<div style="font-weight:bold; color:#78350F; margin-bottom:2px;">⚠ Order Limit Verification Required</div>';
+        html += '<div style="color:#555; margin-bottom:4px;">Is this subject to an order limit of <strong>' + it.found + '</strong> units?</div>';
+        html += '<div style="display:flex; gap:6px;">';
+        html += '<button class="btn-limit-no" data-index="' + idx + '" style="flex:1; background:#F3F4F6; border:1px solid #D1D5DB; border-radius:4px; padding:3px; font-size:9px; cursor:pointer; font-weight:bold; color:#4B5563;">No, Discrepancy</button>';
+        html += '<button class="btn-limit-yes" data-index="' + idx + '" style="flex:1; background:#5C2D91; color:white; border:none; border-radius:4px; padding:3px; font-size:9px; cursor:pointer; font-weight:bold;">Yes, Apply Limit</button>';
+        html += '</div>';
+        html += '</div>';
+      }
+
+      html += '</div>';
+    });
+    html += '</div>';
+
+    // Key insights
+    if (activeResult.insights && activeResult.insights.length > 0) {
+      html += '<div style="margin-top:8px; padding-top:6px; border-top:1px solid #F3E8FF; color:#555; font-size:10px;"><strong>Key Insights:</strong><ul style="padding-left:12px; margin:4px 0 0 0;">';
+      activeResult.insights.forEach(ins => {
+        html += '<li style="margin-bottom:3px;">' + ins + '</li>';
+      });
+      html += '</ul></div>';
+    }
+
+    // Metadata details
+    if (activeResult.meta) {
+       html += '<div style="margin-top:8px; border-top:1px dashed #D6C2EB; padding-top:6px; font-size:10px; color:#1E1B4B; background:#FAF5FF; padding:5px; border-radius:4px;">';
+       html += '<strong style="color:#5C2D91; display:block; margin-bottom:3px;">Audited Metadata Details:</strong>';
+       html += '• <strong>Date:</strong> ' + (activeResult.meta.date ? activeResult.meta.date.whatsappValue || 'N/A' : 'N/A');
+       html += '<br/>• <strong>Name of Orderer:</strong> ' + (activeResult.meta.ordererName ? activeResult.meta.ordererName.whatsappValue || 'N/A' : 'N/A');
+       html += '<br/>• <strong>Name of Health Facility:</strong> ' + (activeResult.meta.facilityName ? activeResult.meta.facilityName.whatsappValue || 'N/A' : 'N/A');
+
+       if (activeResult.meta.dropArea && activeResult.meta.dropArea.whatsappValue && activeResult.meta.dropArea.whatsappValue !== 'N/A' && activeResult.meta.dropArea.whatsappValue.trim() !== '') {
+         html += '<br/>• <strong>Delivery / Drop area:</strong> ' + activeResult.meta.dropArea.whatsappValue;
+       }
+       if (activeResult.meta.district && activeResult.meta.district.whatsappValue && activeResult.meta.district.whatsappValue !== 'N/A' && activeResult.meta.district.whatsappValue.trim() !== '') {
+         html += '<br/>• <strong>District:</strong> ' + activeResult.meta.district.whatsappValue;
+       }
+       if (activeResult.meta.deliveryTime && activeResult.meta.deliveryTime.whatsappValue && activeResult.meta.deliveryTime.whatsappValue !== 'N/A' && activeResult.meta.deliveryTime.whatsappValue.trim() !== '') {
+         html += '<br/>• <strong>Preferred time for Delivery:</strong> ' + activeResult.meta.deliveryTime.whatsappValue;
+       }
+       html += '</div>';
+    }
+
+    results.innerHTML = html;
+
+    // Attach listeners to order limit action buttons
+    const yesButtons = results.querySelectorAll('.btn-limit-yes');
+    yesButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.target.getAttribute('data-index'), 10);
+        const item = activeResult.items[idx];
+        if (item) {
+          item.status = 'match';
+          item.action = 'Order Limit Confirmed. Limit of ' + item.found + ' units locked and applied successfully.';
+          
+          // Recompute overall match validation
+          const remainingIssues = activeResult.items.filter(it => it.status !== 'match' && it.status !== 'out of stock');
+          activeResult.allMatch = remainingIssues.length === 0;
+          activeResult.issueCount = remainingIssues.length;
+          if (activeResult.allMatch) {
+            activeResult.verdict = 'PASS: Perfect Match Verified (Order Limit Applied)';
+          }
+          renderResults();
+        }
+      });
+    });
+
+    const noButtons = results.querySelectorAll('.btn-limit-no');
+    noButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.target.getAttribute('data-index'), 10);
+        const item = activeResult.items[idx];
+        if (item) {
+          declinedLimitItems.push(item.name);
+          renderResults();
+        }
+      });
+    });
   };
 
   // Load saved state and custom backend URL
@@ -260,60 +373,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const data = await res.json();
       
-      let html = '';
-      if (data.allMatch) {
-         html += '<div class="badge badge-success">CLEARED FOR LAUNCH</div>';
-         html += '<p style="color:#065F46; font-weight:bold; margin:4px 0 0 0;">' + data.verdict + '</p>';
-      } else {
-         html += '<div class="badge badge-error">DISCREPANCY ALERT (' + data.issueCount + ')</div>';
-         html += '<p style="color:#991B1B; font-weight:bold; margin:4px 0;">' + data.verdict + '</p>';
-      }
+      // Initialize active results and render dynamically
+      activeResult = data;
+      declinedLimitItems = [];
+      renderResults();
 
-      // Display non-match items/status as summary table
-      html += '<div style="margin-top:8px; border-top: 1px solid #F3E8FF; padding-top:6px;">';
-      data.items.forEach(it => {
-        const itemColor = it.status === 'match' ? '#047857' : (it.status === 'out of stock' ? '#D97706' : '#DC2626');
-        const itemSymbol = it.status === 'match' ? '✓' : (it.status === 'out of stock' ? '⚠' : '✗');
-        
-        html += '<div style="border-bottom:1px solid #FAF5FF; padding:4px 0; font-size:10.5px;">';
-        html += '<strong style="color:#3B1A5E;">' + itemSymbol + ' ' + it.name + '</strong>';
-        html += ' (Req: ' + it.requested + ' | Sys: ' + it.found + ')';
-        html += '<br/><span style="color:' + itemColor + '; font-size:9.5px; font-weight:600;">Status: ' + it.status.toUpperCase() + '</span>';
-        if (it.action) {
-          html += '<br/><span style="color:#5C2D91; font-size:9.5px; font-weight:500;">➔ ' + it.action + '</span>';
-        }
-        html += '</div>';
-      });
-      html += '</div>';
-
-      if (data.insights && data.insights.length > 0) {
-        html += '<div style="margin-top:8px; padding-top:6px; border-top:1px solid #F3E8FF; color:#555; font-size:10px;"><strong>Key Insights:</strong><ul style="padding-left:12px; margin:4px 0 0 0;">';
-        data.insights.forEach(ins => {
-          html += '<li style="margin-bottom:3px;">' + ins + '</li>';
-        });
-        html += '</ul></div>';
-      }
-
-      if (data.meta) {
-         html += '<div style="margin-top:8px; border-top:1px dashed #D6C2EB; padding-top:6px; font-size:10px; color:#1E1B4B; background:#FAF5FF; padding:5px; border-radius:4px;">';
-         html += '<strong style="color:#5C2D91; display:block; margin-bottom:3px;">Audited Metadata Details:</strong>';
-         html += '• <strong>Date:</strong> ' + (data.meta.date ? data.meta.date.whatsappValue || 'N/A' : 'N/A');
-         html += '<br/>• <strong>Name of Orderer:</strong> ' + (data.meta.ordererName ? data.meta.ordererName.whatsappValue || 'N/A' : 'N/A');
-         html += '<br/>• <strong>Name of Health Facility:</strong> ' + (data.meta.facilityName ? data.meta.facilityName.whatsappValue || 'N/A' : 'N/A');
-
-         if (data.meta.dropArea && data.meta.dropArea.whatsappValue && data.meta.dropArea.whatsappValue !== 'N/A' && data.meta.dropArea.whatsappValue.trim() !== '') {
-           html += '<br/>• <strong>Delivery / Drop area:</strong> ' + data.meta.dropArea.whatsappValue;
-         }
-         if (data.meta.district && data.meta.district.whatsappValue && data.meta.district.whatsappValue !== 'N/A' && data.meta.district.whatsappValue.trim() !== '') {
-           html += '<br/>• <strong>District:</strong> ' + data.meta.district.whatsappValue;
-         }
-         if (data.meta.deliveryTime && data.meta.deliveryTime.whatsappValue && data.meta.deliveryTime.whatsappValue !== 'N/A' && data.meta.deliveryTime.whatsappValue.trim() !== '') {
-           html += '<br/>• <strong>Preferred time for Delivery:</strong> ' + data.meta.deliveryTime.whatsappValue;
-         }
-         html += '</div>';
-      }
-
-      results.innerHTML = html;
     } catch (err) {
       results.innerHTML = '<span style="color:red">Error from OrderCheck: ' + err.message + '</span>';
     }
