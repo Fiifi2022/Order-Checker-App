@@ -1,6 +1,6 @@
 {
   "name": "OrderCheck",
-  "description": "Medical supply verification tool for Zipline Ghana's Customer Care team.",
+  "description": "Medical supply and vaccine allocation validation and tracking tool for Zipline Ghana's Customer Care team.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

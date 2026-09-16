@@ -40,14 +40,22 @@ import {
   Upload,
   Trash,
   Download,
-  Calendar
+  Calendar,
+  Wrench
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { OrderCheckResult, AuditRecord, AuditAnalytics, VerificationItem } from './types';
+import Troubleshooter from './components/Troubleshooter';
+import VaccineAllocationChecker from './components/VaccineAllocationChecker';
+import VaccineTrackerUpload from './components/VaccineTrackerUpload';
+import VaccineTransactionHistory from './components/VaccineTransactionHistory';
+import VaccineDashboard from './components/VaccineDashboard';
 
 export default function App() {
-  // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'auditor' | 'extension' | 'history'>('auditor');
+  // Navigation tabs - Supports both existing Order Checker & new Vaccine Allocation Module
+  const [activeTab, setActiveTab] = useState<
+    'vaccine_checker' | 'vaccine_tracker' | 'vaccine_history' | 'vaccine_dashboard' | 'auditor' | 'extension' | 'history' | 'troubleshooter'
+  >('vaccine_checker');
 
   // Audit Ledger / History states
   const [auditsHistory, setAuditsHistory] = useState<AuditRecord[]>([]);
@@ -614,8 +622,62 @@ export default function App() {
       </header>
 
       {/* Tab bar Navigation */}
-      <div className="bg-white border-b border-purple-100 sticky top-[68px] z-30 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-4">
+      <div className="bg-white border-b border-purple-100 sticky top-[68px] z-30 shadow-sm overflow-x-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-2 sm:gap-4 min-w-max">
+          {/* Vaccine Allocation Validation Module Tabs */}
+          <button
+            onClick={() => setActiveTab('vaccine_checker')}
+            className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'vaccine_checker'
+                ? 'border-[#5C2D91] text-[#5C2D91]'
+                : 'border-transparent text-slate-500 hover:text-[#5C2D91]'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <span>Vaccine Checker</span>
+            <span className="text-[10px] bg-purple-100 text-[#5C2D91] px-1.5 py-0.5 rounded font-black">MODULE</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('vaccine_tracker')}
+            className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'vaccine_tracker'
+                ? 'border-[#5C2D91] text-[#5C2D91]'
+                : 'border-transparent text-slate-500 hover:text-[#5C2D91]'
+            }`}
+          >
+            <Upload className="w-4 h-4" />
+            Allocation Tracker
+          </button>
+
+          <button
+            onClick={() => setActiveTab('vaccine_history')}
+            className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'vaccine_history'
+                ? 'border-[#5C2D91] text-[#5C2D91]'
+                : 'border-transparent text-slate-500 hover:text-[#5C2D91]'
+            }`}
+          >
+            <Lock className="w-4 h-4" />
+            Vaccine Ledger
+          </button>
+
+          <button
+            onClick={() => setActiveTab('vaccine_dashboard')}
+            className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'vaccine_dashboard'
+                ? 'border-[#5C2D91] text-[#5C2D91]'
+                : 'border-transparent text-slate-500 hover:text-[#5C2D91]'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            Vaccine Dashboard
+          </button>
+
+          {/* Divider */}
+          <div className="h-6 w-px bg-slate-200 self-center my-auto"></div>
+
+          {/* General Order Checker Tabs */}
           <button
             onClick={() => setActiveTab('auditor')}
             className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
@@ -624,8 +686,8 @@ export default function App() {
                 : 'border-transparent text-slate-500 hover:text-[#5C2D91]'
             }`}
           >
-            <ShieldCheck className="w-4 h-4" />
-            Compliance Auditor
+            <ClipboardCheck className="w-4 h-4" />
+            General Auditor
           </button>
           
           <button
@@ -651,12 +713,69 @@ export default function App() {
             <History className="w-4 h-4" />
             Audit History Logs
           </button>
+
+          <button
+            onClick={() => setActiveTab('troubleshooter')}
+            className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'troubleshooter'
+                ? 'border-[#5C2D91] text-[#5C2D91]'
+                : 'border-transparent text-slate-500 hover:text-[#5C2D91]'
+            }`}
+          >
+            <Wrench className="w-4 h-4 text-amber-500" />
+            Troubleshooter & Diagnostics
+            {result && !result.allMatch && (
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+            )}
+          </button>
         </div>
       </div>
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6" id="main-content">
         
+        {/* VACCINE ALLOCATION CHECKER VIEW */}
+        {activeTab === 'vaccine_checker' && (
+          <div className="animate-in fade-in duration-300">
+            <VaccineAllocationChecker
+              onNavigateToTracker={() => setActiveTab('vaccine_tracker')}
+              onNavigateToHistory={() => setActiveTab('vaccine_history')}
+            />
+          </div>
+        )}
+
+        {/* VACCINE ALLOCATION TRACKER & UPLOAD VIEW */}
+        {activeTab === 'vaccine_tracker' && (
+          <div className="animate-in fade-in duration-300">
+            <VaccineTrackerUpload
+              onFacilitySelectedForOrder={(facilityId) => {
+                setActiveTab('vaccine_checker');
+              }}
+            />
+          </div>
+        )}
+
+        {/* VACCINE IMMUTABLE TRANSACTION AUDIT TRAIL VIEW */}
+        {activeTab === 'vaccine_history' && (
+          <div className="animate-in fade-in duration-300">
+            <VaccineTransactionHistory />
+          </div>
+        )}
+
+        {/* VACCINE ALLOCATION DASHBOARD VIEW */}
+        {activeTab === 'vaccine_dashboard' && (
+          <div className="animate-in fade-in duration-300">
+            <VaccineDashboard
+              onSelectFacilityForAudit={(facilityId) => {
+                setActiveTab('vaccine_checker');
+              }}
+              onNavigateToTracker={() => {
+                setActiveTab('vaccine_tracker');
+              }}
+            />
+          </div>
+        )}
+
         {/* COMPLIANCE AUDITOR ACTIVE TAB VIEW */}
         {activeTab === 'auditor' && (
           <div className="space-y-6 animate-in fade-in duration-300">
@@ -1018,16 +1137,26 @@ export default function App() {
                             Confirm & Clear
                           </button>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedAuditForResolution(result);
-                              setResolutionActionNotes('');
-                            }}
-                            className="bg-[#5C2D91] hover:bg-[#3B1A5E] text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-all shadow cursor-pointer w-full sm:w-auto"
-                          >
-                            Resolve Log
-                          </button>
+                          <div className="flex gap-2 w-full sm:w-auto">
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab('troubleshooter')}
+                              className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all shadow cursor-pointer flex items-center gap-1.5 justify-center flex-1 sm:flex-initial"
+                            >
+                              <Wrench className="w-3.5 h-3.5" />
+                              Troubleshoot Issue
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedAuditForResolution(result);
+                                setResolutionActionNotes('');
+                              }}
+                              className="bg-[#5C2D91] hover:bg-[#3B1A5E] text-white text-xs font-bold px-3 py-2 rounded-xl transition-all shadow cursor-pointer flex-1 sm:flex-initial"
+                            >
+                              Resolve Log
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1628,6 +1757,16 @@ export default function App() {
               </div>
             )}
           </motion.div>
+        )}
+
+        {/* TROUBLESHOOTER & SYSTEM DIAGNOSTICS ACTIVE TAB VIEW */}
+        {activeTab === 'troubleshooter' && (
+          <Troubleshooter 
+            currentAudit={result}
+            onUpdateAudit={(updatedAudit) => setResult(updatedAudit)}
+            onRunTest={verifyOrder}
+            onNavigateAuditor={() => setActiveTab('auditor')}
+          />
         )}
 
       </main>

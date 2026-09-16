@@ -12,6 +12,7 @@ import fsSync from 'fs';
 import AdmZip from 'adm-zip';
 import { initializeApp as initializeClientApp, getApps as getClientApps, getApp as getClientApp } from 'firebase/app';
 import { getFirestore as getClientFirestore, collection, getDocs, doc, setDoc, getDoc, query, orderBy, limit } from 'firebase/firestore';
+import * as vaccineService from './server/vaccineService';
 
 const app = express();
 const PORT = 3000;
@@ -40,9 +41,9 @@ function getFirestoreDb() {
   return firestoreDb;
 }
 
-app.use(express.json());
-app.use(express.text({ type: '*/*' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.text({ limit: '50mb', type: '*/*' }));
 
 // Enable lightweight, zero-dependency CORS so the extension popup/content scripts can seamlessly query the APIs
 app.use((req, res, next) => {
@@ -57,6 +58,46 @@ app.use((req, res, next) => {
 
 // Local in-memory store for audits
 const audits: any[] = [];
+
+function hasKeywordWithBoundaries(text: string, keyword: string): boolean {
+  if (!text || !keyword) return false;
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp('(^|[^a-zA-Z0-9])' + escaped + '($|[^a-zA-Z0-9])', 'i');
+  return regex.test(text);
+}
+
+function isVaccineExplicitlyInWhatsApp(whatsappText: string, group: { vaccineKeywords: string[]; vaccineName: string }): boolean {
+  if (!whatsappText) return false;
+  const lines = whatsappText.split('\n');
+  
+  for (const line of lines) {
+    const lineLower = line.toLowerCase().trim();
+    if (!lineLower) continue;
+    // Skip metadata header lines like "contact:", "name:", "attention:", "facility:", "to:", "from:"
+    if (/^(contact|name|attention|facility|to|from|delivered to|received by|doctor|dr|phone|date)\s*:/i.test(lineLower)) {
+      continue;
+    }
+    for (const kw of group.vaccineKeywords) {
+      if (kw === 'mr' || kw === 'men') {
+        // Must be 'mr vaccine', 'mr -', 'mr 5', '5 mr', 'mr vials', 'mr doses', etc., NOT honorific "Mr. John" or "Mr Kwame"
+        if (/(mr|men)\s*(vaccine|vials?|doses?|boxes?|cards?|packs?|\d+)/i.test(lineLower) || /\d+\s*(mr|men)/i.test(lineLower)) {
+          return true;
+        }
+      } else {
+        if (hasKeywordWithBoundaries(lineLower, kw)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function extractNumber(str: any): number | null {
+  if (!str) return null;
+  const matches = String(str).match(/(\d+)/);
+  return matches ? parseInt(matches[1], 10) : null;
+}
 
 // Local in-memory store for simulated out of stock (OSU) units
 let osuItems: string[] = [
@@ -108,7 +149,7 @@ const VACCINE_GROUPS_CONFIG = [
     vaccineName: 'BCG Vaccine'
   },
   {
-    vaccineKeywords: ['opv', 'bopv', 'oral polio', 'oral polio vaccine', 'polio', 'polio vaccine', 'opv vaccine', 'bopv vaccine'],
+    vaccineKeywords: ['opv', 'bopv', 'oral polio', 'oral polio vaccine', 'opv vaccine', 'bopv vaccine'],
     diluentKeywords: [
       'opv dropper', 'opv droppers', 'bopv dropper', 'bopv droppers', 'oral polio dropper', 'oral polio droppers',
       'polio dropper', 'polio droppers', 'opv vaccine dropper', 'opv vaccine droppers', 'bopv vaccine dropper',
@@ -213,10 +254,12 @@ The user may paste ANY kind of messages or text logs (including general chat, em
 CRITICAL DOMAIN RULES & ABBREVIATION CATEGORIES (WHEN MEDICAL/CLINICAL):
 ==================================================
 1. VACCINES (Ailment immunizations, preventives):
-   You MUST recognize the following routine vaccines and their standard abbreviations as the exact same vaccine, meaning they match perfectly (status: 'match' if quantities correspond) and should NOT be flagged as 'missing item' or 'extra item' discrepancies if one is requested and the other is fulfilled:
+   DEVELOPER RULE: Perform validation using the exact product identity. Vaccine abbreviations must map one-to-one. Never use disease equivalence for matching. The validator must compare the actual product (e.g., IPV, bOPV, OPV, PCV, MR, BCG, etc.), not the disease they target. Any mismatch between expected and received products must be reported as a discrepancy unless an explicit substitution rule exists in the system configuration.
+   You MUST recognize the following routine vaccines and their standard abbreviations as exact 1-to-1 mappings:
    - "BCG" ↔ "Bacillus Calmette-Guérin" (or "Bacillus Calmette–Guérin")
-   - "OPV" ↔ "Oral Polio Vaccine" (or "bOPV")
-   - "IPV" ↔ "Inactivated Polio Vaccine"
+   - "bOPV" ↔ "Bivalent Oral Polio Vaccine" (or "bOPV Vaccine")
+   - "OPV" ↔ "Oral Polio Vaccine" (or "OPV Vaccine")
+   - "IPV" ↔ "Inactivated Polio Vaccine" (or "Inactivated Polio", "IPV Vaccine")
    - "Penta" ↔ "Pentavalent Vaccine (Diphtheria, Pertussis, Tetanus, Hepatitis B, Hib)" (or "Pentavalent", "Pentavalent Vaccine")
    - "PCV" ↔ "Pneumococcal Conjugate Vaccine" (or "PCV13")
    - "Rota" ↔ "Rotavirus Vaccine" (or "ROTA", "rotavirus")
@@ -309,7 +352,7 @@ ADDITIONAL AUDIT CONSTRAINTS:
       f. "Diluent & Dropper Extra Item Exemption" (CRITICAL): You MUST NOT treat "MR diluent" (or MR vaccine diluent), "Men A diluent" (or MenA diluent, MenAfriVac diluent), "BCG Diluent" (or BCG Vaccine Diluent), or "OPV droppers" (or OPV dropper) as extra items or discrepancies when they are not requested or seen in the WhatsApp message but are present/seen in the fulfillment confirmation log. If they are in the fulfillment confirmation but not in WhatsApp, set their status strictly to "match" and clear them of any discrepancy alerts or actions.
 
 11. OUT OF STOCK (OSU) DETECTION & HANDLING (CRITICAL COMPLIANCE RULES):
-   - ONLY RECORD OUT OF STOCK ON EXPLICIT ZERO-LOAD (0/X): For vaccine products, a vaccine product can be considered as out of stock ONLY if it is explicitly in the form "0/X" (where X is the number requested by the customer). If it is not in this "0/X" form (where X is the requested quantity), you MUST NOT classify it as out of stock. For other non-vaccine products, you must limit 'out of stock' classifications to instances where you explicitly see a zero load in the fulfillment confirmation, represented in formats like "(0/any number)" (e.g., "0/1", "0/10", "0 of 5", "0 loaded", "0 units"), or when the requested product name is explicitly listed in the "ACTIVE OUT-OF-STOCK (OSU) ITEMS" list.
+   - OUT OF STOCK (OSU) DETECTION & HANDLING: An item is classified as 'out of stock' whenever its fulfillment quantity is explicitly 0 (e.g., "0 vials", "0/N", "0 of N", "0 loaded", "0 units", "0") or when listed as out of stock. If an item requested in WhatsApp is completely absent/omitted from fulfillment confirmation (not mentioned with 0 count), classify it as 'missing item'.
    - WHATSAPP EXCEEDS FULFILLMENT -> ORDER LIMIT / QUANTITY MISMATCH (CRITICAL): If the quantity requested in the WhatsApp section is MORE than the quantity shown in the fulfillment confirmation (e.g., requested 10, found 3, or shown as "3/10"), but the found quantity is greater than 0, you MUST NOT record this as 'out of stock'. Instead, you MUST treat this strictly as a 'quantity mismatch' (which triggers the Order Limit verification flow). Set the status strictly to 'quantity mismatch' and set the action to something like: "Order limit triggered. Correct fulfillment quantity to [Requested Qty] or confirm order limit."
    - ZERO-MISTAKE CLEARANCE EXEMPTION: If the ONLY anomalies/non-match items found in the entire verification process are 'out of stock' items, and there are absolutely NO OTHER mistakes (meaning all other items have perfect status: 'match', and there is no phone number, names, or facility name mismatch), you MUST consider the order cleared!
      In this zero-mistake out-of-stock case, you MUST set output variable 'allMatch' to true, and output variable 'issueCount' to 0 (or count only actual mistakes in issueCount, excluding out-of-stock items so they do not block dispatch). This grants compliance clearance for takeoff/launch since no packaging errors exist, but still preserves the out-of-stock visual alert to notify the clinical facility. Set 'verdict' to something like: 'Cleared for dispatch: No packing mistakes, but some items are out of stock.'
@@ -495,10 +538,28 @@ ADDITIONAL AUDIT CONSTRAINTS:
    * "(Sakogu HC) Nifedipine Retard Tablet, 20mg": 100
    * "(Yagba HC) Nifedipine Retard Tablet, 20mg": 1000
    * "Olanzapine 5mg Tablet": 200
+   * "ORS": 25
+   * "ORT": 25
+   * "ORS Powder": 25
+   * "ORS Sachet": 25
+   * "ORS Sachets": 25
+   * "Oral Rehydration Salt": 25
+   * "Oral Rehydration Salts": 25
+   * "Oral Rehydration Therapy": 25
+   * "Oral Rehydration Salts (ORS)": 25
    * "Oral Rehydration Salt Powder": 25
    * "Oral Rehydration Salt Powder (Flavoured)": 25
    * "(Gbintiri HC) Oral Rehydration Salt Powder": 25
    * "(Sakogu HC) Oral Rehydration Salt Powder": 25
+   * "Malaria RDT": 25
+   * "Malaria RDT Kit": 25
+   * "Malaria RDT Kits": 25
+   * "Malaria Rapid Diagnostic Test": 25
+   * "Malaria Rapid Diagnostic Test Kit": 25
+   * "mRDT": 25
+   * "RDT": 25
+   * "RDT Kit": 25
+   * "RDT Kits": 25
    * "Paracetamol 125mg Suppository": 10
    * "Paracetamol 250mg Suppository": 100
    * "Paracetamol Suppository, 500mg[100]": 100
@@ -931,11 +992,11 @@ app.post('/api/verify', async (req, res) => {
     if (payload && Array.isArray(payload.items)) {
       const whatsappLower = (whatsappMessage || '').toLowerCase();
       
-      const whatsappHasMrDiluent = whatsappLower.includes('mr diluent') || whatsappLower.includes('measles diluent') || (whatsappLower.includes('diluent') && (whatsappLower.includes('mr') || whatsappLower.includes('measles')));
-      const whatsappHasMenADiluent = whatsappLower.includes('men a diluent') || whatsappLower.includes('mena diluent') || (whatsappLower.includes('diluent') && (whatsappLower.includes('men a') || whatsappLower.includes('mena') || whatsappLower.includes('menafrivac')));
-      const whatsappHasBcgDiluent = whatsappLower.includes('bcg diluent') || (whatsappLower.includes('diluent') && whatsappLower.includes('bcg'));
-      const whatsappHasOpvDropper = whatsappLower.includes('opv dropper') || whatsappLower.includes('opv droppers') || (whatsappLower.includes('dropper') && (whatsappLower.includes('opv') || whatsappLower.includes('bopv') || whatsappLower.includes('polio')));
-      const whatsappHasRotaDropper = whatsappLower.includes('rota dropper') || whatsappLower.includes('rota droppers') || whatsappLower.includes('rotavirus dropper') || whatsappLower.includes('rotavirus droppers') || (whatsappLower.includes('dropper') && (whatsappLower.includes('rota') || whatsappLower.includes('rotavirus')));
+      const whatsappHasMrDiluent = hasKeywordWithBoundaries(whatsappLower, 'mr diluent') || hasKeywordWithBoundaries(whatsappLower, 'measles diluent') || hasKeywordWithBoundaries(whatsappLower, 'measles-rubella diluent') || (hasKeywordWithBoundaries(whatsappLower, 'diluent') && (hasKeywordWithBoundaries(whatsappLower, 'mr vaccine') || hasKeywordWithBoundaries(whatsappLower, 'measles') || hasKeywordWithBoundaries(whatsappLower, 'rubella')));
+      const whatsappHasMenADiluent = hasKeywordWithBoundaries(whatsappLower, 'men a diluent') || hasKeywordWithBoundaries(whatsappLower, 'mena diluent') || (hasKeywordWithBoundaries(whatsappLower, 'diluent') && (hasKeywordWithBoundaries(whatsappLower, 'men a') || hasKeywordWithBoundaries(whatsappLower, 'mena') || hasKeywordWithBoundaries(whatsappLower, 'menafrivac')));
+      const whatsappHasBcgDiluent = hasKeywordWithBoundaries(whatsappLower, 'bcg diluent') || (hasKeywordWithBoundaries(whatsappLower, 'diluent') && hasKeywordWithBoundaries(whatsappLower, 'bcg'));
+      const whatsappHasOpvDropper = hasKeywordWithBoundaries(whatsappLower, 'opv dropper') || hasKeywordWithBoundaries(whatsappLower, 'opv droppers') || (hasKeywordWithBoundaries(whatsappLower, 'dropper') && (hasKeywordWithBoundaries(whatsappLower, 'opv') || hasKeywordWithBoundaries(whatsappLower, 'bopv') || hasKeywordWithBoundaries(whatsappLower, 'polio')));
+      const whatsappHasRotaDropper = hasKeywordWithBoundaries(whatsappLower, 'rota dropper') || hasKeywordWithBoundaries(whatsappLower, 'rota droppers') || hasKeywordWithBoundaries(whatsappLower, 'rotavirus dropper') || hasKeywordWithBoundaries(whatsappLower, 'rotavirus droppers') || (hasKeywordWithBoundaries(whatsappLower, 'dropper') && (hasKeywordWithBoundaries(whatsappLower, 'rota') || hasKeywordWithBoundaries(whatsappLower, 'rotavirus')));
 
       payload.items = payload.items.map((item: any) => {
         if (!item) return item;
@@ -1016,7 +1077,7 @@ app.post('/api/verify', async (req, res) => {
           vaccineName: 'BCG Vaccine'
         },
         {
-          vaccineKeywords: ['opv', 'bopv', 'oral polio', 'oral polio vaccine', 'polio', 'polio vaccine', 'opv vaccine', 'bopv vaccine'],
+          vaccineKeywords: ['opv', 'bopv', 'oral polio', 'oral polio vaccine', 'opv vaccine', 'bopv vaccine'],
           diluentKeywords: [
             'opv dropper', 'opv droppers', 'bopv dropper', 'bopv droppers', 'oral polio dropper', 'oral polio droppers',
             'polio dropper', 'polio droppers', 'opv vaccine dropper', 'opv vaccine droppers', 'bopv vaccine dropper',
@@ -1053,15 +1114,18 @@ app.post('/api/verify', async (req, res) => {
           });
         });
 
-        // Check if vaccine keywords exist in WhatsApp message text directly
-        const lowerWa = (whatsappMessage || '').toLowerCase();
-        const hasVaccineInMsg = group.vaccineKeywords.some(keyword => {
-          return lowerWa.includes(keyword);
-        });
+        // Check if vaccine item is requested in payload.items or explicitly in WhatsApp message text (excluding honorific titles like Mr. in contact names)
+        const isVaccineInItems = !!(vaccineItem && 
+          vaccineItem.status !== 'out of stock' && 
+          vaccineItem.requested && 
+          vaccineItem.requested !== 'None' && 
+          vaccineItem.requested !== '0' && 
+          !vaccineItem.requested.toLowerCase().includes('none') &&
+          !vaccineItem.requested.toLowerCase().includes('0'));
 
-        const isVaccineRequested = vaccineItem 
-          ? (vaccineItem.status !== 'out of stock' && vaccineItem.requested && vaccineItem.requested !== 'None' && vaccineItem.requested !== '0')
-          : hasVaccineInMsg;
+        const isVaccineInWaText = isVaccineExplicitlyInWhatsApp(whatsappMessage, group);
+
+        const isVaccineRequested = isVaccineInItems || isVaccineInWaText;
 
         if (isVaccineRequested) {
           // Verify vaccine is not out of stock
@@ -1102,8 +1166,8 @@ app.post('/api/verify', async (req, res) => {
               const lineHasDiluentOrDropper = group.preferredDiluentName.toLowerCase().includes('dropper')
                 ? line.includes('dropper')
                 : line.includes('diluent');
-              const lineHasVaccineKeyword = group.vaccineKeywords.some(kw => line.includes(kw));
-              return group.diluentKeywords.some(keyword => line.includes(keyword)) || (lineHasDiluentOrDropper && lineHasVaccineKeyword);
+              const lineHasVaccineKeyword = group.vaccineKeywords.some(kw => hasKeywordWithBoundaries(line, kw));
+              return group.diluentKeywords.some(keyword => hasKeywordWithBoundaries(line, keyword)) || (lineHasDiluentOrDropper && lineHasVaccineKeyword);
             });
 
             const isDiluentInFfLog = hasFoundDiluentInItems || hasMatchedLineInFf;
@@ -1118,8 +1182,8 @@ app.post('/api/verify', async (req, res) => {
                 const lineHasDiluentOrDropper = group.preferredDiluentName.toLowerCase().includes('dropper')
                   ? line.includes('dropper')
                   : line.includes('diluent');
-                const lineHasVaccineKeyword = group.vaccineKeywords.some(kw => line.includes(kw));
-                const isLineMatched = group.diluentKeywords.some(keyword => line.includes(keyword)) || (lineHasDiluentOrDropper && lineHasVaccineKeyword);
+                const lineHasVaccineKeyword = group.vaccineKeywords.some(kw => hasKeywordWithBoundaries(line, kw));
+                const isLineMatched = group.diluentKeywords.some(keyword => hasKeywordWithBoundaries(line, keyword)) || (lineHasDiluentOrDropper && lineHasVaccineKeyword);
                 
                 if (isLineMatched) {
                   const match = line.match(/(\d+)/);
@@ -1218,41 +1282,17 @@ app.post('/api/verify', async (req, res) => {
           }
         }
 
-        if (item.status === 'out of stock') {
-          const nameLower = (item.name || '').toLowerCase();
-          const isVaccine = (item.category || '').toLowerCase() === 'vaccine' || 
-                            ['yellow fever', 'yf', 'yfv', 'measles', 'mr', 'opv', 'bopv', 'ipv', 'pcv', 'penta', 'td', 'tt', 'rota', 'rotavirus', 'hpv', 'men', 'moderna', 'pfizer', 'janssen', 'covishield', 'rts,s', 'mosquirix'].some(v => nameLower.includes(v));
-          
-          if (isVaccine) {
-            // Find the requested quantity number
-            const matchNum = (item.requested || '').match(/\d+/);
-            if (matchNum) {
-              const numStr = matchNum[0];
-              // Check if fulfillmentConfirmation contains 0/numStr or 0 / numStr or similar
-              const regex = new RegExp('0\\s*/\\s*' + numStr);
-              const isFormPresent = regex.test(fulfillmentConfirmation || '');
-              
-              if (!isFormPresent) {
-                // If the required 0/X form is not present in fulfillmentConfirmation, it CANNOT be considered out of stock!
-                // Change it to missing item instead
-                return {
-                  ...item,
-                  status: 'missing item',
-                  action: `Missing item: Add requested quantity of ${item.name} to fulfillment. (Vaccines are only considered out of stock if explicitly marked as 0/${numStr} in fulfillment confirmation)`
-                };
-              }
-            } else {
-              // If there's no quantity number in requested, we also can't verify 0/X form, but let's be safe. Let's fallback to missing item if 0/X is not found with any number
-              const regex = /0\s*\/\s*\d+/;
-              if (!regex.test(fulfillmentConfirmation || '')) {
-                return {
-                  ...item,
-                  status: 'missing item',
-                  action: `Missing item: Add requested quantity of ${item.name} to fulfillment.`
-                };
-              }
-            }
-          }
+        // Handle items marked as out of stock or zero-fulfilled (e.g., 0 vials, 0/5, 0 loaded, 0 of 5)
+        const foundStr = (item.found || '').trim().toLowerCase();
+        const isZeroFound = foundStr === '0' || foundStr.startsWith('0 ') || foundStr.startsWith('0/') || foundStr.startsWith('0 of');
+        if (item.status === 'out of stock' || isZeroFound) {
+          const currentAction = item.action || '';
+          const cleanAction = currentAction.startsWith('Missing item:') || !currentAction ? `OSU ALERT: ${item.name} is out of stock.` : currentAction;
+          return {
+            ...item,
+            status: 'out of stock',
+            action: cleanAction
+          };
         }
         return item;
       });
@@ -1374,7 +1414,7 @@ app.post('/api/verify', async (req, res) => {
           vaccineName: 'BCG Vaccine'
         },
         {
-          vaccineKeywords: ['opv', 'bopv', 'oral polio', 'oral polio vaccine', 'polio', 'polio vaccine', 'opv vaccine', 'bopv vaccine'],
+          vaccineKeywords: ['opv', 'bopv', 'oral polio', 'oral polio vaccine', 'opv vaccine', 'bopv vaccine'],
           diluentKeywords: [
             'opv dropper', 'opv droppers', 'bopv dropper', 'bopv droppers', 'oral polio dropper', 'oral polio droppers',
             'polio dropper', 'polio droppers', 'opv vaccine dropper', 'opv vaccine droppers', 'bopv vaccine dropper',
@@ -1444,12 +1484,48 @@ app.post('/api/verify', async (req, res) => {
       });
     }
 
+    // Post-process payload to enforce Product Internal Quantity Equivalency for ORS and Malaria RDT (internal quantity = 25):
+    if (payload && Array.isArray(payload.items)) {
+      payload.items = payload.items.map((item: any) => {
+        if (!item || !item.name) return item;
+        const nameLower = item.name.toLowerCase().trim();
+        const isOrs =
+          hasKeywordWithBoundaries(nameLower, 'ors') ||
+          hasKeywordWithBoundaries(nameLower, 'ort') ||
+          nameLower.includes('oral rehydration');
+
+        const isRdt =
+          hasKeywordWithBoundaries(nameLower, 'rdt') ||
+          hasKeywordWithBoundaries(nameLower, 'mrdt') ||
+          nameLower.includes('malaria rdt') ||
+          nameLower.includes('rapid diagnostic');
+
+        if (isOrs || isRdt) {
+          const numReq = extractNumber(item.requested);
+          const numFound = extractNumber(item.found);
+
+          if (numReq !== null && numFound !== null) {
+            // Internal quantity ratio for ORS and Malaria RDT is 25: 1 box/pack = 25 units/tests
+            if (numFound === numReq * 25 || numReq === numFound * 25 || numFound === numReq) {
+              return {
+                ...item,
+                status: 'match',
+                action: 'None'
+              };
+            }
+          }
+        }
+        return item;
+      });
+    }
+
     // Post-process payload to reconcile routine vaccine abbreviations:
     if (payload && Array.isArray(payload.items)) {
       const vaccineSynonymsGroup = [
         ['bcg', 'bacillus calmette-guérin', 'bacillus calmette–guérin'],
-        ['opv', 'oral polio vaccine', 'bopv'],
-        ['ipv', 'inactivated polio vaccine'],
+        ['bopv', 'bopv vaccine', 'bivalent oral polio vaccine', 'bivalent oral polio'],
+        ['opv', 'opv vaccine', 'oral polio vaccine', 'oral polio'],
+        ['ipv', 'ipv vaccine', 'inactivated polio vaccine', 'inactivated polio'],
         ['penta', 'pentavalent', 'pentavalent vaccine', 'pentavalent vaccine (diphtheria, pertussis, tetanus, hepatitis b, hib)'],
         ['pcv', 'pcv13', 'pneumococcal conjugate vaccine'],
         ['rota', 'rotavirus', 'rotavirus vaccine'],
@@ -1560,10 +1636,6 @@ app.post('/api/verify', async (req, res) => {
             const isExDil = group.diluentKeywords.some(dk => exLower.includes(dk));
             const isItemDil = group.diluentKeywords.some(dk => nameLower.includes(dk));
             if (isExDil && isItemDil) return true;
-            
-            const isExVac = group.vaccineKeywords.some(vk => exLower.includes(vk)) && !exLower.includes('diluent') && !exLower.includes('dropper');
-            const isItemVac = group.vaccineKeywords.some(vk => nameLower.includes(vk)) && !nameLower.includes('diluent') && !nameLower.includes('dropper');
-            if (isExVac && isItemVac) return true;
           }
           return false;
         });
@@ -2017,6 +2089,215 @@ app.delete('/api/osu', (req, res) => {
     osuItems = osuItems.filter(i => i.toLowerCase() !== item.trim().toLowerCase());
   }
   res.json(osuItems);
+});
+
+// ==========================================
+// VACCINE ALLOCATION VALIDATION & TRACKING ROUTES
+// ==========================================
+
+// Get all facilities with their current vaccine allocations
+app.get('/api/vaccine/allocations', async (req, res) => {
+  try {
+    const facilities = vaccineService.getAllFacilities();
+    return res.json(facilities);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Get specific facility allocation by ID
+app.get('/api/vaccine/allocations/:id', async (req, res) => {
+  try {
+    const facility = vaccineService.getFacilityById(req.params.id);
+    if (!facility) return res.status(404).json({ error: 'Facility not found' });
+    return res.json(facility);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Clear allocations to pave way for a new cycle / prepare for live operational use
+app.post('/api/vaccine/allocations/clear', async (req, res) => {
+  try {
+    const { clearHistory, newCycleName } = req.body || {};
+    const result = vaccineService.clearAllAllocations({ clearHistory, newCycleName });
+    return res.json({ ...result, facilities: [] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Reset allocations to standard DCO baseline (including Konkoma SDA Clinic)
+app.post('/api/vaccine/allocations/reset-demo', async (req, res) => {
+  try {
+    const facilities = vaccineService.resetDemoAllocations();
+    return res.json({ success: true, facilities });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Import allocation tracker rows from parsed Excel/CSV
+app.post('/api/vaccine/allocations/upload', async (req, res) => {
+  try {
+    const { rows, updatedBy } = req.body;
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ error: 'Invalid payload: rows must be an array' });
+    }
+    const result = vaccineService.importAllocationsFromRows(rows, updatedBy);
+    return res.json({ success: true, ...result, facilities: vaccineService.getAllFacilities() });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Validate Vaccine Order: WhatsApp <-> FS Confirmation <-> Remaining Allocation
+app.post('/api/vaccine/validate', async (req, res) => {
+  try {
+    const { facilityId, orderSource, whatsappMessage, fulfillmentConfirmation } = req.body;
+    if (!facilityId) {
+      return res.status(400).json({ error: 'Facility ID is required.' });
+    }
+    const result = vaccineService.validateVaccineOrder({
+      facilityId,
+      orderSource: orderSource || 'whatsapp',
+      whatsappMessage: whatsappMessage || '',
+      fulfillmentConfirmation: fulfillmentConfirmation || ''
+    });
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Concurrency-Safe Final Confirmation & Automatic Tracker Update
+app.post('/api/vaccine/confirm', async (req, res) => {
+  try {
+    const { facilityId, orderSource, items, ccaUser, orderId, rawOrderText, rawFsText } = req.body;
+    if (!facilityId || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Facility ID and valid order items are required.' });
+    }
+
+    const result = await vaccineService.confirmVaccineOrder({
+      facilityId,
+      orderSource: orderSource || 'whatsapp',
+      items,
+      ccaUser: ccaUser || 'CCA Advocate',
+      orderId,
+      rawOrderText,
+      rawFsText
+    });
+
+    if (!result.success) {
+      return res.status(409).json({ error: result.error });
+    }
+
+    // Persist to Firestore asynchronously for cloud resilience
+    if (result.updatedFacility) {
+      try {
+        const db = getFirestoreDb();
+        await setDoc(doc(db, 'vaccine_allocations', result.updatedFacility.id), result.updatedFacility, { merge: true });
+        if (result.transaction) {
+          await setDoc(doc(db, 'vaccine_transactions', result.transaction.id), result.transaction);
+        }
+      } catch (fErr) {
+        console.warn('Background Firestore sync for vaccine transaction:', fErr);
+      }
+    }
+
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Record DCO Quota Adjustment (+/- without overwriting original historical allocation)
+app.post('/api/vaccine/adjust', async (req, res) => {
+  try {
+    const { facilityId, vaccine, adjustment, reason, user } = req.body;
+    if (!facilityId || !vaccine || isNaN(adjustment)) {
+      return res.status(400).json({ error: 'Facility ID, vaccine, and numeric adjustment are required.' });
+    }
+
+    const result = vaccineService.recordAllocationAdjustment({
+      facilityId,
+      vaccine,
+      adjustment: Number(adjustment),
+      reason: reason || 'DCO authorized quota update',
+      user: user || 'DCO Officer'
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Persist adjustment to Firestore
+    if (result.updatedFacility) {
+      try {
+        const db = getFirestoreDb();
+        await setDoc(doc(db, 'vaccine_allocations', result.updatedFacility.id), result.updatedFacility, { merge: true });
+      } catch (fErr) {
+        console.warn('Background Firestore sync for vaccine adjustment:', fErr);
+      }
+    }
+
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Fetch transaction history
+app.get('/api/vaccine/transactions', async (req, res) => {
+  try {
+    const transactions = vaccineService.getTransactions();
+    return res.json(transactions);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Fetch adjustments history
+app.get('/api/vaccine/adjustments', async (req, res) => {
+  try {
+    const adjustments = vaccineService.getAdjustments();
+    return res.json(adjustments);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Fetch product aliases
+app.get('/api/vaccine/aliases', async (req, res) => {
+  try {
+    return res.json(vaccineService.getAliases());
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Update product aliases
+app.post('/api/vaccine/aliases', async (req, res) => {
+  try {
+    const { aliases } = req.body;
+    if (!aliases || typeof aliases !== 'object') {
+      return res.status(400).json({ error: 'Valid aliases dictionary required' });
+    }
+    const updated = vaccineService.updateAliases(aliases);
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Vaccine Dashboard Metrics
+app.get('/api/vaccine/dashboard', async (req, res) => {
+  try {
+    const metrics = vaccineService.getDashboardMetrics();
+    return res.json(metrics);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 
@@ -2666,6 +2947,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.error("Extension compiler error:", error);
     res.status(500).json({ error: error.message || 'Unable to pack extension files' });
   }
+});
+
+// Error handling middleware (e.g. PayloadTooLargeError)
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+    console.error('Payload too large error:', err);
+    return res.status(413).json({
+      error: 'Payload Too Large: The uploaded data exceeds the server size limit. Please ensure file or payload is within 50MB.',
+      type: 'entity.too.large'
+    });
+  }
+  if (err) {
+    console.error('Unhandled server error:', err);
+    return res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
+  }
+  next();
 });
 
 

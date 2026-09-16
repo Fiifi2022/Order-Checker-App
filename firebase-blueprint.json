@@ -40,6 +40,18 @@
     "audits": {
       "schema": "auditRecord",
       "description": "Storage for audited order logs and validation records."
+    },
+    "vaccine_allocations": {
+      "schema": "auditRecord",
+      "description": "Storage for DCO facility vaccine allocations and remaining balances."
+    },
+    "vaccine_transactions": {
+      "schema": "auditRecord",
+      "description": "Immutable ledger of confirmed vaccine allocation order deductions."
+    },
+    "vaccine_adjustments": {
+      "schema": "auditRecord",
+      "description": "Ledger of DCO quota adjustments and authorizations."
     }
   }
 }

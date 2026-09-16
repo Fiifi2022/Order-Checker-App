@@ -72,5 +72,26 @@ service cloud.firestore {
       // Deletion is strictly forbidden for audit records to preserve historical chain of custody
       allow delete: if false;
     }
+
+    // Vaccine Allocations Collection
+    match /vaccine_allocations/{docId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(docId);
+      allow delete: if false;
+    }
+
+    // Vaccine Transactions Collection (Immutable Audit Trail)
+    match /vaccine_transactions/{docId} {
+      allow get, list: if true;
+      allow create: if isValidId(docId);
+      allow update, delete: if false; // Immutable audit log
+    }
+
+    // Vaccine Adjustments Collection
+    match /vaccine_adjustments/{docId} {
+      allow get, list: if true;
+      allow create: if isValidId(docId);
+      allow update, delete: if false; // Immutable record
+    }
   }
 }
