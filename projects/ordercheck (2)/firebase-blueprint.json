@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "auditRecord": {
+      "title": "AuditRecord",
+      "description": "Represents an analyzed Zipline Ghana customer care dispatch audit verification record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the audit" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "ISO timestamp when the audit was conducted" },
+        "whatsappMessage": { "type": "string", "description": "The custom customer text" },
+        "fulfillmentConfirmation": { "type": "string", "description": "The warehouse logistics log" },
+        "confidence": { "type": "integer", "description": "AI matching confidence level" },
+        "verdict": { "type": "string", "description": "Visual human verdict summary" },
+        "allMatch": { "type": "boolean", "description": "True if there are zero discrepancies" },
+        "issueCount": { "type": "integer", "description": "Number of visual mismatch issues identified" },
+        "items": {
+          "type": "array",
+          "description": "Sub-items compared"
+        },
+        "meta": {
+          "type": "object",
+          "description": "Customer, phone, and facility metadata assertions"
+        },
+        "insights": {
+          "type": "array",
+          "description": "Natural language bullet highlights"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "resolved", "ignored"],
+          "description": "The status of the audit record in the ledger"
+        },
+        "resolutionNotes": { "type": "string", "description": "Notes made by human operator on resolution" },
+        "resolvedAt": { "type": "string", "format": "date-time", "description": "ISO timestamp when resolution occurred" }
+      },
+      "required": ["id", "timestamp", "whatsappMessage", "fulfillmentConfirmation", "confidence", "verdict", "allMatch", "issueCount", "items", "meta", "insights", "status"]
+    },
+    "userRole": {
+      "title": "UserRole",
+      "description": "Represents an assigned role and permission level for a team member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of user role" },
+        "email": { "type": "string", "description": "Email address of the user" },
+        "name": { "type": "string", "description": "Display name of the user" },
+        "role": { "type": "string", "enum": ["admin", "warehouse", "cca", "auditor", "dco"], "description": "Role level" },
+        "district": { "type": "string", "description": "Assigned district scope or all" },
+        "createdAt": { "type": "string", "description": "Timestamp created" },
+        "updatedAt": { "type": "string", "description": "Timestamp updated" },
+        "addedBy": { "type": "string", "description": "Email of admin who assigned role" }
+      },
+      "required": ["id", "email", "name", "role"]
+    },
+    "activityLog": {
+      "title": "ActivityLog",
+      "description": "Represents an audited activity, recent edit, checker validation, deduction, or app usage event with actor details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of activity" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "ISO timestamp" },
+        "module": { "type": "string", "description": "Originating application module" },
+        "actionType": { "type": "string", "description": "Categorized action type" },
+        "title": { "type": "string", "description": "Short headline of the activity" },
+        "summary": { "type": "string", "description": "Human readable narrative describing the edit or event" },
+        "actor": { "type": "object", "description": "Individual who made the edit or triggered the action" },
+        "facility": { "type": "string", "description": "Associated health facility name" },
+        "district": { "type": "string", "description": "Associated district" },
+        "cycle": { "type": "string", "description": "Reporting month or cycle" },
+        "badgeType": { "type": "string", "description": "Visual status tag" },
+        "details": { "type": "object", "description": "Diffs, items, and verification payloads" }
+      },
+      "required": ["id", "timestamp", "module", "actionType", "summary", "actor"]
+    }
+  },
+  "firestore": {
+    "audits": {
+      "schema": "auditRecord",
+      "description": "Storage for audited order logs and validation records."
+    },
+    "vaccine_allocations": {
+      "schema": "auditRecord",
+      "description": "Storage for DCO facility vaccine allocations and remaining balances."
+    },
+    "vaccine_transactions": {
+      "schema": "auditRecord",
+      "description": "Immutable ledger of confirmed vaccine allocation order deductions."
+    },
+    "vaccine_adjustments": {
+      "schema": "auditRecord",
+      "description": "Ledger of DCO quota adjustments and authorizations."
+    },
+    "user_roles": {
+      "schema": "userRole",
+      "description": "Storage for team member roles and permissions."
+    },
+    "activity_logs": {
+      "schema": "activityLog",
+      "description": "Storage for audit trails of recent edits across Blueprint, Vaccine Checker, and App usage."
+    }
+  }
+}
