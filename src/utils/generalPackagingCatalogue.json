@@ -1,0 +1,874 @@
+[
+  {
+    "name": "Abacavir/Lamivudine 120mg/60mg Tablet",
+    "internalQuantity": 60
+  },
+  {
+    "name": "(Tantala CHPS) Albendazole Tablet, 400mg",
+    "internalQuantity": 20
+  },
+  {
+    "name": "(Jadema HC) Albendazole Tablet, 400mg",
+    "internalQuantity": 20
+  },
+  {
+    "name": "Aluminium Hydroxide 500mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Amlodipine 5mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Amlodipine 10mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Amodiaquine/Artesunate 50mg/135mg Tablet",
+    "internalQuantity": 30
+  },
+  {
+    "name": "Amodiaquine + Artesunate Tablet, 50mg +135 mg (1 - 5 yrs)",
+    "internalQuantity": 75
+  },
+  {
+    "name": "Amodiaquine/Artesunate 100mg/270mg Tablet",
+    "internalQuantity": 60
+  },
+  {
+    "name": "Amodiaquine + Artesunate Tablet 25mg + 67.5mg < 1yr [30] *",
+    "internalQuantity": 3
+  },
+  {
+    "name": "Amodiaquine/Artesunate 25mg/67.5mg Tablet",
+    "internalQuantity": 30
+  },
+  {
+    "name": "Amoxicillin Capsule, 250 mg [100]*",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Amoxicillin Capsule, 250 mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Katigri CHPS) Amoxicillin Capsule, 250 mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Nangrumah CHPS) Amoxicillin Capsule, 250 mg [10]",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Soo CHPS) Amoxicillin Capsule, 250 mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "Amoxicillin 500mg Capsule",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Amoxicillin 250mg Capsule",
+    "internalQuantity": 100
+  },
+  {
+    "name": "(Gbintiri HC) Amoxicillin Capsule, 250 mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Sakogu HC) Amoxicillin Capsule, 250 mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Jadema HC) Amoxicillin Capsule, 250 mg [10]",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Yagba HC) Amoxicillin Capsule, 250 mg [10]",
+    "internalQuantity": 500
+  },
+  {
+    "name": "Artemether 40mg/mL Injection",
+    "internalQuantity": 6
+  },
+  {
+    "name": "Artemether 80mg/mL Injection",
+    "internalQuantity": 5
+  },
+  {
+    "name": "Artesunate 500mg Suppository",
+    "internalQuantity": 6
+  },
+  {
+    "name": "Artesunate 100mg Suppository",
+    "internalQuantity": 2
+  },
+  {
+    "name": "Artemether + Lumefantrine Tablet, 20 mg + 120 mg [24*10]*",
+    "internalQuantity": 24
+  },
+  {
+    "name": "Artemether/Lumefantrine 20mg/120mg Tablet, 24's",
+    "internalQuantity": 240
+  },
+  {
+    "name": "Artemether/Lumefantrine 20mg/120mg Dispersible Tablet, 18's",
+    "internalQuantity": 180
+  },
+  {
+    "name": "Artemether/Lumefantrine 20mg/120mg Dispersible Tablet, 6's",
+    "internalQuantity": 60
+  },
+  {
+    "name": "(Soo CHPS) Artemether + Lumefantrine Tablet, 20 mg + 120 mg (Dispersible) 3-8yrs",
+    "internalQuantity": 360
+  },
+  {
+    "name": "Artemether + Lumefantrine Tablet, 20 mg + 120 mg (Dispersible) [6] <3yrs",
+    "internalQuantity": 6
+  },
+  {
+    "name": "Artemether + Lumefantrine Tablet, 20 mg + 120 mg (Dispersible) [12*10] 3-8yrs*",
+    "internalQuantity": 12
+  },
+  {
+    "name": "(Gbintiri HC) Artemether + Lumefantrine Tablet, 20 mg + 120 mg [24]",
+    "internalQuantity": 24
+  },
+  {
+    "name": "(Gbintiri HC) Artemether + Lumefantrine Tablet, 20 mg + 120 mg (Dispersible) [6]",
+    "internalQuantity": 6
+  },
+  {
+    "name": "(Sakogu HC) Artemether + Lumefantrine Tablet, 20 mg + 120 mg [24]",
+    "internalQuantity": 24
+  },
+  {
+    "name": "(Jadema HC) Artemether + Lumefantrine Tablet, 20 mg + 120 mg (Dispersible) [12] 3-8yrs",
+    "internalQuantity": 360
+  },
+  {
+    "name": "Artemether + Lumefantrine Tablet, 20 mg + 120 mg (Dispersible) [18] 3-8yrs",
+    "internalQuantity": 18
+  },
+  {
+    "name": "Artemether/Lumefantrine 20mg/120mg Dispersible Tablet, 12's",
+    "internalQuantity": 120
+  },
+  {
+    "name": "Artesunate Suppository, 100mg",
+    "internalQuantity": 2
+  },
+  {
+    "name": "Atropine 0.6mg/mL Injection",
+    "internalQuantity": 5
+  },
+  {
+    "name": "Cefuroxime 500mg Tablet",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Chlorpromazine 25mg/mL Injection, 2mL",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Chlorpheniramine 4mg Tablet",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Chlorpheniramine Tablet, 4mg [100]",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Ciprofloxacin 500mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Ciprofloxacin Tablet, 500mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Gbintiri HC) Ciprofloxacin Tablet, 500mg",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Sakogu HC) Ciprofloxacin Tablet, 500mg [100]",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Clindamycin Injection, 300mg/ml in 2ml [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Clotrimazole 100mg Pessary",
+    "internalQuantity": 6
+  },
+  {
+    "name": "Amoxicillin/Clavulanic acid 500mg/125mg Tablet",
+    "internalQuantity": 14
+  },
+  {
+    "name": "Amoxicillin/Clavulanic acid 875mg/125mg Tablet",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Gbintiri HC) Amoxycillin + Clavulanic Acid Tablet, 500mg + 125mg [14]",
+    "internalQuantity": 14
+  },
+  {
+    "name": "(Sakogu HC) Amoxycillin + Clavulanic Acid Tablet, 500mg + 125mg [14]",
+    "internalQuantity": 14
+  },
+  {
+    "name": "(Janga HSP) Amoxycillin + Clavulanic Acid Tablet, 500mg + 125mg [14]",
+    "internalQuantity": 14
+  },
+  {
+    "name": "Umbilical Cord Clamp",
+    "internalQuantity": 5
+  },
+  {
+    "name": "Sulphamethoxazole/Trimethoprim 400mg/80mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Covid - 19 Hologram Strip [100]",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Dihydroartemisinin/Piperaquine 20mg/160mg Tablet",
+    "internalQuantity": 3
+  },
+  {
+    "name": "Dihydroartemisinin/Piperaquine 40mg/320mg Tablet",
+    "internalQuantity": 3
+  },
+  {
+    "name": "Dihydroartemisinin/Piperaquine 60mg/480mg Tablet",
+    "internalQuantity": 3
+  },
+  {
+    "name": "Dihydroartemisinin/Piperaquine 80mg/640mg Tablet",
+    "internalQuantity": 3
+  },
+  {
+    "name": "(Gbintiri HC) Diazepam Injection, 5 mg/mL in 2ml [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Katigri CHPS) Diazepam Injection, 5 mg/mL in 2ml [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Nangrumah CHPS) Diazepam Injection, 5 mg/mL in 2ml [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Sakogu HC) Diazepam Injection, 5 mg/mL in 2ml [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Diazepam 10mg/mL Injection, 1mL",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Diazepam 5mg Tablet",
+    "internalQuantity": 50
+  },
+  {
+    "name": "Diazepam 10mg Tablet",
+    "internalQuantity": 50
+  },
+  {
+    "name": "Diclofenac 75mg Capsule",
+    "internalQuantity": 20
+  },
+  {
+    "name": "(Tantala CHPS) Diclofenac Gel, 30mg",
+    "internalQuantity": 12
+  },
+  {
+    "name": "(Tantala CHPS) Diclofenac Injection, 25mg/ml In 3ml[5]",
+    "internalQuantity": 5
+  },
+  {
+    "name": "(Nangrumah CHPS) Diclofenac Injection, 25mg/ml In 3ml[5]",
+    "internalQuantity": 5
+  },
+  {
+    "name": "Diclofenac Injection, 25mg/ml In 3ml [5]",
+    "internalQuantity": 5
+  },
+  {
+    "name": "(Gbintiri HC) Diclofenac Injection, 25mg/ml In 3ml[5]",
+    "internalQuantity": 5
+  },
+  {
+    "name": "(Sakogu HC) Diclofenac Injection, 25mg/ml In 3ml[5]",
+    "internalQuantity": 5
+  },
+  {
+    "name": "(Jadema HC) Diclofenac Injection, 25mg/ml In 3ml[5]",
+    "internalQuantity": 5
+  },
+  {
+    "name": "Diclofenac 50mg Suppository",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Diclofenac 100mg Suppository",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Diclofenac Suppository, 50mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Janga HSP) Diclofenac Suppository, 100mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Diclofenac 100mg Tablet",
+    "internalQuantity": 50
+  },
+  {
+    "name": "(Tantala CHPS) Diclofenac Tablet, 50mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "Diclofenac 50mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "(Gbintiri HC) Diclofenac Tablet, 50mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Sakogu HC) Diclofenac Tablet, 50mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Jadema HC) Diclofenac Tablet, 50mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Yagba HC) Diclofenac Tablet, 50mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "Dolutegravir/Lamivudine/Tenofovir 50mg/300mg/300mg Tablet",
+    "internalQuantity": 30
+  },
+  {
+    "name": "Dolutegravir 50mg Tablet",
+    "internalQuantity": 30
+  },
+  {
+    "name": "Erythromycin 250mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "(Jadema HC) Erythromycin Tablet, 250mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "Ferrous Sulphate 200mg Tablet",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Tantala CHPS) Ferrous Fumarate Tablet, 200 mg (Elemental Iron)",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "Ferrous Fumarate 200mg Tablet",
+    "internalQuantity": 500
+  },
+  {
+    "name": "Ferrous Sulphate Tablet, 200 mg (Elemental Iron) [500]",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Jadema HC) Ferrous Fumarate Tablet, 200 mg (Elemental Iron)",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "(Yagba HC) Ferrous Fumarate Tablet, 200 mg (Elemental Iron)",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "Ferrous Sulphate Tablet, 60 mg (Elemental Iron)",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "Fluconazole 150mg Capsule",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Fluoxetine Capsule 20mg",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Fluphenazine 25mg/mL Injection",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Folic acid 5mg Tablet",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Tantala CHPS) Folic Acid Tablet 5mg [10]",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "(Nangrumah CHPS) Folic Acid Tablet 5mg [10]",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "Folic Acid Tablet 5mg [100]",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Folic Acid Tablet 5mg [500]",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Gbintiri HC) Folic Acid Tablet 5mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Sakogu HC) Folic Acid Tablet 5mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Jadema HC) Folic Acid Tablet 5mg [10]",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "(Yagba HC) Folic Acid Tablet 5mg [10]",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "Furosemide 40mg Tablet",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Janga HSP) Furosemide Tablet, 40mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Surgical Gloves Size 7.5\"[10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Surgical Gloves Size 7\"[10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Surgical Gloves Size 8\"[10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Examination Gloves M/S [100]",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Hydroxycarbamide 500mg Capsule",
+    "internalQuantity": 100
+  },
+  {
+    "name": "(Gbintiri HC) Hyoscine Butylbromide Tablet, 10mg",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Hyoscine Butylbromide 10mg Tablet",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Hyoscine Butylbromide Tablet, 10mg [100]",
+    "internalQuantity": 100
+  },
+  {
+    "name": "(Gbintiri HC) Hyoscine Butylbromide Tablet, 10mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Sakogu HC) Hyoscine Butylbromide Tablet, 10mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Janga HSP) Hyoscine Butylbromide Tablet, 10mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Ibuprofen 200mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Ibuprofen 400mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Iron (III) Hydroxide Polymaltose Complex Capsule",
+    "internalQuantity": 30
+  },
+  {
+    "name": "Levonogestrel/Ethinylestradiol 150mcg/30mcg Tablet",
+    "internalQuantity": 84
+  },
+  {
+    "name": "Levonorgestrel/Ethinylestrastradiol 0.15mg/0.03mg Tablet",
+    "internalQuantity": 84
+  },
+  {
+    "name": "Lisinopril 10mg Tablet",
+    "internalQuantity": 500
+  },
+  {
+    "name": "Medroxyprogesterone Acetate 104mg/0.65mL Injection",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Metformin 500mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Methyldopa 250mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Metronidazole 200mg Tablet",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Janga HSP) Metronidazole Tablet, 200mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Yagba HC) Metronidazole Tablet, 200mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Yagba HC) Metronidazole Tablet, 400mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Tantala CHPS) Metronidazole Tablet, 200mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Tantala CHPS) Metronidazole Tablet, 400mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Katigri CHPS) Metronidazole Tablet, 200mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Katigri CHPS) Metronidazole Tablet, 400mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Nangrumah CHPS) Metronidazole Tablet, 200mg [10]",
+    "internalQuantity": 500
+  },
+  {
+    "name": "Metronidazole 400mg Tablet",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Metronidazole Tablet, 200mg [100]",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Metronidazole Tablet, 400mg [100]",
+    "internalQuantity": 100
+  },
+  {
+    "name": "(Gbintiri HC) Metronidazole Tablet, 200mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Sakogu HC) Metronidazole Tablet, 200mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Sakogu HC) Metronidazole Tablet, 400mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Jadema HC) Metronidazole Tablet, 200mg [10]",
+    "internalQuantity": 500
+  },
+  {
+    "name": "(Jadema HC) Metronidazole Tablet, 400mg",
+    "internalQuantity": 500
+  },
+  {
+    "name": "Levonorgestrel 30mcg Tablet",
+    "internalQuantity": 105
+  },
+  {
+    "name": "Multivitamin Tablet",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Tantala CHPS) Multivitamin Tablet",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "(Katigri CHPS) Multivitamin Tablet",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "(Nangrumah CHPS) Multivitamin Tablet [10]",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "Multivitamin Tablet[10*10]",
+    "internalQuantity": 100
+  },
+  {
+    "name": "(Gbintiri HC) Multivitamin Tablet [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Sakogu HC) Multivitamin Tablet [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Jadema HC) Multivitamin Tablet [10]",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "(Yagba HC) Multivitamin Tablet [10]",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "Nifedipine 20mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "(Sakogu HC) Nifedipine Retard Tablet, 20mg",
+    "internalQuantity": 100
+  },
+  {
+    "name": "(Yagba HC) Nifedipine Retard Tablet, 20mg",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "Olanzapine 5mg Tablet",
+    "internalQuantity": 200
+  },
+  {
+    "name": "ORS",
+    "internalQuantity": 25
+  },
+  {
+    "name": "ORT",
+    "internalQuantity": 25
+  },
+  {
+    "name": "ORS Powder",
+    "internalQuantity": 25
+  },
+  {
+    "name": "ORS Sachet",
+    "internalQuantity": 25
+  },
+  {
+    "name": "ORS Sachets",
+    "internalQuantity": 25
+  },
+  {
+    "name": "Oral Rehydration Salt",
+    "internalQuantity": 25
+  },
+  {
+    "name": "Oral Rehydration Salts",
+    "internalQuantity": 25
+  },
+  {
+    "name": "Oral Rehydration Therapy",
+    "internalQuantity": 25
+  },
+  {
+    "name": "Oral Rehydration Salts (ORS)",
+    "internalQuantity": 25
+  },
+  {
+    "name": "Oral Rehydration Salt Powder",
+    "internalQuantity": 25
+  },
+  {
+    "name": "Oral Rehydration Salt Powder (Flavoured)",
+    "internalQuantity": 25
+  },
+  {
+    "name": "(Gbintiri HC) Oral Rehydration Salt Powder",
+    "internalQuantity": 25
+  },
+  {
+    "name": "(Sakogu HC) Oral Rehydration Salt Powder",
+    "internalQuantity": 25
+  },
+  {
+    "name": "Malaria RDT",
+    "internalQuantity": 25
+  },
+  {
+    "name": "Malaria RDT Kit",
+    "internalQuantity": 25
+  },
+  {
+    "name": "Malaria RDT Kits",
+    "internalQuantity": 25
+  },
+  {
+    "name": "Malaria Rapid Diagnostic Test",
+    "internalQuantity": 25
+  },
+  {
+    "name": "Malaria Rapid Diagnostic Test Kit",
+    "internalQuantity": 25
+  },
+  {
+    "name": "mRDT",
+    "internalQuantity": 25
+  },
+  {
+    "name": "RDT",
+    "internalQuantity": 25
+  },
+  {
+    "name": "RDT Kit",
+    "internalQuantity": 25
+  },
+  {
+    "name": "RDT Kits",
+    "internalQuantity": 25
+  },
+  {
+    "name": "Paracetamol 125mg Suppository",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Paracetamol 250mg Suppository",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Paracetamol Suppository, 500mg[100]",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Paracetamol Suppository, 250mg[10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Paracetamol 500mg Suppository",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Paracetamol 1000mg Suppository",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Paracetamol 500 mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "(Tantala CHPS) Paracetamol Tablet, 500 mg",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "(Katigri CHPS) Paracetamol Tablet, 500 mg",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "(Nangrumah CHPS) Paracetamol Tablet, 500 mg [10]",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "(Soo CHPS) Paracetamol Tablet, 500 mg",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "(Gbintiri HC) Paracetamol Tablet, 500 mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Sakogu HC) Paracetamol Tablet, 500 mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Jadema HC) Paracetamol Tablet, 500 mg [10]",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "(Janga HSP) Paracetamol Tablet, 500 mg [10]",
+    "internalQuantity": 10
+  },
+  {
+    "name": "(Yagba HC) Paracetamol Tablet, 500 mg [10]",
+    "internalQuantity": 1000
+  },
+  {
+    "name": "Promethazine Hydrocloride 1mg/0.5mL Injection",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Risperidone 2mg Tablet",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Salbutamol 4mg Tablet",
+    "internalQuantity": 10
+  },
+  {
+    "name": "Salbutamol Tablet, 4mg [5*10]",
+    "internalQuantity": 50
+  },
+  {
+    "name": "Sulphadoxine/Pyrimethamine/Amodiaquine, 250mg/12.5mg/75mg Tablet",
+    "internalQuantity": 4
+  },
+  {
+    "name": "Sulphadoxine/Pyrimethamine /Amodiaquine, 500mg/25mg/153mg Tablet",
+    "internalQuantity": 4
+  },
+  {
+    "name": "Sulphadoxine/Pyrimethamine 500mg/25mg Tablet",
+    "internalQuantity": 3
+  },
+  {
+    "name": "Sulphadoxine+Pyrimethamine Tablet, 525mg (IPT) [30]",
+    "internalQuantity": 30
+  },
+  {
+    "name": "Sulphadoxine + Pyrimethamine 500mg+25mg Tablet",
+    "internalQuantity": 150
+  },
+  {
+    "name": "Soloshots (Syringes & Needles)1ml [FP]",
+    "internalQuantity": 5
+  },
+  {
+    "name": "Syringes & Needles 5ml [5]",
+    "internalQuantity": 5
+  },
+  {
+    "name": "Vitamin A 100,000IU Capsule",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Vitamin A 200,000IU Capsule",
+    "internalQuantity": 500
+  },
+  {
+    "name": "Zinc 10mg Tablet",
+    "internalQuantity": 100
+  },
+  {
+    "name": "Zinc 20mg Tablet",
+    "internalQuantity": 10
+  }
+]

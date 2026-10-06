@@ -1,0 +1,2924 @@
+[
+  {
+    "canonicalName": "Paracetamol",
+    "normalizationName": "Paracetamol",
+    "aliases": [
+      "PCM",
+      "Para",
+      "Acetaminophen",
+      "Panadol",
+      "Paracetamol",
+      "Paracetamol tabs",
+      "Paracetamol tablets",
+      "PCM tabs",
+      "PCM syrup",
+      "Para syrup",
+      "Paracetamol syrup",
+      "paracetemol",
+      "paracitamol"
+    ],
+    "acronyms": [
+      "PCM"
+    ],
+    "genericName": "Paracetamol",
+    "brandNames": [
+      "Panadol"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Ibuprofen",
+    "normalizationName": "Ibuprofen",
+    "aliases": [
+      "Ibu",
+      "Brufen",
+      "Nurofen",
+      "Advil",
+      "Ibuprofen"
+    ],
+    "acronyms": [],
+    "genericName": "Ibuprofen",
+    "brandNames": [
+      "Brufen",
+      "Nurofen",
+      "Advil"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Diclofenac",
+    "normalizationName": "Diclofenac",
+    "aliases": [
+      "Diclo",
+      "Voltaren",
+      "Diclofenac",
+      "Diclofenac sodium"
+    ],
+    "acronyms": [],
+    "genericName": "Diclofenac",
+    "brandNames": [
+      "Voltaren"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve sodium versus potassium and any specified release formulation."
+  },
+  {
+    "canonicalName": "Aspirin",
+    "normalizationName": "Aspirin",
+    "aliases": [
+      "ASA",
+      "Acetylsalicylic acid",
+      "Aspirin"
+    ],
+    "acronyms": [
+      "ASA"
+    ],
+    "genericName": "Aspirin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Tramadol",
+    "normalizationName": "Tramadol",
+    "aliases": [
+      "Tramal",
+      "Tram",
+      "Tramadol"
+    ],
+    "acronyms": [],
+    "genericName": "Tramadol",
+    "brandNames": [
+      "Tramal"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Morphine",
+    "normalizationName": "Morphine",
+    "aliases": [
+      "Morphine",
+      "Morphine sulphate",
+      "Morphine sulfate"
+    ],
+    "acronyms": [],
+    "genericName": "Morphine",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve any explicitly specified salt, release type and route."
+  },
+  {
+    "canonicalName": "Pethidine",
+    "normalizationName": "Pethidine",
+    "aliases": [
+      "Meperidine",
+      "Pethidine"
+    ],
+    "acronyms": [],
+    "genericName": "Pethidine",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Artemether/Lumefantrine",
+    "normalizationName": "Artemether Lumefantrine",
+    "aliases": [
+      "AL",
+      "A/L",
+      "ACT",
+      "Coartem",
+      "Artemether Lumefantrine",
+      "Artemether/Lumefantrine",
+      "malaria tablets",
+      "malaria drug"
+    ],
+    "acronyms": [
+      "AL",
+      "A/L",
+      "ACT"
+    ],
+    "genericName": "Artemether/Lumefantrine",
+    "brandNames": [
+      "Coartem"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "malaria tablets",
+      "malaria drug",
+      "ACT"
+    ],
+    "note": "ACT is a therapeutic class. Preserve other ACT combinations; malaria drug/tablets are ambiguous."
+  },
+  {
+    "canonicalName": "Artesunate",
+    "normalizationName": "Artesunate",
+    "aliases": [
+      "Artesunate",
+      "Artesunate inj",
+      "Injectable artesunate",
+      "IV artesunate"
+    ],
+    "acronyms": [],
+    "genericName": "Artesunate",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Quinine",
+    "normalizationName": "Quinine",
+    "aliases": [
+      "Quinine",
+      "Quinine tabs",
+      "Quinine injection"
+    ],
+    "acronyms": [],
+    "genericName": "Quinine",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Malaria Rapid Diagnostic Test",
+    "normalizationName": "Malaria Rapid Diagnostic Test",
+    "aliases": [
+      "RDT",
+      "mRDT",
+      "MRDT",
+      "Malaria RDT",
+      "Malaria Rapid Test",
+      "Malaria test",
+      "Malaria test kit"
+    ],
+    "acronyms": [
+      "RDT",
+      "MRDT"
+    ],
+    "genericName": "Malaria Rapid Diagnostic Test",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Oral Rehydration Salts",
+    "normalizationName": "Oral Rehydration Salts",
+    "aliases": [
+      "ORS",
+      "ORT",
+      "Oral Rehydration",
+      "Rehydration salts",
+      "Oral rehydration salts",
+      "ORS sachet",
+      "ORS sachets"
+    ],
+    "acronyms": [
+      "ORS",
+      "ORT"
+    ],
+    "genericName": "Oral Rehydration Salts",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Oral Rehydration"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Zinc Sulphate",
+    "normalizationName": "Zinc Sulphate",
+    "aliases": [
+      "Zinc",
+      "Zinc tabs",
+      "Zinc tablet",
+      "Zinc sulphate",
+      "Zinc sulfate"
+    ],
+    "acronyms": [],
+    "genericName": "Zinc Sulphate",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Amoxicillin",
+    "normalizationName": "Amoxicillin",
+    "aliases": [
+      "Amox",
+      "Amoxil",
+      "Amoxicillin",
+      "Amoxicillin caps",
+      "Amoxicillin suspension",
+      "amoxicilin",
+      "amoxycillin"
+    ],
+    "acronyms": [],
+    "genericName": "Amoxicillin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Amoxicillin + Clavulanic Acid",
+    "normalizationName": "Amoxicillin + Clavulanic Acid",
+    "aliases": [
+      "Co-amoxiclav",
+      "Coamoxiclav",
+      "Amox-clav",
+      "Amoxiclav",
+      "Augmentin",
+      "Amoxicillin clavulanate",
+      "Amoxicillin clavulanic acid"
+    ],
+    "acronyms": [],
+    "genericName": "Amoxicillin + Clavulanic Acid",
+    "brandNames": [
+      "Augmentin"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Ampicillin",
+    "normalizationName": "Ampicillin",
+    "aliases": [
+      "Amp",
+      "Ampicillin"
+    ],
+    "acronyms": [],
+    "genericName": "Ampicillin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Cloxacillin",
+    "normalizationName": "Cloxacillin",
+    "aliases": [
+      "Clox",
+      "Cloxacillin"
+    ],
+    "acronyms": [],
+    "genericName": "Cloxacillin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Flucloxacillin",
+    "normalizationName": "Flucloxacillin",
+    "aliases": [
+      "Fluclox",
+      "Flucloxacillin"
+    ],
+    "acronyms": [],
+    "genericName": "Flucloxacillin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Ceftriaxone",
+    "normalizationName": "Ceftriaxone",
+    "aliases": [
+      "Ceftriaxone",
+      "Cef",
+      "Ceftriaxone inj",
+      "Rocephin",
+      "ceftrixone",
+      "ceftriaxon"
+    ],
+    "acronyms": [],
+    "genericName": "Ceftriaxone",
+    "brandNames": [
+      "Rocephin"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Cef"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Cefuroxime",
+    "normalizationName": "Cefuroxime",
+    "aliases": [
+      "Cefuroxime",
+      "Zinnat"
+    ],
+    "acronyms": [],
+    "genericName": "Cefuroxime",
+    "brandNames": [
+      "Zinnat"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Cefixime",
+    "normalizationName": "Cefixime",
+    "aliases": [
+      "Cefixime"
+    ],
+    "acronyms": [],
+    "genericName": "Cefixime",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Cefotaxime",
+    "normalizationName": "Cefotaxime",
+    "aliases": [
+      "Cefotaxime"
+    ],
+    "acronyms": [],
+    "genericName": "Cefotaxime",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Ciprofloxacin",
+    "normalizationName": "Ciprofloxacin",
+    "aliases": [
+      "Cipro",
+      "Ciprofloxacin",
+      "Cipro tabs",
+      "Cipro infusion",
+      "ciprofloxacine"
+    ],
+    "acronyms": [],
+    "genericName": "Ciprofloxacin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Levofloxacin",
+    "normalizationName": "Levofloxacin",
+    "aliases": [
+      "Levo",
+      "Levofloxacin"
+    ],
+    "acronyms": [],
+    "genericName": "Levofloxacin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Metronidazole",
+    "normalizationName": "Metronidazole",
+    "aliases": [
+      "Metro",
+      "Flagyl",
+      "Metronidazole",
+      "Metro tabs",
+      "Metro infusion",
+      "Flagyl infusion",
+      "metronidizole"
+    ],
+    "acronyms": [],
+    "genericName": "Metronidazole",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Azithromycin",
+    "normalizationName": "Azithromycin",
+    "aliases": [
+      "Azithro",
+      "Azi",
+      "Zithromax",
+      "Azithromycin"
+    ],
+    "acronyms": [],
+    "genericName": "Azithromycin",
+    "brandNames": [
+      "Zithromax"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Erythromycin",
+    "normalizationName": "Erythromycin",
+    "aliases": [
+      "Erythro",
+      "Erythromycin"
+    ],
+    "acronyms": [],
+    "genericName": "Erythromycin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Doxycycline",
+    "normalizationName": "Doxycycline",
+    "aliases": [
+      "Doxy",
+      "Doxycycline"
+    ],
+    "acronyms": [],
+    "genericName": "Doxycycline",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Gentamicin",
+    "normalizationName": "Gentamicin",
+    "aliases": [
+      "Gent",
+      "Gentamicin",
+      "Gentamicin inj"
+    ],
+    "acronyms": [],
+    "genericName": "Gentamicin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Benzylpenicillin",
+    "normalizationName": "Benzylpenicillin",
+    "aliases": [
+      "Penicillin G",
+      "Pen G",
+      "Benzyl penicillin",
+      "Benzylpenicillin"
+    ],
+    "acronyms": [],
+    "genericName": "Benzylpenicillin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Benzathine Penicillin",
+    "normalizationName": "Benzathine Penicillin",
+    "aliases": [
+      "Benzathine",
+      "Benzathine pen",
+      "Long acting penicillin",
+      "LA penicillin"
+    ],
+    "acronyms": [],
+    "genericName": "Benzathine Penicillin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Cotrimoxazole",
+    "normalizationName": "Co-trimoxazole",
+    "aliases": [
+      "Co-trimoxazole",
+      "Cotrim",
+      "Septrin",
+      "TMP-SMX",
+      "Trimethoprim sulfamethoxazole",
+      "Trimethoprim sulphamethoxazole"
+    ],
+    "acronyms": [
+      "TMP-SMX"
+    ],
+    "genericName": "Cotrimoxazole",
+    "brandNames": [
+      "Septrin"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Fluconazole",
+    "normalizationName": "Fluconazole",
+    "aliases": [
+      "Fluconazole",
+      "Fluco"
+    ],
+    "acronyms": [],
+    "genericName": "Fluconazole",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Clotrimazole",
+    "normalizationName": "Clotrimazole",
+    "aliases": [
+      "Clotrimazole",
+      "Canesten"
+    ],
+    "acronyms": [],
+    "genericName": "Clotrimazole",
+    "brandNames": [
+      "Canesten"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Nystatin",
+    "normalizationName": "Nystatin",
+    "aliases": [
+      "Nystatin"
+    ],
+    "acronyms": [],
+    "genericName": "Nystatin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Griseofulvin",
+    "normalizationName": "Griseofulvin",
+    "aliases": [
+      "Griseofulvin"
+    ],
+    "acronyms": [],
+    "genericName": "Griseofulvin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Albendazole",
+    "normalizationName": "Albendazole",
+    "aliases": [
+      "Albendazole",
+      "Alben",
+      "Dewormer",
+      "Deworming tablet"
+    ],
+    "acronyms": [],
+    "genericName": "Albendazole",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Dewormer",
+      "Deworming tablet"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Mebendazole",
+    "normalizationName": "Mebendazole",
+    "aliases": [
+      "Mebendazole",
+      "Meben",
+      "Deworming tablet"
+    ],
+    "acronyms": [],
+    "genericName": "Mebendazole",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Deworming tablet"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Praziquantel",
+    "normalizationName": "Praziquantel",
+    "aliases": [
+      "Praziquantel",
+      "PZQ"
+    ],
+    "acronyms": [
+      "PZQ"
+    ],
+    "genericName": "Praziquantel",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Ivermectin",
+    "normalizationName": "Ivermectin",
+    "aliases": [
+      "Ivermectin"
+    ],
+    "acronyms": [],
+    "genericName": "Ivermectin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Simple Linctus 125mg/5ml Syrup (Adult)",
+    "normalizationName": "Simple Linctus 125mg/5ml Syrup (Adult)",
+    "aliases": [
+      "Adult Simple Linctus",
+      "Simple Linctus Adult",
+      "Adult Linctus",
+      "Linctus Adult",
+      "Adult cough mixture",
+      "Adult cough syrup"
+    ],
+    "acronyms": [],
+    "genericName": "Simple Linctus",
+    "brandNames": [],
+    "formulation": "Syrup",
+    "strength": "125mg/5ml",
+    "category": "medicine",
+    "ageGroup": "Adult",
+    "contextualAliases": [
+      "Adult cough mixture",
+      "Adult cough syrup"
+    ],
+    "note": "Only explicit adult Simple Linctus/linctus aliases identify this configured product; adult cough syrup alone is ambiguous."
+  },
+  {
+    "canonicalName": "Simple Linctus 31.25mg/5ml Syrup (Paediatric)",
+    "normalizationName": "Simple Linctus 31.25mg/5ml Syrup (Paediatric)",
+    "aliases": [
+      "Paediatric Simple Linctus",
+      "Pediatric Simple Linctus",
+      "Child Simple Linctus",
+      "Children's Linctus",
+      "Child linctus",
+      "Paed linctus",
+      "Children's cough mixture",
+      "Children's cough syrup"
+    ],
+    "acronyms": [],
+    "genericName": "Simple Linctus",
+    "brandNames": [],
+    "formulation": "Syrup",
+    "strength": "31.25mg/5ml",
+    "category": "medicine",
+    "ageGroup": "Paediatric",
+    "contextualAliases": [
+      "Children's cough mixture",
+      "Children's cough syrup"
+    ],
+    "note": "Only explicit child/paediatric linctus aliases identify this configured product; child cough syrup alone is ambiguous."
+  },
+  {
+    "canonicalName": "Salbutamol",
+    "normalizationName": "Salbutamol",
+    "aliases": [
+      "Ventolin",
+      "Albuterol",
+      "Salbutamol",
+      "Salbutamol inhaler",
+      "Ventolin inhaler",
+      "Salbutamol nebules",
+      "Salbutamol neb"
+    ],
+    "acronyms": [],
+    "genericName": "Salbutamol",
+    "brandNames": [
+      "Ventolin"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Aminophylline",
+    "normalizationName": "Aminophylline",
+    "aliases": [
+      "Aminophylline",
+      "Aminophylline inj"
+    ],
+    "acronyms": [],
+    "genericName": "Aminophylline",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Beclometasone",
+    "normalizationName": "Beclometasone",
+    "aliases": [
+      "Beclomethasone",
+      "Beclometasone",
+      "Becotide"
+    ],
+    "acronyms": [],
+    "genericName": "Beclometasone",
+    "brandNames": [
+      "Becotide"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Chlorpheniramine",
+    "normalizationName": "Chlorpheniramine",
+    "aliases": [
+      "CPM",
+      "Chlorphenamine",
+      "Chlorpheniramine",
+      "Piriton"
+    ],
+    "acronyms": [
+      "CPM"
+    ],
+    "genericName": "Chlorpheniramine",
+    "brandNames": [
+      "Piriton"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Cetirizine",
+    "normalizationName": "Cetirizine",
+    "aliases": [
+      "Cetirizine",
+      "Cetrizine",
+      "Cetirizine tabs"
+    ],
+    "acronyms": [],
+    "genericName": "Cetirizine",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Loratadine",
+    "normalizationName": "Loratadine",
+    "aliases": [
+      "Lorat",
+      "Loratadine"
+    ],
+    "acronyms": [],
+    "genericName": "Loratadine",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Promethazine",
+    "normalizationName": "Promethazine",
+    "aliases": [
+      "Promethazine",
+      "Phenergan"
+    ],
+    "acronyms": [],
+    "genericName": "Promethazine",
+    "brandNames": [
+      "Phenergan"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Omeprazole",
+    "normalizationName": "Omeprazole",
+    "aliases": [
+      "Omep",
+      "Omeprazole",
+      "Losec"
+    ],
+    "acronyms": [],
+    "genericName": "Omeprazole",
+    "brandNames": [
+      "Losec"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Pantoprazole",
+    "normalizationName": "Pantoprazole",
+    "aliases": [
+      "Panto",
+      "Pantoprazole"
+    ],
+    "acronyms": [],
+    "genericName": "Pantoprazole",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Esomeprazole",
+    "normalizationName": "Esomeprazole",
+    "aliases": [
+      "Eso",
+      "Esomeprazole",
+      "Nexium"
+    ],
+    "acronyms": [],
+    "genericName": "Esomeprazole",
+    "brandNames": [
+      "Nexium"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Hyoscine Butylbromide",
+    "normalizationName": "Hyoscine Butylbromide",
+    "aliases": [
+      "Buscopan",
+      "Hyoscine",
+      "Hyoscine butylbromide"
+    ],
+    "acronyms": [],
+    "genericName": "Hyoscine Butylbromide",
+    "brandNames": [
+      "Buscopan"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Hyoscine"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Metoclopramide",
+    "normalizationName": "Metoclopramide",
+    "aliases": [
+      "Maxolon",
+      "Metoclopramide"
+    ],
+    "acronyms": [],
+    "genericName": "Metoclopramide",
+    "brandNames": [
+      "Maxolon"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Ondansetron",
+    "normalizationName": "Ondansetron",
+    "aliases": [
+      "Zofran",
+      "Ondansetron"
+    ],
+    "acronyms": [],
+    "genericName": "Ondansetron",
+    "brandNames": [
+      "Zofran"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Antacid",
+    "normalizationName": "Antacid",
+    "aliases": [
+      "Antacid",
+      "Magnesium trisilicate",
+      "MMT"
+    ],
+    "acronyms": [
+      "MMT"
+    ],
+    "genericName": "Antacid",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Antacid",
+      "MMT"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Hydrocortisone",
+    "normalizationName": "Hydrocortisone",
+    "aliases": [
+      "Hydrocortisone",
+      "HC",
+      "Hydrocort",
+      "Hydrocortisone inj"
+    ],
+    "acronyms": [
+      "HC"
+    ],
+    "genericName": "Hydrocortisone",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "HC"
+    ],
+    "note": "HC is also a health-centre abbreviation; only explicit product context can resolve it."
+  },
+  {
+    "canonicalName": "Dexamethasone",
+    "normalizationName": "Dexamethasone",
+    "aliases": [
+      "Dexa",
+      "Dex",
+      "Dexamethasone"
+    ],
+    "acronyms": [],
+    "genericName": "Dexamethasone",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Prednisolone",
+    "normalizationName": "Prednisolone",
+    "aliases": [
+      "Pred",
+      "Prednisolone"
+    ],
+    "acronyms": [],
+    "genericName": "Prednisolone",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Adrenaline",
+    "normalizationName": "Adrenaline",
+    "aliases": [
+      "Epinephrine",
+      "Epi",
+      "Adrenaline",
+      "Adrenaline inj"
+    ],
+    "acronyms": [],
+    "genericName": "Adrenaline",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Atropine",
+    "normalizationName": "Atropine",
+    "aliases": [
+      "Atropine"
+    ],
+    "acronyms": [],
+    "genericName": "Atropine",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Diazepam",
+    "normalizationName": "Diazepam",
+    "aliases": [
+      "Diazepam",
+      "Valium"
+    ],
+    "acronyms": [],
+    "genericName": "Diazepam",
+    "brandNames": [
+      "Valium"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Calcium Gluconate",
+    "normalizationName": "Calcium Gluconate",
+    "aliases": [
+      "Calcium gluconate",
+      "Calcium inj"
+    ],
+    "acronyms": [],
+    "genericName": "Calcium Gluconate",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Sodium Bicarbonate",
+    "normalizationName": "Sodium Bicarbonate",
+    "aliases": [
+      "NaHCO3",
+      "Bicarb",
+      "Sodium bicarb",
+      "Sodium bicarbonate"
+    ],
+    "acronyms": [
+      "NaHCO3"
+    ],
+    "genericName": "Sodium Bicarbonate",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Oxytocin",
+    "normalizationName": "Oxytocin",
+    "aliases": [
+      "Oxy",
+      "Oxytocin",
+      "Syntocinon",
+      "Oxytocin inj"
+    ],
+    "acronyms": [],
+    "genericName": "Oxytocin",
+    "brandNames": [
+      "Syntocinon"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Misoprostol",
+    "normalizationName": "Misoprostol",
+    "aliases": [
+      "Miso",
+      "Misoprostol",
+      "Cytotec"
+    ],
+    "acronyms": [],
+    "genericName": "Misoprostol",
+    "brandNames": [
+      "Cytotec"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Magnesium Sulphate",
+    "normalizationName": "Magnesium Sulphate",
+    "aliases": [
+      "MgSO4",
+      "Magnesium sulphate",
+      "Magnesium sulfate",
+      "Magnesium",
+      "Mag sulphate"
+    ],
+    "acronyms": [
+      "MgSO4"
+    ],
+    "genericName": "Magnesium Sulphate",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Magnesium"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Ferrous Sulphate",
+    "normalizationName": "Ferrous Sulphate",
+    "aliases": [
+      "Iron",
+      "Iron tabs",
+      "Ferrous",
+      "FeSO4",
+      "Ferrous sulfate",
+      "Ferrous sulphate"
+    ],
+    "acronyms": [],
+    "genericName": "Ferrous Sulphate",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Iron",
+      "Iron tabs",
+      "Ferrous"
+    ],
+    "note": "Iron/ferrous alone does not identify an iron salt. Preserve combinations with folic acid."
+  },
+  {
+    "canonicalName": "Folic Acid",
+    "normalizationName": "Folic Acid",
+    "aliases": [
+      "Folic",
+      "Folate",
+      "Folic acid"
+    ],
+    "acronyms": [],
+    "genericName": "Folic Acid",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Iron + Folic Acid",
+    "normalizationName": "Iron Folic Acid",
+    "aliases": [
+      "IFA",
+      "Iron folate",
+      "Iron folic",
+      "Iron + folic"
+    ],
+    "acronyms": [
+      "IFA"
+    ],
+    "genericName": "Iron + Folic Acid",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Sodium Chloride 0.9% Infusion",
+    "normalizationName": "Normal Saline",
+    "aliases": [
+      "NS",
+      "Normal Saline",
+      "0.9% Saline",
+      "0.9% Sodium Chloride",
+      "Normal salt solution",
+      "Saline",
+      "Sodium chloride infusion",
+      "NS drip"
+    ],
+    "acronyms": [
+      "NS"
+    ],
+    "genericName": "Sodium Chloride",
+    "brandNames": [],
+    "formulation": "Infusion",
+    "strength": "0.9%",
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Saline",
+      "Sodium chloride infusion"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Ringer's Lactate",
+    "normalizationName": "Ringers Lactate",
+    "aliases": [
+      "RL",
+      "Ringers",
+      "Ringer Lactate",
+      "Ringer's Lactate",
+      "Lactated Ringer's",
+      "Hartmann's",
+      "RL drip"
+    ],
+    "acronyms": [
+      "RL"
+    ],
+    "genericName": "Ringer's Lactate",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Ringers"
+    ],
+    "note": "Ringers alone does not distinguish lactated Ringers from Ringers Solution."
+  },
+  {
+    "canonicalName": "Dextrose 5%",
+    "normalizationName": "Dextrose 5%",
+    "aliases": [
+      "D5",
+      "Dextrose 5",
+      "5% Dextrose",
+      "Dextrose water",
+      "Dextrose drip"
+    ],
+    "acronyms": [
+      "D5",
+      "D5W"
+    ],
+    "genericName": "Dextrose",
+    "brandNames": [],
+    "formulation": null,
+    "strength": "5%",
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Dextrose water",
+      "Dextrose drip"
+    ],
+    "note": "D5W explicitly means 5% dextrose in water. Do not erase the water qualifier or infer a concentration from dextrose drip."
+  },
+  {
+    "canonicalName": "Dextrose 10%",
+    "normalizationName": "Dextrose 10%",
+    "aliases": [
+      "D10",
+      "10% Dextrose",
+      "Dextrose 10"
+    ],
+    "acronyms": [
+      "D10"
+    ],
+    "genericName": "Dextrose",
+    "brandNames": [],
+    "formulation": null,
+    "strength": "10%",
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Dextrose 50%",
+    "normalizationName": "Dextrose 50%",
+    "aliases": [
+      "D50",
+      "50% Dextrose",
+      "Dextrose 50"
+    ],
+    "acronyms": [
+      "D50"
+    ],
+    "genericName": "Dextrose",
+    "brandNames": [],
+    "formulation": null,
+    "strength": "50%",
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Dextrose Normal Saline",
+    "normalizationName": "Dextrose Normal Saline",
+    "aliases": [
+      "DNS",
+      "Dextrose saline",
+      "Dextrose Normal Saline",
+      "DNS drip"
+    ],
+    "acronyms": [
+      "DNS"
+    ],
+    "genericName": "Dextrose Normal Saline",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Half Normal Saline",
+    "normalizationName": "Half Normal Saline",
+    "aliases": [
+      "Half NS",
+      "1/2 NS",
+      "0.45% saline",
+      "0.45% sodium chloride"
+    ],
+    "acronyms": [],
+    "genericName": "Half Normal Saline",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Ringer's Solution",
+    "normalizationName": "Ringers Solution",
+    "aliases": [
+      "Ringers Solution",
+      "Ringers"
+    ],
+    "acronyms": [],
+    "genericName": "Ringer's Solution",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Ringers"
+    ],
+    "note": "Keep plain Ringers Solution distinct from Ringers Lactate."
+  },
+  {
+    "canonicalName": "Mannitol Infusion",
+    "normalizationName": "Mannitol Infusion",
+    "aliases": [
+      "Mannitol",
+      "Mannitol drip",
+      "Mannitol infusion"
+    ],
+    "acronyms": [],
+    "genericName": "Mannitol",
+    "brandNames": [],
+    "formulation": "Infusion",
+    "strength": null,
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Metronidazole Infusion",
+    "normalizationName": "Metronidazole Infusion",
+    "aliases": [
+      "Metro infusion",
+      "Flagyl infusion",
+      "Metronidazole drip",
+      "Metro drip"
+    ],
+    "acronyms": [],
+    "genericName": "Metronidazole",
+    "brandNames": [],
+    "formulation": "Infusion",
+    "strength": null,
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Ciprofloxacin Infusion",
+    "normalizationName": "Ciprofloxacin Infusion",
+    "aliases": [
+      "Cipro infusion",
+      "Ciprofloxacin IV",
+      "Cipro drip"
+    ],
+    "acronyms": [],
+    "genericName": "Ciprofloxacin",
+    "brandNames": [],
+    "formulation": "Infusion",
+    "strength": null,
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Paracetamol Infusion",
+    "normalizationName": "Paracetamol Infusion",
+    "aliases": [
+      "PCM infusion",
+      "Paracetamol IV",
+      "Acetaminophen infusion",
+      "Para infusion"
+    ],
+    "acronyms": [],
+    "genericName": "Paracetamol",
+    "brandNames": [],
+    "formulation": "Infusion",
+    "strength": null,
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Bacille Calmette-Guerin Vaccine",
+    "normalizationName": "Bacille Calmette-Guerin Vaccine",
+    "aliases": [
+      "BCG",
+      "BCG Vaccine",
+      "TB Vaccine",
+      "BCG vac"
+    ],
+    "acronyms": [
+      "BCG"
+    ],
+    "genericName": "Bacille Calmette-Guerin Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "BCG Vaccine Diluent",
+    "normalizationName": "Bacille Calmette-Guerin Vaccine Diluent",
+    "aliases": [
+      "BCG Diluent",
+      "BCG water",
+      "BCG solvent",
+      "Diluent for BCG"
+    ],
+    "acronyms": [],
+    "genericName": "BCG Vaccine",
+    "brandNames": [],
+    "formulation": "Diluent",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Oral Polio Vaccine",
+    "normalizationName": "Oral Polio Vaccine",
+    "aliases": [
+      "OPV",
+      "Oral Polio Vaccine",
+      "Oral polio",
+      "Polio drops",
+      "Polio oral",
+      "OPV vaccine"
+    ],
+    "acronyms": [
+      "OPV"
+    ],
+    "genericName": "Oral Polio Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Oral Polio Vaccine Dropper",
+    "normalizationName": "Oral Polio Vaccine Dropper",
+    "aliases": [
+      "OPV Dropper",
+      "Polio dropper",
+      "Dropper for OPV",
+      "OPV pipette"
+    ],
+    "acronyms": [],
+    "genericName": "Oral Polio Vaccine",
+    "brandNames": [],
+    "formulation": "Dropper",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Inactivated Polio Vaccine",
+    "normalizationName": "Inactivated Polio Vaccine",
+    "aliases": [
+      "IPV",
+      "Injectable Polio Vaccine",
+      "Polio injection"
+    ],
+    "acronyms": [
+      "IPV"
+    ],
+    "genericName": "Inactivated Polio Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Pentavalent Vaccine",
+    "normalizationName": "Pentavalent Vaccine",
+    "aliases": [
+      "Penta",
+      "Pentavalent",
+      "Pentavalent Vaccine",
+      "5-in-1",
+      "Five in one",
+      "Penta vaccine"
+    ],
+    "acronyms": [],
+    "genericName": "Pentavalent Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Pneumococcal Conjugate Vaccine",
+    "normalizationName": "Pneumococcal Conjugate Vaccine",
+    "aliases": [
+      "PCV",
+      "Pneumococcal Vaccine",
+      "Pneumonia Vaccine",
+      "PCV vaccine"
+    ],
+    "acronyms": [
+      "PCV"
+    ],
+    "genericName": "Pneumococcal Conjugate Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Pneumococcal Vaccine",
+      "Pneumonia Vaccine"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Rotavirus Vaccine",
+    "normalizationName": "Rotavirus Vaccine",
+    "aliases": [
+      "Rota",
+      "Rota Vaccine",
+      "Rotavirus",
+      "Rotavirus Vaccine"
+    ],
+    "acronyms": [],
+    "genericName": "Rotavirus Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Rotavirus Vaccine Dropper",
+    "normalizationName": "Rotavirus Vaccine Dropper",
+    "aliases": [
+      "Rota Dropper",
+      "Rotavirus Dropper",
+      "Dropper for Rota",
+      "Rota pipette"
+    ],
+    "acronyms": [],
+    "genericName": "Rotavirus Vaccine",
+    "brandNames": [],
+    "formulation": "Dropper",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Yellow Fever Vaccine",
+    "normalizationName": "Yellow Fever Vaccine",
+    "aliases": [
+      "YF",
+      "Yellow Fever",
+      "YF Vaccine",
+      "Yellow Fever Vaccine"
+    ],
+    "acronyms": [
+      "YF"
+    ],
+    "genericName": "Yellow Fever Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Yellow Fever Vaccine Diluent",
+    "normalizationName": "Yellow Fever Vaccine Diluent",
+    "aliases": [
+      "YF Diluent",
+      "Yellow Fever Diluent",
+      "Yellow Fever water",
+      "YF water",
+      "Yellow Fever solvent"
+    ],
+    "acronyms": [],
+    "genericName": "Yellow Fever Vaccine",
+    "brandNames": [],
+    "formulation": "Diluent",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Measles-Rubella Vaccine",
+    "normalizationName": "Measles-Rubella Vaccine",
+    "aliases": [
+      "MR",
+      "MR Vaccine",
+      "Measles Rubella",
+      "Measles-Rubella"
+    ],
+    "acronyms": [
+      "MR"
+    ],
+    "genericName": "Measles-Rubella Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Measles Vaccine",
+    "normalizationName": "Measles Vaccine",
+    "aliases": [
+      "Measles",
+      "Measles Vac",
+      "Measles Vaccine"
+    ],
+    "acronyms": [],
+    "genericName": "Measles Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Tetanus-Diphtheria Vaccine",
+    "normalizationName": "Tetanus Diphtheria Vaccine Td",
+    "aliases": [
+      "Td",
+      "TD",
+      "Tetanus Diphtheria"
+    ],
+    "acronyms": [
+      "TD"
+    ],
+    "genericName": "Tetanus-Diphtheria Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Td is not automatically equivalent to TT or paediatric DT."
+  },
+  {
+    "canonicalName": "Tetanus Toxoid",
+    "normalizationName": "Tetanus Toxoid",
+    "aliases": [
+      "TT",
+      "Tetanus Toxoid",
+      "Tetanus vaccine",
+      "Tetanus injection"
+    ],
+    "acronyms": [
+      "TT"
+    ],
+    "genericName": "Tetanus Toxoid",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Tetanus vaccine",
+      "Tetanus injection"
+    ],
+    "note": "TT, Td and DT are separate product identities; shared inventory keys do not authorize substitution."
+  },
+  {
+    "canonicalName": "Diphtheria-Tetanus Vaccine",
+    "normalizationName": "Diphtheria Tetanus Vaccine DT",
+    "aliases": [
+      "DT",
+      "Diphtheria Tetanus",
+      "DT vaccine",
+      "DT vac"
+    ],
+    "acronyms": [
+      "DT"
+    ],
+    "genericName": "Diphtheria-Tetanus Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "DT"
+    ],
+    "note": "DT can also mean dispersible tablet in medicine context. Preserve paediatric DT versus adult Td."
+  },
+  {
+    "canonicalName": "HPV Vaccine",
+    "normalizationName": "HPV Vaccine",
+    "aliases": [
+      "HPV",
+      "Human Papillomavirus Vaccine",
+      "Cervical cancer vaccine"
+    ],
+    "acronyms": [
+      "HPV"
+    ],
+    "genericName": "HPV Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Meningococcal Vaccine",
+    "normalizationName": "Meningococcal Vaccine",
+    "aliases": [
+      "MenA",
+      "Meningitis vaccine",
+      "Meningococcal vaccine",
+      "Meningitis A"
+    ],
+    "acronyms": [],
+    "genericName": "Meningococcal Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "COVID-19 Vaccine",
+    "normalizationName": "COVID-19 Vaccine",
+    "aliases": [
+      "COVID Vaccine",
+      "Covid",
+      "Coronavirus Vaccine",
+      "COVID-19 vaccine"
+    ],
+    "acronyms": [],
+    "genericName": "COVID-19 Vaccine",
+    "brandNames": [],
+    "formulation": "Vaccine",
+    "strength": null,
+    "category": "vaccine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Anti Rabies Vaccine Injection",
+    "normalizationName": "Anti Rabies Vaccine Injection",
+    "aliases": [
+      "ARV",
+      "Anti Rabies Vaccine",
+      "Anti-Rabies Vaccine",
+      "Rabies Vaccine",
+      "Rabies Injection",
+      "Rabies inj",
+      "Anti rabies",
+      "Anti rabies inj",
+      "Rabies shot"
+    ],
+    "acronyms": [
+      "ARV"
+    ],
+    "genericName": "Anti Rabies Vaccine",
+    "brandNames": [],
+    "formulation": "Injection",
+    "strength": null,
+    "category": "rabies",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "ARV and listed rabies common names are approved General Auditor product aliases for ANTI_RABIES_VACCINE. Never equate with RIG, HRIG, ERIG or an explicitly named antiretroviral medicine.",
+    "canonicalId": "ANTI_RABIES_VACCINE"
+  },
+  {
+    "canonicalName": "Rabies Immunoglobulin",
+    "normalizationName": "Rabies Immunoglobulin",
+    "aliases": [
+      "RIG",
+      "Rabies IG",
+      "Rabies Immunoglobulin",
+      "Rabies antibodies"
+    ],
+    "acronyms": [
+      "RIG"
+    ],
+    "genericName": "Rabies Immunoglobulin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "rabies",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Human Rabies Immunoglobulin",
+    "normalizationName": "Human Rabies Immunoglobulin",
+    "aliases": [
+      "HRIG",
+      "Human RIG",
+      "Human Rabies Immunoglobulin"
+    ],
+    "acronyms": [
+      "HRIG"
+    ],
+    "genericName": "Human Rabies Immunoglobulin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "rabies",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Equine Rabies Immunoglobulin",
+    "normalizationName": "Equine Rabies Immunoglobulin",
+    "aliases": [
+      "ERIG",
+      "Equine RIG",
+      "Equine Rabies Immunoglobulin"
+    ],
+    "acronyms": [
+      "ERIG"
+    ],
+    "genericName": "Equine Rabies Immunoglobulin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "rabies",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Snake Venom Antiserum",
+    "normalizationName": "Anti Snake Serum Injection",
+    "aliases": [
+      "Snake Venom Antiserum",
+      "Snake Venom Antivenom",
+      "Snake Antivenom",
+      "Snake serum",
+      "Snake venom serum",
+      "Snake antiserum",
+      "Antivenom"
+    ],
+    "acronyms": [],
+    "genericName": "Snake Venom Antiserum",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "antivenom",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Approved General Auditor local aliases resolve to ANTI_SNAKE. Preserve explicit strength, route, manufacturer and formulation qualifiers; monovalent and polyvalent antivenoms remain separate.",
+    "canonicalId": "ANTI_SNAKE"
+  },
+  {
+    "canonicalName": "Anti Snake Serum Injection",
+    "normalizationName": "Anti Snake Serum Injection",
+    "aliases": [
+      "ASV",
+      "Anti Snake Serum",
+      "Anti-Snake Serum",
+      "Anti Snake Venom",
+      "Anti-Snake Venom",
+      "Snake bite serum",
+      "Snake injection",
+      "Snake venom injection",
+      "Antivenom injection"
+    ],
+    "acronyms": [
+      "ASV"
+    ],
+    "genericName": "Anti Snake Serum",
+    "brandNames": [],
+    "formulation": "Injection",
+    "strength": null,
+    "category": "antivenom",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Approved General Auditor local aliases resolve to ANTI_SNAKE. Preserve explicit strength, route, manufacturer and formulation qualifiers; monovalent and polyvalent antivenoms remain separate.",
+    "canonicalId": "ANTI_SNAKE"
+  },
+  {
+    "canonicalName": "Polyvalent Snake Antivenom",
+    "normalizationName": "Polyvalent Snake Antivenom",
+    "aliases": [
+      "Polyvalent ASV",
+      "Polyvalent Antivenom",
+      "Polyvalent snake serum",
+      "Polyvalent snake antivenom"
+    ],
+    "acronyms": [],
+    "genericName": "Polyvalent Snake Antivenom",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "antivenom",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Monovalent Snake Antivenom",
+    "normalizationName": "Monovalent Snake Antivenom",
+    "aliases": [
+      "Monovalent ASV",
+      "Monovalent antivenom",
+      "Specific snake antivenom"
+    ],
+    "acronyms": [],
+    "genericName": "Monovalent Snake Antivenom",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "antivenom",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Multivitamin",
+    "normalizationName": "Multivitamin",
+    "aliases": [
+      "Multivit",
+      "Multivitamin",
+      "MVT",
+      "MV"
+    ],
+    "acronyms": [
+      "MVT",
+      "MV"
+    ],
+    "genericName": "Multivitamin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Multivitamin Syrup",
+    "normalizationName": "Multivitamin Syrup",
+    "aliases": [
+      "Multivit syrup",
+      "Multivitamin syrup",
+      "MV syrup",
+      "Vitamin syrup"
+    ],
+    "acronyms": [],
+    "genericName": "Multivitamin",
+    "brandNames": [],
+    "formulation": "Syrup",
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Vitamin syrup"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Vitamin C",
+    "normalizationName": "Vitamin C",
+    "aliases": [
+      "Vit C",
+      "Vitamin C",
+      "Ascorbic Acid",
+      "Ascorbic"
+    ],
+    "acronyms": [],
+    "genericName": "Vitamin C",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Vitamin B Complex",
+    "normalizationName": "Vitamin B Complex",
+    "aliases": [
+      "B complex",
+      "Vitamin B complex",
+      "BCO"
+    ],
+    "acronyms": [
+      "BCO"
+    ],
+    "genericName": "Vitamin B Complex",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "BCO"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Calcium",
+    "normalizationName": "Calcium",
+    "aliases": [
+      "Calcium",
+      "Calcium tabs"
+    ],
+    "acronyms": [],
+    "genericName": "Calcium",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Amlodipine",
+    "normalizationName": "Amlodipine",
+    "aliases": [
+      "Amlodipine",
+      "Amlo"
+    ],
+    "acronyms": [],
+    "genericName": "Amlodipine",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Nifedipine",
+    "normalizationName": "Nifedipine",
+    "aliases": [
+      "Nifedipine",
+      "Adalat"
+    ],
+    "acronyms": [],
+    "genericName": "Nifedipine",
+    "brandNames": [
+      "Adalat"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Losartan",
+    "normalizationName": "Losartan",
+    "aliases": [
+      "Losartan"
+    ],
+    "acronyms": [],
+    "genericName": "Losartan",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Lisinopril",
+    "normalizationName": "Lisinopril",
+    "aliases": [
+      "Lisinopril"
+    ],
+    "acronyms": [],
+    "genericName": "Lisinopril",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Enalapril",
+    "normalizationName": "Enalapril",
+    "aliases": [
+      "Enalapril"
+    ],
+    "acronyms": [],
+    "genericName": "Enalapril",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Hydralazine",
+    "normalizationName": "Hydralazine",
+    "aliases": [
+      "Hydralazine"
+    ],
+    "acronyms": [],
+    "genericName": "Hydralazine",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Furosemide",
+    "normalizationName": "Furosemide",
+    "aliases": [
+      "Frusemide",
+      "Lasix",
+      "Furosemide"
+    ],
+    "acronyms": [],
+    "genericName": "Furosemide",
+    "brandNames": [
+      "Lasix"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Spironolactone",
+    "normalizationName": "Spironolactone",
+    "aliases": [
+      "Spiro",
+      "Aldactone",
+      "Spironolactone"
+    ],
+    "acronyms": [],
+    "genericName": "Spironolactone",
+    "brandNames": [
+      "Aldactone"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Atenolol",
+    "normalizationName": "Atenolol",
+    "aliases": [
+      "Atenolol"
+    ],
+    "acronyms": [],
+    "genericName": "Atenolol",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Propranolol",
+    "normalizationName": "Propranolol",
+    "aliases": [
+      "Propranolol"
+    ],
+    "acronyms": [],
+    "genericName": "Propranolol",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Metformin",
+    "normalizationName": "Metformin",
+    "aliases": [
+      "Metformin",
+      "Glucophage"
+    ],
+    "acronyms": [],
+    "genericName": "Metformin",
+    "brandNames": [
+      "Glucophage"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Glibenclamide",
+    "normalizationName": "Glibenclamide",
+    "aliases": [
+      "Glyburide",
+      "Glibenclamide",
+      "Daonil"
+    ],
+    "acronyms": [],
+    "genericName": "Glibenclamide",
+    "brandNames": [
+      "Daonil"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Insulin",
+    "normalizationName": "Insulin",
+    "aliases": [
+      "Insulin",
+      "Insulin injection"
+    ],
+    "acronyms": [],
+    "genericName": "Insulin",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Insulin",
+      "Insulin injection"
+    ],
+    "note": "Regular, NPH and premixed insulin remain distinct. Insulin alone requires type review."
+  },
+  {
+    "canonicalName": "Chlorhexidine",
+    "normalizationName": "Chlorhexidine",
+    "aliases": [
+      "Chlorhex",
+      "Chlorhexidine"
+    ],
+    "acronyms": [],
+    "genericName": "Chlorhexidine",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Povidone Iodine",
+    "normalizationName": "Povidone Iodine",
+    "aliases": [
+      "Betadine",
+      "Povidone iodine",
+      "Iodine solution"
+    ],
+    "acronyms": [],
+    "genericName": "Povidone Iodine",
+    "brandNames": [
+      "Betadine"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Iodine solution"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Methylated Spirit",
+    "normalizationName": "Methylated Spirit",
+    "aliases": [
+      "Spirit",
+      "Methylated spirit"
+    ],
+    "acronyms": [],
+    "genericName": "Methylated Spirit",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Spirit"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Hydrogen Peroxide",
+    "normalizationName": "Hydrogen Peroxide",
+    "aliases": [
+      "Peroxide",
+      "Hydrogen peroxide"
+    ],
+    "acronyms": [],
+    "genericName": "Hydrogen Peroxide",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "medicine",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Syringe",
+    "normalizationName": "Syringe",
+    "aliases": [
+      "Syringe",
+      "Syringes",
+      "Disp syringe",
+      "Disposable syringe"
+    ],
+    "acronyms": [],
+    "genericName": "Syringe",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "consumable",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Needle",
+    "normalizationName": "Needle",
+    "aliases": [
+      "Needle",
+      "Needles"
+    ],
+    "acronyms": [],
+    "genericName": "Needle",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "consumable",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Syringe and Needle",
+    "normalizationName": "Syringe and Needle",
+    "aliases": [
+      "Syringe & Needle",
+      "Syringe with needle",
+      "Disp syringe & needle"
+    ],
+    "acronyms": [],
+    "genericName": "Syringe and Needle",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "consumable",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "IV Giving Set",
+    "normalizationName": "IV Giving Set",
+    "aliases": [
+      "Giving set",
+      "IV set",
+      "Infusion set",
+      "Drip set"
+    ],
+    "acronyms": [],
+    "genericName": "IV Giving Set",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "consumable",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Cannula",
+    "normalizationName": "Cannula",
+    "aliases": [
+      "IV Cannula",
+      "Branula",
+      "IV line",
+      "Venflon"
+    ],
+    "acronyms": [],
+    "genericName": "Cannula",
+    "brandNames": [
+      "Venflon"
+    ],
+    "formulation": null,
+    "strength": null,
+    "category": "consumable",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Gloves",
+    "normalizationName": "Gloves",
+    "aliases": [
+      "Gloves",
+      "Examination gloves",
+      "Exam gloves",
+      "Surgical gloves"
+    ],
+    "acronyms": [],
+    "genericName": "Gloves",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "consumable",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve examination versus surgical, sterile versus nonsterile and supplied sizes."
+  },
+  {
+    "canonicalName": "Cotton Wool",
+    "normalizationName": "Cotton Wool",
+    "aliases": [
+      "Cotton",
+      "Cotton wool"
+    ],
+    "acronyms": [],
+    "genericName": "Cotton Wool",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "consumable",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Gauze",
+    "normalizationName": "Gauze",
+    "aliases": [
+      "Gauze",
+      "Gauze swab"
+    ],
+    "acronyms": [],
+    "genericName": "Gauze",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "consumable",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Plaster",
+    "normalizationName": "Adhesive Plaster",
+    "aliases": [
+      "Adhesive plaster",
+      "Tape"
+    ],
+    "acronyms": [],
+    "genericName": "Plaster",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "consumable",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Tape"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Whole Blood",
+    "normalizationName": "Whole Blood",
+    "aliases": [
+      "WB",
+      "Whole blood"
+    ],
+    "acronyms": [
+      "WB"
+    ],
+    "genericName": "Whole Blood",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "blood",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Packed Red Blood Cells",
+    "normalizationName": "Packed Red Blood Cells",
+    "aliases": [
+      "PRBC",
+      "Packed cells",
+      "Red cells",
+      "Packed red cells"
+    ],
+    "acronyms": [
+      "PRBC"
+    ],
+    "genericName": "Packed Red Blood Cells",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "blood",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Red cells"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Fresh Frozen Plasma",
+    "normalizationName": "Fresh Frozen Plasma",
+    "aliases": [
+      "FFP",
+      "Plasma",
+      "Fresh frozen plasma"
+    ],
+    "acronyms": [
+      "FFP"
+    ],
+    "genericName": "Fresh Frozen Plasma",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "blood",
+    "ageGroup": null,
+    "contextualAliases": [
+      "Plasma"
+    ],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Platelets",
+    "normalizationName": "Platelets",
+    "aliases": [
+      "Platelets",
+      "Platelet concentrate"
+    ],
+    "acronyms": [],
+    "genericName": "Platelets",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "blood",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Cryoprecipitate",
+    "normalizationName": "Cryoprecipitate",
+    "aliases": [
+      "Cryo",
+      "Cryoprecipitate"
+    ],
+    "acronyms": [],
+    "genericName": "Cryoprecipitate",
+    "brandNames": [],
+    "formulation": null,
+    "strength": null,
+    "category": "blood",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
+  },
+  {
+    "canonicalName": "Dextrose 5% in Water",
+    "normalizationName": "Dextrose 5% in Water",
+    "aliases": [
+      "D5W",
+      "Dextrose 5% in Water"
+    ],
+    "acronyms": [
+      "D5W"
+    ],
+    "genericName": "Dextrose",
+    "brandNames": [],
+    "formulation": null,
+    "strength": "5%",
+    "category": "fluid",
+    "ageGroup": null,
+    "contextualAliases": [],
+    "note": "D5W means 5% dextrose in water; do not erase the water qualifier."
+  }
+]
