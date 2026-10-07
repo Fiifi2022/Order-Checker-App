@@ -4945,9 +4945,11 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`OrderCheck Backend listening on http://localhost:${PORT}`);
-  });
+  const renderPort = Number(process.env.PORT) || PORT || 3000;
+
+app.listen(renderPort, '0.0.0.0', () => {
+  console.log(`OrderCheck Backend listening on port ${renderPort}`);
+});
 }
 
 startServer();
