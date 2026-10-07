@@ -9,7 +9,7 @@ import { initializeFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize client side SDK
-const app = initializeApp(firebaseConfig);
+const app = initializeApp(firebaseConfig.firebaseConfig);
 
 // Initialize Firestore with long-polling fallback to prevent RST_STREAM / gRPC errors in sandboxed iframes
 export const db = initializeFirestore(app, {
