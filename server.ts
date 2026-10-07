@@ -2257,8 +2257,8 @@ app.get('/api/general-auditor/history', async (_req, res) => {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const snapshot: any = await Promise.race([getDocs(collection(getFirestoreDb(), 'audits')), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Firestore read timed out')), 8000); })]);
-    records = snapshot.docs.map(row => row.data());
-    records = [...new Map([...records, ...audits].map(row => [row.id, row])).values()];
+    records = snapshot.docs.map((row: any) => row.data());
+    records = [...new Map([...records, ...audits].map((row: any) => [row.id, row])).values()];
   } catch { source = 'session memory'; warning = 'Firestore unavailable; history may be incomplete.'; }
   finally { clearTimeout(timer); }
   const rows = generalAuditHistory(records);
@@ -2794,7 +2794,7 @@ app.post('/api/vaccine/blueprint-districts/:id/topup', async (req, res) => {
     if (!requestId) return res.status(400).json({ error: 'requestId is required.' });
     const result = await withDhdMutationLock(async () => {
       const sheet = blueprintDistricts[sheetId];
-      if (!sheet) return { error: 'Allocation sheet not found.', status: 404 } as const;
+      if (!sheet) return { success: false, error: 'Allocation sheet not found.', status: 404 } as const;
       const inventory = await loadDhdInventory(sheet.district);
       const applied = applyConfirmedDhdTopUp({
         inventory,
@@ -2806,7 +2806,7 @@ app.post('/api/vaccine/blueprint-districts/:id/topup', async (req, res) => {
         requestId: String(requestId),
         user: user?.name || user || 'Unknown user'
       });
-      if (applied.success === false) return { error: applied.error, status: applied.status, available: applied.available } as const;
+      if (applied.success === false) return { success: false, error: applied.error, status: applied.status, available: applied.available } as const;
       if (!applied.duplicate) {
         const db = getFirestoreDb();
         const batch = writeBatch(db);
@@ -2825,10 +2825,10 @@ app.post('/api/vaccine/blueprint-districts/:id/topup', async (req, res) => {
         });
         void persistActivityLogToFirestore(activity);
       }
-      return { inventory: applied.inventory, districtSheet: blueprintDistricts[sheet.id], entry: applied.entry, duplicate: applied.duplicate };
+      return { success: true, inventory: applied.inventory, districtSheet: blueprintDistricts[sheet.id], entry: applied.entry, duplicate: applied.duplicate } as const;
     });
-    if ('error' in result) return res.status(result.status).json({ error: result.error, available: result.available });
-    return res.json({ success: true, ...result, districts: Object.values(blueprintDistricts) });
+    if (result.success === false) return res.status(result.status).json({ error: result.error, available: result.available });
+    return res.json({ ...result, districts: Object.values(blueprintDistricts) });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Could not deduct DHD stock.' });
   }
@@ -3880,7 +3880,7 @@ app.post('/api/vaccine/confirm', async (req, res) => {
     try {
       const actor = getActiveActor(ccaUser);
       const deductedSummary = (result.transaction?.items || [])
-        .map(i => i.vaccine + ' (-' + i.currentOrder + ' v)')
+        .map((i: any) => i.vaccine + ' (-' + i.currentOrder + ' v)')
         .join(', ');
       const rec = activityService.logActivity({
         module: 'vaccine_checker',

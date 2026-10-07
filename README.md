@@ -2,7 +2,7 @@
 
 ## Run
 
-`npm install`, then `npm run dev`. Use `npm run build` and `npm start` for production.
+Use **Node.js 22 or newer** (required by Firebase Admin 14). With nvm, run `nvm use` to select the version in `.nvmrc`. Run `npm install`, then `npm run dev`. Use `npm run build` and `npm start` for production.
 
 ## Authentication setup
 

@@ -1238,7 +1238,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                                       </div>
                                       <div className="text-left w-full">
                                         <span className="text-[9px] uppercase font-bold text-slate-400 flex items-center justify-between tracking-wider w-full">
-                                          {generalProduct && (item.status === 'out of stock' || item.status === 'order limit applied') ? 'Operational Status' : 'Compliance Correction Action'}
+                                          {generalProduct && (item.status === 'out of stock' || generalProduct.fulfillmentStatus === 'order limit applied') ? 'Operational Status' : 'Compliance Correction Action'}
                                         </span>
                                         <span className="text-xs font-semibold text-[#5C2D91] leading-tight block mt-0.5">
                                           {item.action}

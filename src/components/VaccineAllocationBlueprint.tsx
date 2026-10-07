@@ -1320,7 +1320,7 @@ export default function VaccineAllocationBlueprint({
   }, [hasUnsavedChanges]);
 
   // Evaluate numeric input from spreadsheet cells, supporting direct numbers, expressions (e.g. 20+10, =15+5), and incremental additions (+10)
-  const evaluateCellNumericInput = (raw: string, currentVal?: number | ''): number | null => {
+  const evaluateCellNumericInput = (raw: string, currentVal?: number | string): number | null => {
     const trimmed = raw.trim();
     if (trimmed === '') return null;
 

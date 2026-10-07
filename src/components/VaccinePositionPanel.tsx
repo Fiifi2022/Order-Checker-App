@@ -424,18 +424,18 @@ export const VaccinePositionPanel: React.FC<VaccinePositionPanelProps> = ({
                             <div className="leading-tight">
                               <span>{takenVal}</span>
                               <span className="text-[9.5px] text-slate-400 block font-normal">({takenDoses.toLocaleString()} d)</span>
-                              {alloc.distributionHistory && alloc.distributionHistory.length > 1 && (
-                                <span className="text-[9px] text-purple-700 block font-sans" title={alloc.distributionHistory.join(' + ')}>
-                                  {alloc.distributionHistory.join(' + ')}
+                              {alloc.takenHistory && alloc.takenHistory.includes('+') && (
+                                <span className="text-[9px] text-purple-700 block font-sans" title={alloc.takenHistory}>
+                                  {alloc.takenHistory}
                                 </span>
                               )}
                             </div>
                           ) : unitDisplayMode === 'vials' ? (
                             <div>
                               <span>{takenVal}</span>
-                              {alloc.distributionHistory && alloc.distributionHistory.length > 1 && (
-                                <span className="text-[9px] text-purple-700 block font-sans" title={alloc.distributionHistory.join(' + ')}>
-                                  {alloc.distributionHistory.join(' + ')}
+                              {alloc.takenHistory && alloc.takenHistory.includes('+') && (
+                                <span className="text-[9px] text-purple-700 block font-sans" title={alloc.takenHistory}>
+                                  {alloc.takenHistory}
                                 </span>
                               )}
                             </div>

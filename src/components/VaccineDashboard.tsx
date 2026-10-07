@@ -1262,7 +1262,7 @@ export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateT
               <Package className="w-5 h-5" />
             </div>
           </div>
-        ) : dashboardTab === 'vaccines' || dashboardTab === 'antigens' || commodityFilter === 'vaccines' ? (
+        ) : dashboardTab === 'vaccines' || commodityFilter === 'vaccines' ? (
           /* In Vaccine Antigen tab, show Available Vaccine Stock instead of Syringes */
           <div className="bg-gradient-to-br from-emerald-900 via-teal-950 to-slate-950 text-white rounded-3xl p-5 shadow-sm flex items-center justify-between">
             <div className="space-y-1">
@@ -1469,7 +1469,7 @@ export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateT
         </div>
       )}
 
-      {dashboardTab !== 'vaccines' && dashboardTab !== 'antigens' && (commodityFilter === 'devices' || commodityFilter === 'all') && (
+      {dashboardTab !== 'vaccines' && (commodityFilter === 'devices' || commodityFilter === 'all') && (
         <div className="border border-sky-200 bg-gradient-to-br from-sky-50/70 via-white to-sky-50/30 rounded-3xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between gap-3 border-b border-sky-100 pb-3 flex-wrap">
             <div className="flex items-center gap-2">
@@ -2456,7 +2456,7 @@ export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateT
         {/* --------------------------------------------------------------------- */}
         {/* TAB 3: VACCINE ANTIGENS BREAKDOWN (CLINICAL COLD CHAIN ONLY)          */}
         {/* --------------------------------------------------------------------- */}
-        {(dashboardTab === 'vaccines' || dashboardTab === 'antigens') && (
+        {(dashboardTab === 'vaccines') && (
           <div className="space-y-4">
             <div className="p-3 bg-purple-50 border border-purple-200 rounded-2xl flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
