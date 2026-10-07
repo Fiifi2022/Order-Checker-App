@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/authFetch';
 import { useEffect, useState } from 'react';
 
 type Status = 'off' | 'ready' | 'processing' | 'done' | 'quota_exceeded' | 'unavailable';
@@ -7,20 +8,30 @@ export default function GeminiStatus() {
   const [status, setStatus] = useState<Status>('off');
 
   useEffect(() => {
-    // A passive subscription to real usage and its local return-to-idle timer.
-    const events = new EventSource('/api/gemini-status/events');
-    events.onmessage = event => {
+    const controller = new AbortController();
+    void (async () => {
       try {
-        const data = JSON.parse(event.data);
-        if (Object.prototype.hasOwnProperty.call(labels, data.status)) setStatus(data.status);
-      } catch { setStatus('unavailable'); }
-    };
-    events.onerror = () => {
-      // Disable EventSource's automatic reconnect rather than retrying while idle.
-      events.close();
-      setStatus('unavailable');
-    };
-    return () => events.close();
+        const response = await authFetch('/api/gemini-status/events', { signal: controller.signal });
+        if (!response.ok || !response.body) throw new Error('Status stream unavailable');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (!controller.signal.aborted) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const frames = buffer.split('\n\n');
+          buffer = frames.pop() || '';
+          for (const frame of frames) {
+            const line = frame.split('\n').find(line => line.startsWith('data:'));
+            if (!line) continue;
+            const data = JSON.parse(line.slice(5));
+            if (Object.prototype.hasOwnProperty.call(labels, data.status)) setStatus(data.status);
+          }
+        }
+      } catch { if (!controller.signal.aborted) setStatus('unavailable'); }
+    })();
+    return () => controller.abort();
   }, []);
 
   return (

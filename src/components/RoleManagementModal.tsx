@@ -1,3 +1,5 @@
+import AdminAccounts from './AdminAccounts';
+import { authFetch } from '../utils/authFetch';
 import React, { useState } from 'react';
 import { 
   Users, 
@@ -16,15 +18,15 @@ import {
   Lock,
   AlertCircle
 } from 'lucide-react';
-import { UserRoleRecord, AppRole } from '../types';
+import { UserRoleRecord, AppRole, UserRegistration } from '../types';
 
 interface RoleManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
   roles: UserRoleRecord[];
+  registrations?: UserRegistration[];
   activeUser: UserRoleRecord | null;
   onRoleAddedOrUpdated: (updatedRoles: UserRoleRecord[], newActiveUser?: UserRoleRecord) => void;
-  onSwitchUser: (userId: string) => Promise<void>;
   districtsList?: string[];
 }
 
@@ -107,12 +109,12 @@ export default function RoleManagementModal({
   isOpen,
   onClose,
   roles,
+  registrations = [],
   activeUser,
   onRoleAddedOrUpdated,
-  onSwitchUser,
   districtsList = ['All Districts', 'West Mamprusi', 'Bunkpurugu-Nakpanduri', 'East Mamprusi', 'Chereponi', 'Gushiegu']
 }: RoleManagementModalProps) {
-  const [activeTab, setActiveTab] = useState<'manage' | 'add'>('manage');
+  const [activeTab, setActiveTab] = useState<'accounts' | 'manage' | 'add'>('accounts');
   
   // Form fields
   const [name, setName] = useState('');
@@ -146,7 +148,7 @@ export default function RoleManagementModal({
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/roles', {
+      const res = await authFetch('/api/roles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -190,7 +192,7 @@ export default function RoleManagementModal({
     setDeletingId(id);
     setErrorMessage(null);
     try {
-      const res = await fetch(`/api/roles/${id}`, {
+      const res = await authFetch(`/api/roles/${id}`, {
         method: 'DELETE'
       });
       const data = await res.json();
@@ -217,7 +219,7 @@ export default function RoleManagementModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in">
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-3xl w-full my-auto overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-5xl w-full my-auto overflow-hidden flex flex-col max-h-[92vh]">
         
         {/* Header */}
         <div className="bg-gradient-to-r from-[#3B1A5E] to-[#5C2D91] text-white p-5 sm:p-6 flex items-center justify-between shrink-0">
@@ -227,13 +229,13 @@ export default function RoleManagementModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-black tracking-tight">Team Roles & Access Control</h2>
+                <h2 className="text-lg sm:text-xl font-black tracking-tight">Account Administration</h2>
                 <span className="text-[10px] bg-purple-400/30 text-purple-100 border border-purple-300/30 px-2 py-0.5 rounded-full font-bold">
-                  RBAC
+                  Admin
                 </span>
               </div>
               <p className="text-xs text-purple-200 mt-0.5">
-                Manage and assign permissions for Zipline Ghana Customer Care, Warehouse Team, and Compliance teams
+                Manage signed-up accounts, sign-in issues, and team permissions
               </p>
             </div>
           </div>
@@ -250,11 +252,8 @@ export default function RoleManagementModal({
         {/* Cloud Sync Status Bar */}
         <div className="bg-purple-50/80 border-b border-purple-100 px-6 py-2.5 flex items-center justify-between text-xs text-purple-900 shrink-0">
           <div className="flex items-center gap-2">
-            <Database className="w-4 h-4 text-purple-700" />
-            <span className="font-semibold text-[11px]">Firestore Cloud Storage:</span>
-            <span className="font-mono text-[11px] bg-purple-100/80 text-purple-800 px-2 py-0.5 rounded-md border border-purple-200">
-              user_roles
-            </span>
+            <ShieldCheck className="w-4 h-4 text-purple-700" />
+            <span className="font-semibold">Administrator workspace</span>
           </div>
 
           {activeUser && (
@@ -269,7 +268,8 @@ export default function RoleManagementModal({
         </div>
 
         {/* Tab Controls */}
-        <div className="flex border-b border-slate-200 px-6 pt-3 bg-slate-50/50 shrink-0">
+        <div className="flex border-b border-slate-200 px-6 pt-3 bg-slate-50/50 shrink-0 overflow-x-auto">
+          <button type="button" onClick={() => setActiveTab('accounts')} className={`pb-3 px-4 text-xs font-bold border-b-2 whitespace-nowrap ${activeTab === 'accounts' ? 'border-purple-800 text-purple-800' : 'border-transparent text-slate-500'}`}>Signed-up accounts</button>
           <button
             type="button"
             onClick={() => setActiveTab('manage')}
@@ -314,7 +314,7 @@ export default function RoleManagementModal({
             </div>
           )}
 
-          {activeTab === 'manage' ? (
+          {activeTab === 'accounts' ? <AdminAccounts onUpdated={() => onRoleAddedOrUpdated(roles)} onAssignRole={account => { setName(account.name); setEmail(account.email); setSelectedRole(account.role || 'cca'); setSelectedDistrict(account.district || 'All Districts'); setActiveTab('add'); }} /> : activeTab === 'manage' ? (
             <div className="space-y-4">
               {/* Search & Actions */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -338,6 +338,14 @@ export default function RoleManagementModal({
                   <span>Assign New Role</span>
                 </button>
               </div>
+
+              {registrations.length > 0 && <section className="rounded-2xl border border-purple-200 bg-purple-50 p-4 space-y-3">
+                <h3 className="font-bold text-sm text-purple-900">Pending sign-ups ({registrations.length})</h3>
+                {registrations.map(registration => <div key={registration.uid} className="flex items-center justify-between gap-3 rounded-xl bg-white p-3">
+                  <div className="min-w-0 text-xs text-slate-600"><strong className="block text-sm text-slate-900">{registration.name}</strong><p className="break-all">{registration.email}</p><p>{registration.position} · Nest: {registration.nest}</p></div>
+                  <button type="button" onClick={() => { setName(registration.name); setEmail(registration.email); setSelectedRole('cca'); setActiveTab('add'); }} className="shrink-0 rounded-lg bg-purple-800 text-white px-3 py-2 text-xs font-bold">Review access</button>
+                </div>)}
+              </section>}
 
               {/* Roles List */}
               <div className="grid grid-cols-1 gap-3">
@@ -376,6 +384,7 @@ export default function RoleManagementModal({
                             )}
                           </div>
 
+                          {(member.position || member.nest) && <p className="text-xs text-slate-600">{member.position}{member.nest && ` · Nest: ${member.nest}`}</p>}
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                             <span className="flex items-center gap-1">
                               <Mail className="w-3 h-3 text-slate-400" />
@@ -391,24 +400,14 @@ export default function RoleManagementModal({
 
                       {/* Member Actions */}
                       <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                        {!isActive ? (
-                          <button
-                            type="button"
-                            onClick={() => onSwitchUser(member.id)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-purple-100 text-slate-700 hover:text-purple-900 text-xs font-bold rounded-xl transition-colors cursor-pointer border border-slate-200"
-                            title="Operate as this user"
-                          >
-                            <UserCheck className="w-3.5 h-3.5" />
-                            <span>Switch To</span>
-                          </button>
-                        ) : (
+                        {isActive && (
                           <div className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-100 text-purple-800 text-xs font-bold rounded-xl border border-purple-200">
                             <Check className="w-3.5 h-3.5 text-purple-700" />
                             <span>Current</span>
                           </div>
                         )}
 
-                        {member.id !== 'ohenedarko2014_gmail_com' && (
+                        {member.id !== activeUser?.id && (
                           <button
                             type="button"
                             disabled={deletingId === member.id}
@@ -501,6 +500,8 @@ export default function RoleManagementModal({
                   </div>
                 </div>
               </div>
+
+              {registrations.filter(registration => registration.email === email.trim().toLowerCase()).map(registration => <p key={registration.uid} className="rounded-xl bg-purple-50 p-3 text-sm text-purple-900">Position: {registration.position} · Nest: {registration.nest}. Assign an access role below to approve this account.</p>)}
 
               {/* District Scope */}
               <div className="space-y-1.5">

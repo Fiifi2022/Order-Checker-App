@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/authFetch';
 /**
  * Vaccine Transaction History & Audit Trail Component
  * Implements Section 12 & 13:
@@ -36,7 +37,7 @@ export default function VaccineTransactionHistory() {
   const fetchTransactions = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/vaccine/transactions');
+      const res = await authFetch('/api/vaccine/transactions');
       if (res.ok) {
         const data = await res.json();
         setTransactions(data);

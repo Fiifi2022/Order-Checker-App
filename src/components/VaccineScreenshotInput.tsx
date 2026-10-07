@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/authFetch';
 import { useEffect, useRef, useState } from 'react';
 import { ImagePlus, RefreshCw, ScanText, X } from 'lucide-react';
 
@@ -70,7 +71,7 @@ export default function VaccineScreenshotInput({ onText, inputText }: {
     setBusy(true);
     setMessage('');
     try {
-      const response = await fetch('/api/scan-screenshot', {
+      const response = await authFetch('/api/scan-screenshot', {
         method: 'POST',
         signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },

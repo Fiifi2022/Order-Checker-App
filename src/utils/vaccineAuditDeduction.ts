@@ -1,3 +1,4 @@
+import { authFetch } from './authFetch';
 import type { VaccineValidationResult } from '../types';
 
 export interface VaccineAuditSnapshot {
@@ -9,7 +10,7 @@ export interface VaccineAuditSnapshot {
 }
 
 // Deduct only the fulfilled quantities from a successful audit, using its ID for retries.
-export async function deductValidatedVaccineAudit(audit: VaccineValidationResult, snapshot: VaccineAuditSnapshot, request: typeof fetch = fetch) {
+export async function deductValidatedVaccineAudit(audit: VaccineValidationResult, snapshot: VaccineAuditSnapshot, request: typeof fetch = authFetch) {
   if (!audit.isValid) return null;
   const facilityId = audit.facilityId || snapshot.facilityId;
   if (!audit.auditLogId || !facilityId || facilityId === 'auto') throw new Error('The audited facility or audit ID is unavailable. Run the audit again.');

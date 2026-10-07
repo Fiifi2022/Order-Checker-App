@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/authFetch';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Download, RefreshCw, X } from 'lucide-react';
 
@@ -15,7 +16,7 @@ export default function KpiDashboard() {
     setLoading(true); setError('');
     try {
       const qs = new URLSearchParams(); Object.entries(filters).forEach(([key, value]) => { if (value && value !== 'all') qs.set(key, String(value)); });
-      const res = await fetch(`/api/kpis?${qs}`);
+      const res = await authFetch(`/api/kpis?${qs}`);
       if (!res.ok) throw new Error('The KPI records could not be loaded.');
       setData(await res.json());
     } catch (e: any) { setError(e.message || 'KPI data is unavailable.'); }

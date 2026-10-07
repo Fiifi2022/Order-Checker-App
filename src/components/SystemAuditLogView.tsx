@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/authFetch';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -82,8 +83,8 @@ export default function SystemAuditLogView({
       queryParams.append('limit', '300');
 
       const [logsRes, usageRes] = await Promise.all([
-        fetch(`/api/activity/logs?${queryParams.toString()}`),
-        fetch('/api/activity/usage')
+        authFetch(`/api/activity/logs?${queryParams.toString()}`),
+        authFetch('/api/activity/usage')
       ]);
 
       if (logsRes.ok) {
@@ -113,7 +114,7 @@ export default function SystemAuditLogView({
   const handleClearLogs = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/activity/logs/clear', { method: 'POST' });
+      const res = await authFetch('/api/activity/logs/clear', { method: 'POST' });
       if (res.ok) {
         setShowClearConfirm(false);
         fetchAuditData();

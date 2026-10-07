@@ -1,3 +1,5 @@
+import { accountSummary, adminAccountHandlers } from './server/adminAccounts';
+import { registrationHandlers } from './server/registration';
 import { generalAuditHistory, generalAuditAnalytics, generalRuleDiagnostics } from './server/generalAuditMonitoring';
 /**
  * @license
@@ -13,8 +15,8 @@ import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import AdmZip from 'adm-zip';
-import { initializeApp as initializeClientApp, getApps as getClientApps, getApp as getClientApp } from 'firebase/app';
-import { getFirestore as getClientFirestore, collection, getDocs, doc, setDoc, getDoc, deleteDoc, query, orderBy, limit, writeBatch, runTransaction } from 'firebase/firestore/lite';
+import { adminAuth, adminDb, collection, getDocs, doc, setDoc, getDoc, deleteDoc, query, orderBy, limit, writeBatch, runTransaction } from './server/firebaseAdmin';
+import { actorContext, createAuthentication } from './server/auth';
 import * as vaccineService from './server/vaccineService';
 import { resolveBlueprintFacility, normalizeFacilityName, FACILITY_NOT_FOUND, FACILITY_AMBIGUOUS } from './server/blueprintFacility';
 import { persistBlueprintConfirmation, blueprintSaveError } from './server/blueprintConfirmation';
@@ -40,20 +42,7 @@ const firebaseConfig = JSON.parse(
 process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
 process.env.FIRESTORE_DATABASE = firebaseConfig.firestoreDatabaseId;
 
-let firestoreDb: any = null;
-function getFirestoreDb() {
-  if (!firestoreDb) {
-    const apps = getClientApps();
-    let app;
-    if (apps.length === 0) {
-      app = initializeClientApp(firebaseConfig);
-    } else {
-      app = getClientApp();
-    }
-    firestoreDb = getClientFirestore(app, firebaseConfig.firestoreDatabaseId);
-  }
-  return firestoreDb;
-}
+function getFirestoreDb() { return adminDb; }
 
 /**
  * Recursively sanitizes any payload before persisting to Firestore, eliminating any keys
@@ -105,12 +94,86 @@ app.use(express.text({ limit: '50mb', type: '*/*' }));
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
   next();
 });
+
+app.use('/api', createAuthentication(
+  token => adminAuth.verifyIdToken(token, true),
+  async email => {
+    const snapshot = await adminDb.collection('user_roles').where('email', '==', email).limit(1).get();
+    if (!snapshot.empty) {
+      const registration = await adminDb.collection('user_profiles').where('email', '==', email).limit(1).get();
+      const details = registration.docs[0]?.data();
+      return { ...snapshot.docs[0].data(), id: snapshot.docs[0].id,
+        position: details?.position || snapshot.docs[0].data().position || '',
+        nest: details?.nest || snapshot.docs[0].data().nest || '' } as UserRoleItem;
+    }
+    if (email === process.env.AUTH_BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase()) {
+      return { id: email.replace(/[^a-zA-Z0-9]/g, '_'), email, name: email,
+        role: 'admin', district: 'All Districts', createdAt: new Date().toISOString() };
+    }
+    return null;
+  },
+));
+app.get('/api/auth/me', (_req, res) => res.json(res.locals.authUser));
+
+const registration = registrationHandlers({
+  async get(uid) {
+    const document = await adminDb.collection('user_profiles').doc(uid).get();
+    return document.exists ? document.data() as any : null;
+  },
+  async save(uid, fields, email) {
+    const reference = adminDb.collection('user_profiles').doc(uid);
+    return adminDb.runTransaction(async transaction => {
+      const existing = await transaction.get(reference);
+      const now = new Date().toISOString();
+      const profile = { ...fields, uid, email, createdAt: existing.data()?.createdAt || now, updatedAt: now };
+      transaction.set(reference, profile);
+      return profile;
+    });
+  },
+});
+app.get('/api/auth/registration', registration.get);
+app.post('/api/auth/register', registration.save);
+
+const adminAccounts = adminAccountHandlers({
+  async list(cursor) {
+    const [page, profiles, roles] = await Promise.all([
+      adminAuth.listUsers(100, cursor), adminDb.collection('user_profiles').get(), adminDb.collection('user_roles').get(),
+    ]);
+    const profileByUid = new Map(profiles.docs.map(document => [document.id, document.data()]));
+    const roleByEmail = new Map(roles.docs.map(document => [String(document.data().email || '').toLowerCase(), document.data()]));
+    return { accounts: page.users.map(user => accountSummary(user, profileByUid.get(user.uid), roleByEmail.get((user.email || '').toLowerCase()) || ((user.email || '').toLowerCase() === process.env.AUTH_BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase() ? { role: 'admin', district: 'All Districts' } : null))), nextCursor: page.pageToken || null };
+  },
+  get: uid => adminAuth.getUser(uid),
+  async updateProfile(uid, fields) {
+    const user = await adminAuth.getUser(uid);
+    if (!user.email) throw new Error('Account has no email');
+    const reference = adminDb.collection('user_profiles').doc(uid);
+    const [existing, roles] = await Promise.all([reference.get(), adminDb.collection('user_roles').where('email', '==', user.email.toLowerCase()).get()]);
+    const batch = adminDb.batch();
+    const now = new Date().toISOString();
+    batch.set(reference, { ...fields, uid, email: user.email.toLowerCase(), createdAt: existing.data()?.createdAt || now, updatedAt: now });
+    for (const role of roles.docs) batch.update(role.ref, { ...fields, updatedAt: now });
+    await batch.commit();
+    await adminAuth.updateUser(uid, { displayName: fields.name });
+  },
+  updateAuth: (uid, update) => adminAuth.updateUser(uid, update),
+  revoke: uid => adminAuth.revokeRefreshTokens(uid),
+  resetLink: email => adminAuth.generatePasswordResetLink(email),
+  verificationLink: email => adminAuth.generateEmailVerificationLink(email),
+  async audit(actor, uid, action) {
+    // Only action metadata is recorded; passwords and recovery links never enter logs.
+    await adminDb.collection('account_admin_logs').add({ actorId: actor.id, actorEmail: actor.email, targetUid: uid, action, timestamp: new Date().toISOString() });
+  },
+});
+app.get('/api/admin/accounts', adminAccounts.list);
+app.patch('/api/admin/accounts/:uid', adminAccounts.profile);
+app.post('/api/admin/accounts/:uid/actions', adminAccounts.action);
 
 // Local in-memory store for audits
 const audits: any[] = [];
@@ -3474,6 +3537,8 @@ app.post('/api/vaccine/blueprint/complete-facility', async (req, res) => {
 // ==========================================
 
 interface UserRoleItem {
+  position?: string;
+  nest?: string;
   id: string;
   email: string;
   name: string;
@@ -3484,156 +3549,16 @@ interface UserRoleItem {
   addedBy?: string;
 }
 
-const DEFAULT_USER_ROLES: UserRoleItem[] = [
-  {
-    id: 'ohenedarko2014_gmail_com',
-    email: 'ohenedarko2014@gmail.com',
-    name: 'Mary Alhassan',
-    role: 'admin',
-    district: 'All Districts',
-    createdAt: new Date().toISOString(),
-    addedBy: 'System Bootstrap'
-  },
-  {
-    id: 'warehouse_fulfillment_team',
-    email: 'warehouse.team@zipline.com',
-    name: 'Warehouse Team Lead',
-    role: 'warehouse',
-    district: 'All Hubs / Warehouses',
-    createdAt: new Date().toISOString(),
-    addedBy: 'Mary Alhassan'
-  },
-  {
-    id: 'cca_advocate_zipline',
-    email: 'cca.team@zipline.com',
-    name: 'Ghana CCC Team',
-    role: 'cca',
-    district: 'All Districts',
-    createdAt: new Date().toISOString(),
-    addedBy: 'Mary Alhassan'
-  },
-  {
-    id: 'auditor_compliance',
-    email: 'auditor.lead@zipline.com',
-    name: 'Compliance Auditor',
-    role: 'auditor',
-    district: 'All Districts',
-    createdAt: new Date().toISOString(),
-    addedBy: 'Mary Alhassan'
-  }
-];
-
-let userRolesList: UserRoleItem[] = JSON.parse(JSON.stringify(DEFAULT_USER_ROLES));
-let activeRoleId: string = 'ohenedarko2014_gmail_com';
+let userRolesList: UserRoleItem[] = [];
 
 async function initUserRolesFromFirestore() {
-  try {
-    const db = getFirestoreDb();
-    const snap = await getDocs(collection(db, 'user_roles'));
-    if (!snap.empty) {
-      const loaded: UserRoleItem[] = [];
-      for (const docSnap of snap.docs) {
-        const d = docSnap.data() as any;
-        const item: UserRoleItem = { ...d, id: docSnap.id };
-
-        // Normalize administrator name to Mary Alhassan for ohenedarko2014@gmail.com
-        if (item.email.toLowerCase() === 'ohenedarko2014@gmail.com') {
-          item.name = 'Mary Alhassan';
-          item.role = 'admin';
-          await setDoc(doc(db, 'user_roles', item.id), item, { merge: true }).catch(() => {});
-        }
-
-        // Replace DCO with Warehouse Team
-        if ((item.role as any) === 'dco' || item.id === 'dco_officer_north') {
-          item.role = 'warehouse';
-          if (item.name.toLowerCase().includes('dco')) {
-            item.name = 'Warehouse Team Lead';
-          }
-          await setDoc(doc(db, 'user_roles', item.id), item, { merge: true }).catch(() => {});
-        }
-
-        loaded.push(item);
-      }
-
-      const hasAdmin = loaded.some(u => u.email.toLowerCase() === 'ohenedarko2014@gmail.com');
-      if (!hasAdmin) {
-        loaded.unshift(DEFAULT_USER_ROLES[0]);
-      }
-
-      const hasWarehouse = loaded.some(u => u.role === 'warehouse');
-      if (!hasWarehouse) {
-        loaded.splice(1, 0, DEFAULT_USER_ROLES[1]);
-        await setDoc(doc(db, 'user_roles', DEFAULT_USER_ROLES[1].id), DEFAULT_USER_ROLES[1], { merge: true }).catch(() => {});
-      }
-
-      userRolesList = loaded;
-      console.log(`Loaded ${userRolesList.length} user roles from Firestore.`);
-    } else {
-      for (const u of DEFAULT_USER_ROLES) {
-        await setDoc(doc(db, 'user_roles', u.id), u, { merge: true });
-      }
-      console.log('Seeded default user roles to Firestore collection "user_roles".');
-    }
-  } catch (err) {
-    console.warn('Firestore roles sync warning:', err);
-  }
+  const snapshot = await adminDb.collection('user_roles').get();
+  userRolesList = snapshot.docs.map(document => ({ ...document.data(), id: document.id } as UserRoleItem));
 }
 
-initUserRolesFromFirestore();
-
 // Helper to determine the active individual who is performing an action or edit
-function getActiveActor(customActor?: any) {
-  if (customActor && typeof customActor === 'object' && (customActor.name || customActor.email)) {
-    const actor: any = {
-      id: customActor.id || 'custom_user',
-      name: customActor.name || 'Team Member',
-      email: customActor.email || 'team@flyzipline.com',
-      role: customActor.role || 'cca',
-      district: customActor.district || 'All Districts'
-    };
-    if (customActor.avatar) {
-      actor.avatar = customActor.avatar;
-    }
-    return actor;
-  }
-  if (typeof customActor === 'string' && customActor.trim()) {
-    const trimmed = customActor.trim();
-    const found = userRolesList.find(
-      r => r.name.toLowerCase() === trimmed.toLowerCase() || r.email.toLowerCase() === trimmed.toLowerCase()
-    );
-    if (found) {
-      const actor: any = {
-        id: found.id,
-        name: found.name,
-        email: found.email,
-        role: found.role,
-        district: found.district
-      };
-      if ((found as any).avatar) {
-        actor.avatar = (found as any).avatar;
-      }
-      return actor;
-    }
-    return {
-      id: 'custom_operator',
-      name: trimmed,
-      email: `${trimmed.toLowerCase().replace(/[^a-z0-9]/g, '.')}@flyzipline.com`,
-      role: 'cca',
-      district: 'All Districts'
-    };
-  }
-  const current = userRolesList.find(r => r.id === activeRoleId) || userRolesList[0];
-  const actor: any = {
-    id: current.id,
-    name: current.name,
-    email: current.email,
-    role: current.role,
-    district: current.district
-  };
-  if ((current as any).avatar) {
-    actor.avatar = (current as any).avatar;
-  }
-  return actor;
+function getActiveActor(_customActor?: any) {
+  return actorContext.getStore() || { id: 'system', name: 'System', email: '', role: 'system', district: 'All Districts' };
 }
 
 // Hydrate persistent activity logs from Firestore on startup
@@ -3658,72 +3583,28 @@ async function initActivityLogsFromFirestore() {
 
 initActivityLogsFromFirestore();
 
-// GET all roles and current active profile
-app.get('/api/roles', (req, res) => {
+// Team roles are visible to administrators; other accounts only see themselves.
+app.get('/api/roles', async (_req, res) => {
+  const activeUser = res.locals.authUser;
   try {
-    const activeUser = userRolesList.find(r => r.id === activeRoleId) || userRolesList[0];
-    return res.json({
-      roles: userRolesList,
-      activeRoleId,
-      activeUser
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+    if (activeUser.role === 'admin') await initUserRolesFromFirestore();
+    const profiles = activeUser.role === 'admin' ? await adminDb.collection('user_profiles').get() : null;
+    const registrations = profiles ? profiles.docs.map(document => document.data()).filter(profile => !userRolesList.some(role => role.email.toLowerCase() === profile.email)) : [];
+    res.json({ roles: activeUser.role === 'admin' ? userRolesList : [activeUser], registrations, activeRoleId: activeUser.id, activeUser });
+  } catch { res.status(503).json({ error: 'Could not load team roles.' }); }
 });
-
-// GET current active user role
-app.get('/api/roles/current', (req, res) => {
-  try {
-    const activeUser = userRolesList.find(r => r.id === activeRoleId) || userRolesList[0];
-    return res.json(activeUser);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-// Switch active operating identity/role
-app.post('/api/roles/switch', (req, res) => {
-  try {
-    const { id } = req.body;
-    if (!id) {
-      return res.status(400).json({ error: 'User role id is required.' });
-    }
-    const found = userRolesList.find(r => r.id === id);
-    if (!found) {
-      return res.status(404).json({ error: `User with id "${id}" not found.` });
-    }
-    activeRoleId = id;
-
-    // Log identity switch in audit trail
-    const rec = activityService.logActivity({
-      module: 'app_system',
-      actionType: 'role_switched',
-      title: `Operating Identity Switched: ${found.name}`,
-      summary: `Operating user session switched to ${found.name} (${found.role.toUpperCase()}) [${found.district || 'All Districts'}].`,
-      actor: getActiveActor(found),
-      badgeType: 'purple'
-    });
-    persistActivityLogToFirestore(rec);
-
-    return res.json({
-      success: true,
-      activeRoleId,
-      activeUser: found
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
-});
+app.get('/api/roles/current', (_req, res) => res.json(res.locals.authUser));
+app.post('/api/roles/switch', (_req, res) => res.status(403).json({ error: 'Sign out and sign in with your own account to change users.' }));
 
 // Add or update a user role
 app.post('/api/roles', async (req, res) => {
   try {
+    await initUserRolesFromFirestore();
     const { email, name, role, district = 'All Districts', addedBy } = req.body;
-    if (!email || !email.trim()) {
+    if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       return res.status(400).json({ error: 'Valid email is required to assign a role.' });
     }
-    if (!name || !name.trim()) {
+    if (typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'Display name is required.' });
     }
     const validRoles = ['admin', 'warehouse', 'cca', 'auditor', 'dco'];
@@ -3732,39 +3613,38 @@ app.post('/api/roles', async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const docId = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
-    const existingIndex = userRolesList.findIndex(r => r.id === docId || r.email.toLowerCase() === cleanEmail);
+    const existingIndex = userRolesList.findIndex(r => r.email.toLowerCase() === cleanEmail);
+    const docId = existingIndex >= 0 ? userRolesList[existingIndex].id : createHash('sha256').update(cleanEmail).digest('hex');
 
+    const registrationSnapshot = await adminDb.collection('user_profiles').where('email', '==', cleanEmail).limit(1).get();
+    const registrationProfile = registrationSnapshot.docs[0]?.data();
     const roleDoc: UserRoleItem = {
       id: docId,
       email: cleanEmail,
       name: name.trim(),
+      position: registrationProfile?.position || userRolesList[existingIndex]?.position || '',
+      nest: registrationProfile?.nest || userRolesList[existingIndex]?.nest || '',
       role,
       district: district || 'All Districts',
       createdAt: existingIndex >= 0 ? userRolesList[existingIndex].createdAt : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      addedBy: addedBy || userRolesList.find(r => r.id === activeRoleId)?.name || 'Administrator'
+      addedBy: res.locals.authUser.name
     };
-
-    if (existingIndex >= 0) {
-      userRolesList[existingIndex] = roleDoc;
-    } else {
-      userRolesList.push(roleDoc);
-    }
 
     // Persist immediately to Firestore
     try {
       const db = getFirestoreDb();
       await setDoc(doc(db, 'user_roles', docId), cleanFirestorePayload(roleDoc), { merge: true });
     } catch (fErr) {
-      console.warn('Firestore role save warning:', fErr);
+      return res.status(503).json({ error: 'The role could not be saved. Please retry.' });
     }
 
+    await initUserRolesFromFirestore();
     return res.json({
       success: true,
       role: roleDoc,
       roles: userRolesList,
-      activeRoleId
+      activeRoleId: res.locals.authUser.id
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -3775,25 +3655,22 @@ app.post('/api/roles', async (req, res) => {
 app.delete('/api/roles/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    if (id === 'ohenedarko2014_gmail_com') {
-      return res.status(400).json({ error: 'Primary system administrator cannot be deleted.' });
-    }
-    userRolesList = userRolesList.filter(r => r.id !== id);
-    if (activeRoleId === id) {
-      activeRoleId = userRolesList[0]?.id || 'ohenedarko2014_gmail_com';
+    if (id === res.locals.authUser.id) {
+      return res.status(400).json({ error: 'You cannot delete your own administrator role.' });
     }
 
     try {
       const db = getFirestoreDb();
       await deleteDoc(doc(db, 'user_roles', id));
     } catch (fErr) {
-      console.warn('Firestore role delete warning:', fErr);
+      return res.status(503).json({ error: 'The role could not be deleted. Please retry.' });
     }
 
+    await initUserRolesFromFirestore();
     return res.json({
       success: true,
       roles: userRolesList,
-      activeRoleId
+      activeRoleId: res.locals.authUser.id
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });

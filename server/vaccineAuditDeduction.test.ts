@@ -138,7 +138,7 @@ function auditButtonHarness(result = approved) {
     selectedFacilityId:'selected-facility', orderSource:'whatsapp',whatsappMessage:'OPV 10',fulfillmentConfirmation:'OPV [10/10]\nOPV Dropper [10/10]',ccaName:'Test CCA',fsAudit:null,
     manualAuditInFlight:{current:false},allocationUpdateInFlight:{current:false},manualAuditIdentity:{current:null},latestAuditInputKey:{current:'draft-key'},debounceTimerRef:{current:null},
     crypto:{randomUUID(){return String(++uuid);}},clearTimeout,
-    async fetch(_url:string,options:any){validations++;ids.push(JSON.parse(options.body).checkId);return new Response(JSON.stringify(result));},
+    async authFetch(_url:string,options:any){validations++;ids.push(JSON.parse(options.body).checkId);return new Response(JSON.stringify(result));},
     async handleConfirmOrder(audit:any,snapshot:any){deductions++;assert.equal(audit.auditLogId,result.auditLogId);assert.equal(snapshot.facilityId,result.facilityId);},
     setValidationError(message:string){if(message)errors.push(message);},setSelectedFacilityId(){},setValidating(){},setIsStaleValidation(){},setValidationResult(){},setConfirmationSuccess(){},setConfirmationError(){}
   });
@@ -154,7 +154,7 @@ test('button-run successful audit deducts automatically, while typing rechecks a
 
 test('changed inputs while audit is pending cannot deduct stale quantities', async () => {
   const app = auditButtonHarness();
-  app.context.fetch = async () => { app.context.latestAuditInputKey.current='edited-draft';return new Response(JSON.stringify(approved)); };
+  app.context.authFetch = async () => { app.context.latestAuditInputKey.current='edited-draft';return new Response(JSON.stringify(approved)); };
   await app.context.runAudit(true);assert.equal(app.deductions,0);assert.match(app.errors.join(' '),/inputs changed/);
 });
 
@@ -191,7 +191,7 @@ test('refreshing after an auto-resolved audit keeps the audited facility selecte
   let selected = '';
   const context = vm.createContext({
     selectedFacilityId:'',
-    async fetch(){return new Response(JSON.stringify([{id:'first',facilityName:'First Clinic'},{id:'audited',facilityName:'Audited Clinic'}]));},
+    async authFetch(){return new Response(JSON.stringify([{id:'first',facilityName:'First Clinic'},{id:'audited',facilityName:'Audited Clinic'}]));},
     setFacilities(){},setLoadingFacilities(){},setSelectedFacilityId(id:string){selected=id;},console
   });
   vm.runInContext(ts.transpile(code + '\nglobalThis.refresh = fetchFacilities;'),context);

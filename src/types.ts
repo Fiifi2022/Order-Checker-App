@@ -456,6 +456,8 @@ export interface DistrictSheetData {
 export type AppRole = 'admin' | 'warehouse' | 'cca' | 'auditor' | 'dco';
 
 export interface UserRoleRecord {
+  position?: string;
+  nest?: string;
   id: string;
   email: string;
   name: string;
@@ -569,3 +571,11 @@ export interface AppUsageMetrics {
 }
 
 
+
+export interface UserRegistration { uid: string; email: string; name: string; position: string; nest: string; createdAt: string; updatedAt: string }
+
+export interface ManagedAccount {
+  uid: string; email: string; name: string; position: string; nest: string;
+  emailVerified: boolean; disabled: boolean; providers: string[];
+  createdAt: string; lastSignInAt: string; role: AppRole | null; district: string;
+}

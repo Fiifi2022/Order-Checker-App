@@ -1,3 +1,4 @@
+import { authFetch } from './authFetch';
 /**
  * Safe fetch utility that guarantees clean JSON parsing and user-friendly error messages,
  * completely preventing "Unexpected token '<', <!doctype... is not valid JSON" errors.
@@ -6,7 +7,7 @@
 export async function safeFetchJson<T = any>(url: string, options?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(url, options);
+    res = await authFetch(url, options);
   } catch (netErr: any) {
     throw new Error(netErr?.message || 'Network communication error. Please check your connection.');
   }

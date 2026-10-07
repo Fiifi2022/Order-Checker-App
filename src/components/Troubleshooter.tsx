@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/authFetch';
 import React, { useState } from 'react';
 import { 
   Wrench, 
@@ -70,12 +71,12 @@ export default function Troubleshooter({
 
     try {
       // 1. API Speed Check
-      const apiRes = await fetch('/api/speedtest');
+      const apiRes = await authFetch('/api/speedtest');
       const apiData = await apiRes.json();
       const latency = apiData.durationMs || (Date.now() - startTime);
 
       // 2. OSU Register Check
-      const osuRes = await fetch('/api/osu');
+      const osuRes = await authFetch('/api/osu');
       const osuData = await osuRes.json();
 
       setDiagnosticResults({

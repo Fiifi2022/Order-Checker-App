@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/authFetch';
 import React, { useEffect, useRef, useState } from 'react';
 import VaccineScreenshotInput from './VaccineScreenshotInput';
 import {
@@ -90,7 +91,7 @@ export const OrderSourcePanel: React.FC<OrderSourcePanelProps> = ({
     setSpeedResult(null);
     setSpeedError('');
     try {
-      const response = await fetch('/api/speedtest', { signal: controller.signal, cache: 'no-store' });
+      const response = await authFetch('/api/speedtest', { signal: controller.signal, cache: 'no-store' });
       const data = await response.json();
       if (!response.ok || !data.success || !Number.isFinite(data.durationMs)) throw new Error('Benchmark unavailable');
       if (mounted.current) setSpeedResult({ seconds: (data.durationMs / 1000).toFixed(2), status: data.status });

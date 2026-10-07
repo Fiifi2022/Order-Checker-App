@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/authFetch';
 /**
  * Vaccine Allocation Dashboard Component
  * Synchronized with the 67-Column Multi-District Allocation Blueprint
@@ -96,9 +97,9 @@ export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateT
     setLoading(true);
     try {
       const [facRes, dashRes, bpRes] = await Promise.all([
-        fetch('/api/vaccine/allocations'),
-        fetch('/api/vaccine/dashboard'),
-        fetch('/api/vaccine/blueprint-districts')
+        authFetch('/api/vaccine/allocations'),
+        authFetch('/api/vaccine/dashboard'),
+        authFetch('/api/vaccine/blueprint-districts')
       ]);
 
       if (facRes.ok) setFacilities(await facRes.json());
@@ -118,7 +119,7 @@ export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateT
   const handleSyncFromBlueprint = async () => {
     setSyncing(true);
     try {
-      const syncRes = await fetch('/api/vaccine/blueprint-districts/sync', { method: 'POST' });
+      const syncRes = await authFetch('/api/vaccine/blueprint-districts/sync', { method: 'POST' });
       if (syncRes.ok) {
         await fetchData();
         setSyncSuccess(true);
@@ -137,7 +138,7 @@ export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateT
     }
     setClearing(true);
     try {
-      const res = await fetch('/api/app/clear-all', { method: 'POST' });
+      const res = await authFetch('/api/app/clear-all', { method: 'POST' });
       if (res.ok) {
         setFacilities([]);
         setDashboardMetrics(null);

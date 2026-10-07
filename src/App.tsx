@@ -1,3 +1,5 @@
+import { logoutUser } from './firebase';
+import { authFetch } from './utils/authFetch';
 import GeneralScreenshotInput, { type GeneralScreenshotHandle } from './components/GeneralScreenshotInput';
 import GeneralMonitoring from './components/GeneralMonitoring';
 import { GeneralOrderLimitPrompt, GeneralProductName } from './components/GeneralFulfillmentSummary';
@@ -57,7 +59,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { OrderCheckResult, AuditRecord, AuditAnalytics, VerificationItem, UserRoleRecord } from './types';
+import { OrderCheckResult, AuditRecord, AuditAnalytics, VerificationItem, UserRoleRecord, UserRegistration } from './types';
 import Troubleshooter from './components/Troubleshooter';
 import VaccineAllocationChecker from './components/VaccineAllocationChecker';
 import VaccineDashboard from './components/VaccineDashboard';
@@ -67,7 +69,7 @@ import SystemAuditLogView from './components/SystemAuditLogView';
 import RoleManagementModal, { ROLE_DEFINITIONS } from './components/RoleManagementModal';
 import GeminiStatus from './components/GeminiStatus';
 
-export default function App() {
+export default function App({ authenticatedUser }: { authenticatedUser: UserRoleRecord }) {
   // Navigation tabs - Supports both existing Order Checker & new Vaccine Allocation Module
   const [activeTab, setActiveTab] = useState<
     'vaccine_blueprint' | 'vaccine_checker' | 'vaccine_dashboard' | 'kpi_dashboard' | 'auditor' | 'extension' | 'history' | 'troubleshooter'
@@ -84,7 +86,7 @@ export default function App() {
     setHistoryLoading(true);
     setHistoryError(null);
     try {
-      const res = await fetch('/api/audits');
+      const res = await authFetch('/api/audits');
       if (res.ok) {
         const data = await res.json();
         setAuditsHistory(data);
@@ -104,7 +106,7 @@ export default function App() {
       fetchHistory();
     }
     // Track module navigation in app usage analytics
-    fetch('/api/activity/log', {
+    authFetch('/api/activity/log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -117,29 +119,21 @@ export default function App() {
   }, [activeTab]);
 
   // Team Roles & Access Control (RBAC) state
-  const [roles, setRoles] = useState<UserRoleRecord[]>([
-    {
-      id: 'ohenedarko2014_gmail_com',
-      email: 'ohenedarko2014@gmail.com',
-      name: 'Mary Alhassan',
-      role: 'admin',
-      district: 'All Districts',
-      createdAt: new Date().toISOString(),
-      addedBy: 'System Bootstrap'
-    }
-  ]);
-  const [activeUser, setActiveUser] = useState<UserRoleRecord | null>(roles[0]);
+  const [registrations, setRegistrations] = useState<UserRegistration[]>([]);
+  const [roles, setRoles] = useState<UserRoleRecord[]>([authenticatedUser]);
+  const [activeUser, setActiveUser] = useState<UserRoleRecord | null>(authenticatedUser);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [loadingRoles, setLoadingRoles] = useState(false);
 
   const fetchRoles = async () => {
     setLoadingRoles(true);
     try {
-      const res = await fetch('/api/roles');
+      const res = await authFetch('/api/roles');
       if (res.ok) {
         const data = await res.json();
         if (data.roles && Array.isArray(data.roles)) {
           setRoles(data.roles);
+          setRegistrations(data.registrations || []);
           if (data.activeUser) {
             setActiveUser(data.activeUser);
           } else if (data.activeRoleId) {
@@ -155,27 +149,11 @@ export default function App() {
     }
   };
 
-  const handleSwitchUser = async (userId: string) => {
-    try {
-      const res = await fetch('/api/roles/switch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: userId })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.activeUser) {
-          setActiveUser(data.activeUser);
-        }
-      }
-    } catch (err) {
-      console.error('Error switching active role:', err);
-    }
-  };
-
   useEffect(() => {
     fetchRoles();
   }, []);
+
+  useEffect(() => { if (isRoleModalOpen) void fetchRoles(); }, [isRoleModalOpen]);
 
   // Simulated out of stock (OSU) list
   const [osuList, setOsuList] = useState<string[]>([]);
@@ -201,7 +179,7 @@ export default function App() {
   const fetchOsuList = async () => {
     setOsuLoading(true);
     try {
-      const res = await fetch('/api/osu');
+      const res = await authFetch('/api/osu');
       if (res.ok) {
         const data = await res.json();
         setOsuList(data);
@@ -217,7 +195,7 @@ export default function App() {
   const addOsuItem = async () => {
     if (!newOsuItem.trim()) return;
     try {
-      const res = await fetch('/api/osu', {
+      const res = await authFetch('/api/osu', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item: newOsuItem.trim() })
@@ -235,7 +213,7 @@ export default function App() {
   // Delete OSU item
   const removeOsuItem = async (item: string) => {
     try {
-      const res = await fetch('/api/osu', {
+      const res = await authFetch('/api/osu', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item })
@@ -280,7 +258,7 @@ export default function App() {
     setSpeedResult(null);
     const startTime = Date.now();
     try {
-      const res = await fetch('/api/speedtest');
+      const res = await authFetch('/api/speedtest');
       if (res.ok) {
         const data = await res.json();
         setSpeedResult({
@@ -453,10 +431,10 @@ export default function App() {
 
     try {
       let liveOsu: string[] = [];
-      try { const response = await fetch('/api/osu', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]) }); if (!response.ok) throw new Error(); liveOsu = await response.json(); } catch { if (!controller.signal.aborted) setGeneralServiceWarning('OSU register unavailable. Confirmation quantities still determine stock status.'); }
+      try { const response = await authFetch('/api/osu', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]) }); if (!response.ok) throw new Error(); liveOsu = await response.json(); } catch { if (!controller.signal.aborted) setGeneralServiceWarning('OSU register unavailable. Confirmation quantities still determine stock status.'); }
       if (controller.signal.aborted || revision !== generalAuditRevision.current) return;
       run = createGeneralAuditRun(inputs, revision, orderLimitDecisions, { osuItems: liveOsu }, true);
-      const response = await fetch('/api/verify', {
+      const response = await authFetch('/api/verify', {
         signal: controller.signal,
         method: 'POST',
         headers: {
@@ -513,7 +491,7 @@ export default function App() {
     setSubmittingResolution(true);
     
     try {
-      const res = await fetch(`/api/audits/${selectedAuditForResolution.id}`, {
+      const res = await authFetch(`/api/audits/${selectedAuditForResolution.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -682,7 +660,7 @@ export default function App() {
           <div className="flex items-center gap-2 sm:gap-3">
             <GeminiStatus />
             <div 
-              onClick={() => setIsRoleModalOpen(true)}
+              onClick={() => { if (activeUser?.role === 'admin') setIsRoleModalOpen(true); }}
               className="flex items-center gap-2.5 bg-[#2C1349] hover:bg-[#39185e] p-1.5 sm:p-2 px-3 sm:px-4 rounded-2xl border border-purple-900/80 text-xs shadow-inner cursor-pointer transition-all"
               title="Click to manage team roles and permissions"
             >
@@ -699,7 +677,7 @@ export default function App() {
                     {ROLE_DEFINITIONS[activeUser?.role || 'admin']?.title || activeUser?.role || 'Admin'}
                   </span>
                   <span className="text-[10px] text-purple-300 hidden md:inline truncate max-w-[120px]">
-                    {activeUser?.district || 'All Districts'}
+                    {activeUser?.nest || activeUser?.district || 'All Districts'}
                   </span>
                 </div>
               </div>
@@ -713,19 +691,20 @@ export default function App() {
               </div>
             </div>
 
+            <button type="button" onClick={() => { void logoutUser().catch(() => window.alert('Could not sign out. Please retry.')); }} title="Sign out" className="inline-flex items-center gap-2 p-2 text-white rounded-xl hover:bg-white/10"><LogOut size={16} /><span className="hidden sm:inline text-xs">Sign out</span></button>
             {/* Manage Roles Button */}
-            <button
+            {activeUser?.role === 'admin' && <button
               type="button"
-              onClick={() => setIsRoleModalOpen(true)}
+              onClick={() => { if (activeUser?.role === 'admin') setIsRoleModalOpen(true); }}
               className="inline-flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
-              title="Manage Team Roles & RBAC"
+              title="Account administration and team roles"
             >
               <Users className="w-3.5 h-3.5 text-purple-200" />
-              <span className="hidden sm:inline">Team Roles</span>
+              <span className="hidden sm:inline">Administration</span>
               <span className="text-[10px] bg-purple-400/40 text-purple-100 px-1.5 py-0.2 rounded-full font-black">
                 {roles.length}
               </span>
-            </button>
+            </button>}
           </div>
         </div>
       </header>
@@ -834,16 +813,16 @@ export default function App() {
           </button>
 
           {/* Team Roles & Access Control modal trigger */}
-          <button
-            onClick={() => setIsRoleModalOpen(true)}
+          {activeUser?.role === 'admin' && <button
+            onClick={() => { if (activeUser?.role === 'admin') setIsRoleModalOpen(true); }}
             className="py-4 px-3 text-xs md:text-sm font-bold border-b-2 border-transparent text-purple-700 hover:text-purple-900 transition-all flex items-center gap-2 cursor-pointer ml-auto"
           >
             <Users className="w-4 h-4 text-purple-700" />
-            <span>Team Roles</span>
+            <span>Administration</span>
             <span className="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded-full font-black border border-purple-200">
               {roles.length}
             </span>
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -1654,12 +1633,13 @@ export default function App() {
         isOpen={isRoleModalOpen}
         onClose={() => setIsRoleModalOpen(false)}
         roles={roles}
+        registrations={registrations}
         activeUser={activeUser}
         onRoleAddedOrUpdated={(updatedRoles, newActive) => {
           setRoles(updatedRoles);
+          void fetchRoles();
           if (newActive) setActiveUser(newActive);
         }}
-        onSwitchUser={handleSwitchUser}
       />
 
     </div>

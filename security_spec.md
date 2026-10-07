@@ -1,48 +1,43 @@
-# Zipline Ghana OrderCheck Compliance - Firebase Firestore Security Specification
+# OrderCheck authentication and access control
 
-This document details the security spec and threat model for the Zipline Order Auditing Firestore database, in accordance with Zero-Trust guidelines.
+## Trust boundary
 
-## 1. Data Invariants
+The browser signs in with Firebase Authentication using Google or email/password. Every API request except `GET /api/health` requires a Firebase ID token in its Authorization header. The server verifies token signatures, expiration, revocation, and account status with Firebase Admin. Unverified email and anonymous accounts are rejected for operational access. Two narrowly scoped onboarding routes allow non-anonymous accounts with an email to save or read their own registration profile before verification; the UID and email always come from the verified token.
 
-1. **Authorization**: Only authenticated users (e.g. verified Customer Care team members) can read, create, or update audit records. 
-2. **Immutability of Key Fields**: Once an audit is created, critical fields such as `id`, `timestamp`, `whatsappMessage`, `fulfillmentConfirmation`, `confidence`, `verdict`, and `allMatch` cannot be modified by any tier other than standard system automations.
-3. **Pillared Updates**: Updates are only allowed for changing the status and appending resolution notes. No ghost fields can be injected.
-4. **Valid States**: Status can only transition to `'resolved'` or `'ignored'` from `'pending'`.
-5. **Confidence Range**: Confidence must be a valid integer between 0 and 100 inclusive.
+A verified identity must also have a stored `user_roles` record for its email. Roles are read on each request, so revoking or changing access takes effect on subsequent requests. Role storage failures return 503 and do not grant access. An explicitly configured `AUTH_BOOTSTRAP_ADMIN_EMAIL` can bootstrap the first administrator only when no stored role exists for that email.
 
----
+Self-registration stores name, position, and Nest without an access role. Only an administrator can approve operational access by assigning a role. Passwords are handled solely by Firebase Authentication.
 
-## 2. The "Dirty Dozen" Threat Payloads
+## Authorization
 
-Every single one of these payloads must be rejected (`PERMISSION_DENIED`) by the firestore rules engine:
+- Administrators can manage roles, blueprints, configuration, and operational data.
+- Warehouse and legacy DCO accounts can manage stock and adjustments and run operational audits and confirmations.
+- CCA accounts can run audits and confirm orders, without changing quotas, stock, roles, or blueprint configuration.
+- Auditors can inspect data and run verification, without making operational changes.
+- Only administrators can clear or reset data.
 
-1. **Payload 1: Unauthenticated Creation**
-   - Attempt by an unauthenticated user to write any audit log.
-2. **Payload 2: Set Tampered ID**
-   - Injecting SQL-like injection or massive character buffers as the document ID path variable.
-3. **Payload 3: Identity Spoofing (Owner bypass)**
-   - Attempt to override the automated audit fields to claim credit or tamper with analytics.
-4. **Payload 4: Invalid Status Enum Val**
-   - Setting status to `'approved_by_kwame'` instead of standard `['pending', 'resolved', 'ignored']`.
-5. **Payload 5: Immutability Tampering (Changing WhatsApp Message)**
-   - Attempting to update `whatsappMessage` text on an existing document.
-6. **Payload 6: Fraudulent Confidence Inflation**
-   - Attempting to rewrite the confidence index from custom levels to standard 100 on mismatch audits.
-7. **Payload 7: Value Type Poisoning**
-   - Updating `resolutionNotes` with a numeric array or boolean instead of a string.
-8. **Payload 8: Denial-of-Wallet Buffer Overflow**
-   - Injecting a 2MB string into `resolutionNotes`.
-9. **Payload 9: Ghost Field Insertion**
-   - Passing an extra key `isVerifiedBySystem: true` during update.
-10. **Payload 10: State Shortcircuiting**
-    - Transitioning a completed/resolved audit record's `resolutionNotes` after a final resolution has been cleared.
-11. **Payload 11: Spoofed Server Timestamp**
-    - Providing a custom client date string on `resolvedAt` instead of relying on `request.time`.
-12. **Payload 12: Anonymous User Intrusion**
-    - Attempting write operations using an unverified or anonymous user account.
+District assignments remain profile metadata; this change does not implement district-specific data isolation.
 
----
+## Identity integrity
 
-## 3. Test Runner Design
+Operating identity comes from the authenticated account. Request-scoped context prevents simultaneous users from sharing a global active identity. Caller-supplied actor, user, CCA user, and role-attribution values are replaced before handlers run. The identity-switch endpoint is disabled for every role.
 
-The rules will be fully verified against these conditions using the local rules flat recommended checking configuration. No operation can proceed if these checks fail.
+## Persistence
+
+Firestore client rules deny all direct reads and writes. The Express server persists records using Application Default Credentials through Firebase Admin. Deploy the rules to the configured database to prevent bypassing the API through the client SDK. Administrator role writes must persist successfully before the API reports success.
+
+Service account credentials stay on the server. ID tokens are attached only to same-origin API requests by the web client. Sign-out unmounts the portal and clears its component state. Tokens are managed and refreshed by Firebase Auth.
+
+## Validation and limits
+
+`server/auth.test.ts` checks missing or invalid tokens, verified identities, assigned roles, role removal, unavailable role storage, caller identity spoofing, and management permissions. The application test suite also exercises atomic vaccine confirmations and audit behavior.
+
+Live Google sign-in, credential permissions, and deployed Firestore rules must be verified in the configured Firebase environment. The existing extension has no sign-in flow and cannot call protected endpoints until it supplies a verified Firebase token. Existing collection payload validation and audit semantics remain in the server handlers; the Admin SDK does not enforce client rules.
+
+## Administrative account support
+
+The `/api/admin/accounts` routes require an administrator for both reads and writes. Handlers also check this permission independently. Lists return an explicit public profile projection without password hashes, salts, or custom claims. Profiles accept only name, position, and Nest; they cannot set permission fields.
+
+Account actions have a fixed allowlist: update password, disable, enable, revoke sessions, generate password reset link, or generate email verification link. Password changes require 8–128 characters and revoke sessions. Google-only accounts cannot have their Google password changed here. Self-disabling is rejected. No account deletion, manual verification bypass, or email changes are exposed.
+
+Account-action logs contain actor identity, target UID, action, and timestamp, with no passwords or recovery links. API responses use `Cache-Control: no-store`. Generated links stay in the administrator’s current view until it is closed or another account is selected. Live user-management actions require the configured service account’s Firebase Authentication permissions.

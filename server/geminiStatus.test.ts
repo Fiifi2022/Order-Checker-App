@@ -85,7 +85,7 @@ test('status stream pushes state and unsubscribes on disconnect without heartbea
   assert.equal(frames.length, 4);
   const component = readFileSync(new URL('../src/components/GeminiStatus.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(component, /setInterval|setTimeout|fetch\(/);
-  assert.match(component, /events\.close\(\)/);
+  assert.match(component, /controller\.abort\(\)/);
 });
 
 test('legacy audit generation also stops after one quota failure without model switching', async () => {

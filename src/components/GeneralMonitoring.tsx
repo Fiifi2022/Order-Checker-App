@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/authFetch';
 import { useState } from 'react';
 export default function GeneralMonitoring() {
   const [history, setHistory] = useState<any>(null);
@@ -7,11 +8,11 @@ export default function GeneralMonitoring() {
   const load = async (diagnose = false) => {
     setBusy(true); setError('');
     try {
-      const response = await fetch(diagnose ? '/api/general-auditor/diagnostics' : '/api/general-auditor/history');
+      const response = await authFetch(diagnose ? '/api/general-auditor/diagnostics' : '/api/general-auditor/history');
       const data = await response.json(); if (!response.ok) throw new Error(data.error || 'General Auditor monitoring unavailable.');
       if (diagnose) {
         setDiagnostics(data.services);
-        try { const response = await fetch('/api/gemini-status'); const result = await response.json(); setDiagnostics(previous => [...previous, { service: 'Gemini last known state', status: response.ok ? result.status.replaceAll('_', ' ') : 'Unavailable', detail: 'Reported from real audit usage; no Gemini request made.' }]); }
+        try { const response = await authFetch('/api/gemini-status'); const result = await response.json(); setDiagnostics(previous => [...previous, { service: 'Gemini last known state', status: response.ok ? result.status.replaceAll('_', ' ') : 'Unavailable', detail: 'Reported from real audit usage; no Gemini request made.' }]); }
         catch { setDiagnostics(previous => [...previous, { service: 'Gemini API availability', status: 'Failed', detail: 'Stored status unavailable.' }]); }
       } else setHistory(data);
     } catch (error: any) { setError(error.message); } finally { setBusy(false); }

@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/authFetch';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 export interface GeneralScreenshotHandle { acceptFile: (file: File) => void }
 export default forwardRef<GeneralScreenshotHandle, { label: string; inputsKey: string; resetKey: number; onText: (text: string) => void; onInvalidate: () => void }>(function GeneralScreenshotInput({ label, inputsKey, resetKey, onText, onInvalidate }, ref) {
@@ -25,7 +26,7 @@ export default forwardRef<GeneralScreenshotHandle, { label: string; inputsKey: s
     const version = revision.current; const key = currentInputs.current;
     onInvalidate(); setBusy(true); setMessage('');
     try {
-      const response = await fetch('/api/scan-screenshot', { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auditScope: 'general_auditor', imageBase64: image, mimeType: image.split(';')[0].split(':')[1] }) });
+      const response = await authFetch('/api/scan-screenshot', { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auditScope: 'general_auditor', imageBase64: image, mimeType: image.split(';')[0].split(':')[1] }) });
       const data = await response.json();
       if (!response.ok || !data.text?.trim()) throw new Error(data.error || data.message || 'Screenshot scanning returned no text.');
       if (controller.signal.aborted || version !== revision.current || key !== currentInputs.current) return;

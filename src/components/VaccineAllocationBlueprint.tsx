@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/authFetch';
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { createPortal } from 'react-dom';
@@ -938,7 +939,7 @@ export default function VaccineAllocationBlueprint({
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/vaccine/blueprint-districts/${sheetId}`, {
+      const res = await authFetch(`/api/vaccine/blueprint-districts/${sheetId}`, {
         method: 'DELETE'
       });
       if (res.ok) {
@@ -975,7 +976,7 @@ export default function VaccineAllocationBlueprint({
   const handleClearBlueprintData = async (scope: 'current' | 'all') => {
     setIsClearing(true);
     try {
-      const res = await fetch('/api/vaccine/blueprint-districts/clear', {
+      const res = await authFetch('/api/vaccine/blueprint-districts/clear', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2028,7 +2029,7 @@ export default function VaccineAllocationBlueprint({
     saveBlueprintToServer(updated, products, district, month);
 
     try {
-      await fetch('/api/vaccine/blueprint/complete-facility', {
+      await authFetch('/api/vaccine/blueprint/complete-facility', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2887,7 +2888,7 @@ export default function VaccineAllocationBlueprint({
     setLoading(true);
     setSyncStatus('Synchronizing all districts with Order Checker...');
     try {
-      const res = await fetch('/api/vaccine/blueprint-districts/sync', {
+      const res = await authFetch('/api/vaccine/blueprint-districts/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });

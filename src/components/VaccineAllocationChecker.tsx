@@ -1,3 +1,4 @@
+import { authFetch } from '../utils/authFetch';
 /**
  * Vaccine Allocation Validation & Checker Component
  * 
@@ -187,7 +188,7 @@ export default function VaccineAllocationChecker({
   const fetchFacilities = async (resetSelection = false, preferredFacilityId?: string) => {
     setLoadingFacilities(true);
     try {
-      const res = await fetch('/api/vaccine/allocations');
+      const res = await authFetch('/api/vaccine/allocations');
       if (res.ok) {
         const data: FacilityAllocation[] = await res.json();
         setFacilities(data);
@@ -213,7 +214,7 @@ export default function VaccineAllocationChecker({
   const fetchAuditLogs = async () => {
     setLoadingAuditLogs(true);
     try {
-      const res = await fetch('/api/vaccine/audit-logs');
+      const res = await authFetch('/api/vaccine/audit-logs');
       if (res.ok) {
         const data = await res.json();
         setAuditLogs(data);
@@ -600,7 +601,7 @@ export default function VaccineAllocationChecker({
   // Facility Metadata Update Handler
   const handleUpdateFacilityName = async (facilityId: string, updates: { facilityName: string; district?: string; subDistrict?: string }): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/vaccine/facilities/${facilityId}`, {
+      const res = await authFetch(`/api/vaccine/facilities/${facilityId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -625,7 +626,7 @@ export default function VaccineAllocationChecker({
     product: { vaccineName: string; original?: number; carryOver?: number; topUp?: number; dosesPerVial?: number; unit?: 'vials' | 'doses' }
   ): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/vaccine/facilities/${facilityId}/vaccines`, {
+      const res = await authFetch(`/api/vaccine/facilities/${facilityId}/vaccines`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(product)
@@ -682,7 +683,7 @@ export default function VaccineAllocationChecker({
     setConfirmationError(null);
 
     try {
-      const res = await fetch('/api/vaccine/validate', {
+      const res = await authFetch('/api/vaccine/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -787,7 +788,7 @@ export default function VaccineAllocationChecker({
     }
     setSavingTopUp(true);
     try {
-      const res = await fetch(`/api/vaccine/allocations/${selectedFacilityId}/topup`, {
+      const res = await authFetch(`/api/vaccine/allocations/${selectedFacilityId}/topup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2066,7 +2067,7 @@ export default function VaccineAllocationChecker({
                   <button
                     type="button"
                     onClick={async () => {
-                      await fetch('/api/vaccine/audit-logs/clear', { method: 'POST' });
+                      await authFetch('/api/vaccine/audit-logs/clear', { method: 'POST' });
                       setAuditLogs([]);
                     }}
                     className="text-xs font-semibold text-rose-600 hover:text-rose-800 cursor-pointer"
