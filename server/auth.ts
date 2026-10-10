@@ -1,23 +1,28 @@
+import { assignedRoles } from '../shared/roles';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { RequestHandler } from 'express';
 
 export interface AuthProfile {
-  id: string; email: string; name: string; role: string; district: string; createdAt: string;
+  id: string; email: string; name: string; role: string; roles?: string[]; district: string; createdAt: string;
 }
 export const actorContext = new AsyncLocalStorage<AuthProfile>();
-const roles = new Set(['admin', 'warehouse', 'dco', 'cca', 'auditor']);
-export function canAccess(role: string, method: string, path: string) {
+export function canAccess(role: string | readonly string[], method: string, path: string): boolean {
+  if (Array.isArray(role)) return role.some(value => canAccess(value, method, path));
+  if (!assignedRoles({ role: role as string }).length) return false;
   if (path === '/roles/switch') return false;
   if (role === 'admin') return true;
   if (path === '/admin' || path.startsWith('/admin/')) return false;
   if (path.startsWith('/roles') && method !== 'GET') return false;
+  const blueprintPath = /^\/vaccine\/(?:blueprint(?:[/-]|$)|allocations\/(?:upload|clear|reset-demo|[^/]+\/topup)$|adjust$|aliases$|facilities\/)/.test(path);
+  if (blueprintPath && ['warehouse', 'dco', 'auditor'].includes(role as string)) return true;
+  if (blueprintPath && method !== 'GET') return false;
   if (/clear|reset-demo/.test(path)) return false;
   if (method === 'GET') return true;
   if (['/activity/log', '/verify', '/scan-screenshot', '/vaccine/validate'].includes(path)) return true;
   if (role === 'auditor') return false;
-  if (/topup|\/adjust$|dhd-inventory\/stock/.test(path)) return ['warehouse', 'dco'].includes(role);
+  if (/topup|\/adjust$|dhd-inventory\/stock/.test(path)) return ['warehouse', 'dco'].includes(role as string);
   if (/blueprint|\/upload$|\/facilities\//.test(path)) return false;
-  return ['cca', 'warehouse', 'dco'].includes(role);
+  return ['cca', 'warehouse', 'dco'].includes(role as string);
 }
 export function createAuthentication(
   verify: (token: string) => Promise<any>,
@@ -44,10 +49,10 @@ export function createAuthentication(
     let profile: AuthProfile | null;
     try { profile = await findProfile(identity.email.toLowerCase()); }
     catch { res.status(503).json({ error: 'Account access could not be verified. Please retry.' }); return; }
-    if (!profile || !roles.has(profile.role)) {
+    if (!profile || !assignedRoles(profile).length) {
       res.status(403).json({ error: 'Your account has not been granted access. Contact an administrator.' }); return;
     }
-    if (!canAccess(profile.role, req.method, req.path)) {
+    if (!canAccess(assignedRoles(profile), req.method, req.path)) {
       res.status(403).json({ error: 'Your role does not permit this action.' }); return;
     }
     res.locals.authUser = profile;

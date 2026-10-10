@@ -453,7 +453,8 @@ export interface DistrictSheetData {
   rows: any[];
 }
 
-export type AppRole = 'admin' | 'warehouse' | 'cca' | 'auditor' | 'dco';
+export type { AppRole } from '../shared/roles';
+import type { AppRole } from '../shared/roles';
 
 export interface UserRoleRecord {
   position?: string;
@@ -462,6 +463,7 @@ export interface UserRoleRecord {
   email: string;
   name: string;
   role: AppRole;
+  roles?: AppRole[];
   district?: string;
   avatar?: string;
   createdAt: string;
@@ -577,5 +579,5 @@ export interface UserRegistration { uid: string; email: string; name: string; po
 export interface ManagedAccount {
   uid: string; email: string; name: string; position: string; nest: string;
   emailVerified: boolean; disabled: boolean; providers: string[];
-  createdAt: string; lastSignInAt: string; role: AppRole | null; district: string;
+  createdAt: string; lastSignInAt: string; role: AppRole | null; roles?: AppRole[]; district: string;
 }

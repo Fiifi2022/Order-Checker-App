@@ -14,9 +14,9 @@ The app uses Firebase email/password and Google sign-in with server-verified ID 
 4. Sign in as that administrator and use **Team Roles** to assign roles by email. Save a persistent administrator role for your own email before removing the bootstrap environment variable. Roles are checked on each API request, so deleting a role removes access immediately.
 5. Deploy `firestore.rules` to the configured Firestore database. These rules deny direct client access; all persistence uses the server Admin SDK. Existing permissive rules must be replaced to prevent bypassing API authentication.
 
-Administrators manage team roles and blueprints. Warehouse members manage stock and adjustments. CCA members run audits and confirmations. Auditors have read access and can run verification. Identity switching is disabled, and writes use the authenticated actor.
+Administrators manage team roles and blueprints. Warehouse members (including legacy DCO accounts) and Compliance Auditors have full blueprint administration: upload, edit, synchronize, reset, and delete blueprints, districts, cycles, facilities, and quotas. Warehouse members also manage stock and adjustments. CCA members run audits and confirmations. Compliance Auditors review records and run verification. A person can hold multiple roles; their permissions are combined. In Team Roles, use **Edit roles** and select all applicable roles. Existing single-role accounts remain supported. Identity switching is disabled, and writes use the authenticated actor.
 
-`GET /api/health` remains public. Other API endpoints require `Authorization: Bearer <Firebase ID token>`, including browser extension requests. The existing extension does not yet include a Google sign-in flow; use the authenticated web portal for audits.
+`GET /api/health` remains public. Other API endpoints require `Authorization: Bearer <Firebase ID token>`, including browser extension requests. The extension signs in with Firebase email/password, refreshes ID tokens, and sends authenticated audits to the selected backend. Accounts must have verified email and an assigned role. Google-only users can ask an administrator for a password reset link to set a password on the same account.
 
 ## Checks
 
@@ -39,3 +39,15 @@ Administrators can edit name, position, and Nest, assign or update roles, enable
 Password reset and email verification links can be generated and copied for private delivery to the account holder. Generating a link does not send an email. Passwords and links are excluded from account action logs; action metadata is stored in `account_admin_logs`. Recovery responses are not cached. Firebase credential hashes are never included in account list responses.
 
 The server service account needs Firebase Authentication user-management permissions (for example, the Firebase Authentication Admin IAM role) and Firestore access. Profile edits update Firestore and the Firebase display name; if a step fails, reload the details before retrying. These operations use Firebase’s [Admin user management](https://firebase.google.com/docs/auth/admin/manage-users) and [recovery link APIs](https://firebase.google.com/docs/auth/admin/email-action-links).
+
+## Chrome extension with Render
+
+Deploy the complete repository as a Render **Web Service**, using Node 22+, build command `npm ci && npm run build`, and start command `npm start`. Keep the `extension/` folder and `firebase-applet-config.json` in the deployed repository. The server already listens on Render's `PORT` and `0.0.0.0`.
+
+Set `APP_URL=https://your-service.onrender.com` in Render (or your HTTPS custom domain); otherwise the download uses `RENDER_EXTERNAL_URL` or the requesting host. Set `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY` from your Firebase service account, plus `GEMINI_API_KEY` for AI audits, in Render environment variables. Add the Render hostname to Firebase Authentication's authorized domains for portal sign-in.
+
+In the signed-in portal, open the Extension tab and click **Download Packed ZIP**. Extract it, open `chrome://extensions`, enable Developer mode, and load the extracted folder. The download automatically sets the current backend and public Firebase API key. For the source `extension/` folder, enter your Render base URL in the popup and click **Save**. The backend setting survives popup closure. Changing services signs you out before sending further authenticated requests.
+
+Sign in with your approved portal email/password account, paste or capture both logs, then click Analyze. Passwords are never saved. The extension session lasts until sign-out or browser restart; ID tokens refresh automatically. Render startup has a 90-second connection timeout and audits have a 180-second timeout. The health badge confirms service reachability; account approval is checked separately when signing in and auditing. Failed audit submissions are not automatically retried.
+
+To update an installed copy, replace its files with the new extracted download, click **Reload** in `chrome://extensions`, and refresh any tabs used for capture.

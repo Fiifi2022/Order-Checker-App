@@ -157,7 +157,7 @@
     <div style="background-color:#5C2D91; padding:4px; border-radius:4px;">⚡</div>
     <div>
       <h3>OrderCheck Companion</h3>
-      <p>Clinical Dispatch Audit Extension v1.2</p>
+      <p>Clinical Dispatch Audit Extension v1.3</p>
     </div>
     <button id="btnKeepOpen" class="btn-keep-open" title="📌 Open in a standalone stay-open window, so it won't auto-close when clicking outside!">📌 Keep Open</button>
   </div>
@@ -166,8 +166,17 @@
     <span>WhatsApp Message Log</span>
     <span style="font-size:8px; color:#888; font-weight:normal;">Paste or auto-extract</span>
   </div>
+  <form id="signInForm" style="margin-bottom:10px;">
+    <label for="signInEmail" style="font-size:10px;">Portal email</label>
+    <input id="signInEmail" type="email" autocomplete="username" required style="box-sizing:border-box;width:100%;padding:7px;margin:4px 0;" />
+    <label for="signInPassword" style="font-size:10px;">Password</label>
+    <input id="signInPassword" type="password" autocomplete="current-password" required style="box-sizing:border-box;width:100%;padding:7px;margin:4px 0;" />
+    <button id="btnSignIn" type="submit" class="btn-secondary">Sign in</button>
+  </form>
+  <div id="authStatus" role="status" style="font-size:10px;margin-bottom:6px;">Sign in with your approved portal account.</div>
+  <button id="btnSignOut" class="btn-clear" hidden>Sign out</button>
   <label for="agentName" style="display:block; margin:8px 0 4px; font-size:10px; font-weight:bold; color:#5C2D91;">Agent name</label>
-  <input id="agentName" type="text" placeholder="Enter your name for usage reporting" style="box-sizing:border-box; width:100%; padding:7px; border:1px solid #E5E7EB; border-radius:6px; font-size:11px; margin-bottom:8px;">
+  <input id="agentName" type="text" readonly placeholder="Filled from your signed-in account" style="box-sizing:border-box; width:100%; padding:7px; border:1px solid #E5E7EB; border-radius:6px; font-size:11px; margin-bottom:8px;">
   <textarea id="whatsappText" placeholder="Pasted or extracted WhatsApp message goes here..."></textarea>
 
   <div class="section-title">
@@ -191,20 +200,20 @@
   <div class="server-status" id="serverInfo" style="margin-top: 12px; border-top: 1px dashed #D6C2EB; padding-top: 8px; text-align: left;">
     <div style="display: flex; gap: 4px; align-items: center; margin-bottom: 4px;">
       <span style="font-size: 9px; font-weight: bold; color: #5C2D91; white-space: nowrap;">Backend:</span>
-      <input type="text" id="backendUrlInput" style="flex: 1; min-width: 0; font-size: 9px; padding: 2px 4px; border: 1px solid #D6C2EB; border-radius: 3px;" value="https://ais-dev-ksv3oiifrmnhdib3nb7awh-944779874869.europe-west2.run.app" />
+      <input type="text" id="backendUrlInput" style="flex: 1; min-width: 0; font-size: 9px; padding: 2px 4px; border: 1px solid #D6C2EB; border-radius: 3px;" placeholder="https://your-service.onrender.com" />
       <button id="btnSaveBackend" style="font-size: 8px; padding: 2px 4px; background: #5C2D91; color: white; border: none; border-radius: 3px; cursor: pointer; white-space: nowrap;">Save</button>
       <button id="btnResetBackend" style="font-size: 8px; padding: 2px 4px; background: #E5E7EB; color: #374151; border: 1px solid #D1D5DB; border-radius: 3px; cursor: pointer; white-space: nowrap;">Reset</button>
     </div>
     <div id="backendSaveMsg" style="font-size: 8px; color: #059669; font-weight: 500; display: none; margin-bottom: 4px;">URL updated successfully!</div>
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
       <span id="connectionBadge" style="font-size: 8px; font-weight: bold; color: #991B1B; padding: 1px 4px; border-radius: 3px; background-color: #FEE2E2; display: inline-block;">● Pinging...</span>
-      <span style="font-size: 8px; color: #5C2D91; font-weight: 500;">Saved automatically</span>
+      <span style="font-size: 8px; color: #5C2D91; font-weight: 500;">Click Save to apply</span>
     </div>
     <div style="font-size: 8.5px; color: #6B7280; text-align: left; line-height: 1.2;">
-      Verify this matches your current app's Dev/Shared tab URL if you get fetch failures.
+      Enter your Render service URL, then Save. A sleeping service can take about a minute to start.
     </div>
   </div>
 
-  <script src="popup.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>

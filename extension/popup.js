@@ -1,4 +1,8 @@
-const SERVER_URL = 'https://ais-dev-ksv3oiifrmnhdib3nb7awh-944779874869.europe-west2.run.app';
+import { extensionConfig } from './config.js';
+import { normalizeBackendUrl, fetchJson } from './backend.js';
+import { signIn, signOut, backendRequest } from './auth.js';
+
+const SERVER_URL = extensionConfig.backendUrl;
 
 document.addEventListener('DOMContentLoaded', () => {
   const btnVerify = document.getElementById('btnVerify');
@@ -14,47 +18,76 @@ document.addEventListener('DOMContentLoaded', () => {
   const backendSaveMsg = document.getElementById('backendSaveMsg');
   const connectionBadge = document.getElementById('connectionBadge');
 
-  let checkTimer = null;
-  const debouncedCheck = () => {
-    if (checkTimer) clearTimeout(checkTimer);
-    checkTimer = setTimeout(checkConnection, 500);
+  let savedBackendUrl = SERVER_URL;
+  let connectionAttempt = 0;
+  const authStatus = document.getElementById('authStatus');
+  const signInForm = document.getElementById('signInForm');
+  const btnSignOut = document.getElementById('btnSignOut');
+
+  const showError = (error) => {
+    results.textContent = error.message || 'Unable to contact the backend.';
+
   };
+  const updateAuth = async () => {
+    const { authSession } = await chrome.storage.session.get('authSession');
+    signInForm.hidden = !!authSession;
+    btnSignOut.hidden = !authSession;
+    authStatus.textContent = authSession ? `Signed in as ${authSession.email}` : 'Sign in with your approved portal email/password account.';
+    if (!authSession) agentNameInput.value = '';
+  };
+  const loadProfile = async () => {
+    const profile = await backendRequest(normalizeBackendUrl(savedBackendUrl), '/api/auth/me');
+    agentNameInput.value = profile.name;
+    authStatus.textContent = `Signed in as ${profile.name} (${profile.role})`;
+  };
+  signInForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = document.getElementById('btnSignIn');
+    const passwordInput = document.getElementById('signInPassword');
+    button.disabled = true;
+    try {
+      normalizeBackendUrl(savedBackendUrl);
+      await signIn(document.getElementById('signInEmail').value.trim(), passwordInput.value);
+      await updateAuth();
+      await loadProfile();
+      results.textContent = 'Signed in. Ready for an audit.';
+    } catch (error) {
+      await signOut();
+      await updateAuth();
+      showError(error);
+    } finally {
+      passwordInput.value = '';
+      button.disabled = false;
+    }
+  });
+  btnSignOut.addEventListener('click', async () => {
+    await signOut();
+    await updateAuth();
+    activeResult = null;
+    results.textContent = 'Signed out.';
+  });
 
   const checkConnection = async () => {
-    if (!connectionBadge) return;
-    let rawUrl = backendUrlInput ? backendUrlInput.value.trim() : '';
-    if (!rawUrl) {
-      connectionBadge.textContent = '● Empty URL';
-      connectionBadge.style.color = '#B45309';
-      connectionBadge.style.backgroundColor = '#FEF3C7';
+    const attempt = ++connectionAttempt;
+    if (!savedBackendUrl) {
+      connectionBadge.textContent = '● Save your Render URL';
       return;
     }
-
-    if (!/^https?:\/\//i.test(rawUrl)) {
-      rawUrl = 'https://' + rawUrl;
-    }
-    const cleanUrl = rawUrl.replace(/\/+$/, '');
-
+    connectionBadge.textContent = '● Connecting / waking service…';
+    connectionBadge.style.color = '#B45309';
+    connectionBadge.style.backgroundColor = '#FEF3C7';
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
-      const res = await fetch(`${cleanUrl}/api/health`, {
-        method: 'GET',
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        connectionBadge.textContent = '● Connected (Live)';
-        connectionBadge.style.color = '#047857';
-        connectionBadge.style.backgroundColor = '#D1FAE5';
-      } else {
-        connectionBadge.textContent = '● Not Ready (' + res.status + ')';
-        connectionBadge.style.color = '#DC2626';
-        connectionBadge.style.backgroundColor = '#FEE2E2';
-      }
-    } catch (err) {
-      connectionBadge.textContent = '● Unreachable';
+      const data = await fetchJson(`${normalizeBackendUrl(savedBackendUrl)}/api/health`);
+      if (data.status !== 'ok') throw new Error('Unexpected health response.');
+      if (attempt !== connectionAttempt) return;
+      connectionBadge.title = '';
+      connectionBadge.textContent = '● Connected (Live)';
+      connectionBadge.style.color = '#047857';
+      connectionBadge.style.backgroundColor = '#D1FAE5';
+    } catch (error) {
+      if (attempt !== connectionAttempt) return;
+      connectionBadge.textContent = '● Connection failed';
+      connectionBadge.title = error.message;
       connectionBadge.style.color = '#DC2626';
       connectionBadge.style.backgroundColor = '#FEE2E2';
     }
@@ -67,13 +100,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const renderResults = () => {
     if (!activeResult) return;
 
+    const escape = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     let html = '';
     if (activeResult.allMatch) {
        html += '<div class="badge badge-success">CLEARED FOR LAUNCH</div>';
-       html += '<p style="color:#065F46; font-weight:bold; margin:4px 0 0 0; font-size:11px;">' + activeResult.verdict + '</p>';
+       html += '<p style="color:#065F46; font-weight:bold; margin:4px 0 0 0; font-size:11px;">' + escape(activeResult.verdict) + '</p>';
     } else {
-       html += '<div class="badge badge-error">DISCREPANCY ALERT (' + activeResult.issueCount + ')</div>';
-       html += '<p style="color:#991B1B; font-weight:bold; margin:4px 0; font-size:11px;">' + activeResult.verdict + '</p>';
+       html += '<div class="badge badge-error">DISCREPANCY ALERT (' + escape(activeResult.issueCount) + ')</div>';
+       html += '<p style="color:#991B1B; font-weight:bold; margin:4px 0; font-size:11px;">' + escape(activeResult.verdict) + '</p>';
     }
 
     // Display compared items list
@@ -83,19 +117,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const itemSymbol = it.status === 'match' ? '✓' : (it.status === 'out of stock' ? '⚠' : '✗');
       
       html += '<div style="border-bottom:1px solid #FAF5FF; padding:6px 0; font-size:10.5px;">';
-      html += '<strong style="color:#3B1A5E;">' + itemSymbol + ' ' + it.name + '</strong>';
-      html += ' (Req: ' + it.requested + ' | Sys: ' + it.found + ')';
-      html += '<br/><span style="color:' + itemColor + '; font-size:9.5px; font-weight:600;">Status: ' + it.status.toUpperCase() + '</span>';
+      html += '<strong style="color:#3B1A5E;">' + itemSymbol + ' ' + escape(it.name) + '</strong>';
+      html += ' (Req: ' + escape(it.requested) + ' | Sys: ' + escape(it.found) + ')';
+      html += '<br/><span style="color:' + itemColor + '; font-size:9.5px; font-weight:600;">Status: ' + escape(it.status.toUpperCase()) + '</span>';
       
       if (it.action) {
-        html += '<br/><span style="color:#5C2D91; font-size:9.5px; font-weight:500;">➔ ' + it.action + '</span>';
+        html += '<br/><span style="color:#5C2D91; font-size:9.5px; font-weight:500;">➔ ' + escape(it.action) + '</span>';
       }
 
       // Inline Order Limit confirmation block (matching React app's interactive behavior)
       if (it.status === 'quantity mismatch' && !declinedLimitItems.includes(it.name)) {
         html += '<div class="order-limit-prompt" style="background:#FFFDF5; border:1px solid #FCD34D; border-radius:6px; padding:6px; margin:6px 0; font-size:10px; text-align:left;">';
         html += '<div style="font-weight:bold; color:#78350F; margin-bottom:2px;">⚠ Order Limit Verification Required</div>';
-        html += '<div style="color:#555; margin-bottom:4px;">Is this subject to an order limit of <strong>' + it.found + '</strong> units?</div>';
+        html += '<div style="color:#555; margin-bottom:4px;">Is this subject to an order limit of <strong>' + escape(it.found) + '</strong> units?</div>';
         html += '<div style="display:flex; gap:6px;">';
         html += '<button class="btn-limit-no" data-index="' + idx + '" style="flex:1; background:#F3F4F6; border:1px solid #D1D5DB; border-radius:4px; padding:3px; font-size:9px; cursor:pointer; font-weight:bold; color:#4B5563;">No, Discrepancy</button>';
         html += '<button class="btn-limit-yes" data-index="' + idx + '" style="flex:1; background:#5C2D91; color:white; border:none; border-radius:4px; padding:3px; font-size:9px; cursor:pointer; font-weight:bold;">Yes, Apply Limit</button>';
@@ -111,7 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (activeResult.insights && activeResult.insights.length > 0) {
       html += '<div style="margin-top:8px; padding-top:6px; border-top:1px solid #F3E8FF; color:#555; font-size:10px;"><strong>Key Insights:</strong><ul style="padding-left:12px; margin:4px 0 0 0;">';
       activeResult.insights.forEach(ins => {
-        html += '<li style="margin-bottom:3px;">' + ins + '</li>';
+        html += '<li style="margin-bottom:3px;">' + escape(ins) + '</li>';
       });
       html += '</ul></div>';
     }
@@ -120,18 +154,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (activeResult.meta) {
        html += '<div style="margin-top:8px; border-top:1px dashed #D6C2EB; padding-top:6px; font-size:10px; color:#1E1B4B; background:#FAF5FF; padding:5px; border-radius:4px;">';
        html += '<strong style="color:#5C2D91; display:block; margin-bottom:3px;">Audited Metadata Details:</strong>';
-       html += '• <strong>Date:</strong> ' + (activeResult.meta.date ? activeResult.meta.date.whatsappValue || 'N/A' : 'N/A');
-       html += '<br/>• <strong>Name of Orderer:</strong> ' + (activeResult.meta.ordererName ? activeResult.meta.ordererName.whatsappValue || 'N/A' : 'N/A');
-       html += '<br/>• <strong>Name of Health Facility:</strong> ' + (activeResult.meta.facilityName ? activeResult.meta.facilityName.whatsappValue || 'N/A' : 'N/A');
+       html += '• <strong>Date:</strong> ' + (activeResult.meta.date ? escape(activeResult.meta.date.whatsappValue) || 'N/A' : 'N/A');
+       html += '<br/>• <strong>Name of Orderer:</strong> ' + (activeResult.meta.ordererName ? escape(activeResult.meta.ordererName.whatsappValue) || 'N/A' : 'N/A');
+       html += '<br/>• <strong>Name of Health Facility:</strong> ' + (activeResult.meta.facilityName ? escape(activeResult.meta.facilityName.whatsappValue) || 'N/A' : 'N/A');
 
        if (activeResult.meta.dropArea && activeResult.meta.dropArea.whatsappValue && activeResult.meta.dropArea.whatsappValue !== 'N/A' && activeResult.meta.dropArea.whatsappValue.trim() !== '') {
-         html += '<br/>• <strong>Delivery / Drop area:</strong> ' + activeResult.meta.dropArea.whatsappValue;
+         html += '<br/>• <strong>Delivery / Drop area:</strong> ' + escape(activeResult.meta.dropArea.whatsappValue);
        }
        if (activeResult.meta.district && activeResult.meta.district.whatsappValue && activeResult.meta.district.whatsappValue !== 'N/A' && activeResult.meta.district.whatsappValue.trim() !== '') {
-         html += '<br/>• <strong>District:</strong> ' + activeResult.meta.district.whatsappValue;
+         html += '<br/>• <strong>District:</strong> ' + escape(activeResult.meta.district.whatsappValue);
        }
        if (activeResult.meta.deliveryTime && activeResult.meta.deliveryTime.whatsappValue && activeResult.meta.deliveryTime.whatsappValue !== 'N/A' && activeResult.meta.deliveryTime.whatsappValue.trim() !== '') {
-         html += '<br/>• <strong>Preferred time for Delivery:</strong> ' + activeResult.meta.deliveryTime.whatsappValue;
+         html += '<br/>• <strong>Preferred time for Delivery:</strong> ' + escape(activeResult.meta.deliveryTime.whatsappValue);
        }
        html += '</div>';
     }
@@ -174,78 +208,55 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // Load saved state and custom backend URL
-  chrome.storage.local.get(['whatsappText', 'fulfillmentText', 'customBackendUrl', 'agentName'], (saved) => {
-    if (agentNameInput && saved.agentName) agentNameInput.value = saved.agentName;
+  chrome.storage.local.get(['whatsappText', 'fulfillmentText', 'customBackendUrl'], async (saved) => {
     if (saved.whatsappText !== undefined && saved.whatsappText !== null) {
       whatsappText.value = saved.whatsappText;
     }
     if (saved.fulfillmentText !== undefined && saved.fulfillmentText !== null) {
       fulfillmentText.value = saved.fulfillmentText;
     }
-    if (saved.customBackendUrl !== undefined && saved.customBackendUrl !== null && saved.customBackendUrl !== '') {
-      if (backendUrlInput) {
-        backendUrlInput.value = saved.customBackendUrl;
-      }
+    // Migrate the obsolete development default; preserve explicitly configured services.
+    const oldDefault = 'https://ais-dev-ksv3oiifrmnhdib3nb7awh-944779874869.europe-west2.run.app';
+    savedBackendUrl = saved.customBackendUrl && saved.customBackendUrl !== oldDefault ? saved.customBackendUrl : SERVER_URL;
+    backendUrlInput.value = savedBackendUrl;
+    await updateAuth();
+    checkConnection();
+    const { authSession } = await chrome.storage.session.get('authSession');
+    if (authSession && savedBackendUrl) {
+      try { await loadProfile(); } catch (error) { showError(error); await updateAuth(); }
     }
-    // Perform initial ping
+  });
+
+  whatsappText.addEventListener('input', () => chrome.storage.local.set({ whatsappText: whatsappText.value }));
+  fulfillmentText.addEventListener('input', () => chrome.storage.local.set({ fulfillmentText: fulfillmentText.value }));
+
+  const saveBackend = async (value) => {
+    try {
+      const normalized = normalizeBackendUrl(value);
+      if (savedBackendUrl !== normalized) {
+        await signOut();
+        await updateAuth();
+        activeResult = null;
+        results.textContent = 'Backend changed. Sign in to this service to continue.';
+      }
+      savedBackendUrl = normalized;
+      backendUrlInput.value = normalized;
+      await chrome.storage.local.set({ customBackendUrl: normalized });
+      backendSaveMsg.textContent = 'Backend URL saved.';
+      backendSaveMsg.style.display = 'block';
+      checkConnection();
+    } catch (error) { showError(error); }
+  };
+  btnSaveBackend.addEventListener('click', () => saveBackend(backendUrlInput.value));
+  btnResetBackend.addEventListener('click', async () => {
+    if (SERVER_URL) return saveBackend(SERVER_URL);
+    savedBackendUrl = '';
+    backendUrlInput.value = '';
+    await chrome.storage.local.remove('customBackendUrl');
+    await signOut();
+    await updateAuth();
     checkConnection();
   });
-
-  if (agentNameInput) agentNameInput.addEventListener('input', () => chrome.storage.local.set({ agentName: agentNameInput.value.trim() }));
-
-  // Track state changes to prevent loss
-  whatsappText.addEventListener('input', () => {
-    chrome.storage.local.set({ whatsappText: whatsappText.value });
-  });
-  fulfillmentText.addEventListener('input', () => {
-    chrome.storage.local.set({ fulfillmentText: fulfillmentText.value });
-  });
-
-  // Save customized backend URL on typing instantly
-  if (backendUrlInput) {
-    backendUrlInput.addEventListener('input', () => {
-      let rawUrl = backendUrlInput.value.trim();
-      chrome.storage.local.set({ customBackendUrl: rawUrl });
-      debouncedCheck();
-    });
-  }
-
-  // Save button fallback
-  if (btnSaveBackend && backendUrlInput) {
-    btnSaveBackend.addEventListener('click', () => {
-      let rawUrl = backendUrlInput.value.trim();
-      if (rawUrl.endsWith('/')) {
-        rawUrl = rawUrl.slice(0, -1);
-      }
-      chrome.storage.local.set({ customBackendUrl: rawUrl }, () => {
-        if (backendSaveMsg) {
-          backendSaveMsg.style.display = 'block';
-          setTimeout(() => {
-            backendSaveMsg.style.display = 'none';
-          }, 2000);
-        }
-        checkConnection();
-      });
-    });
-  }
-
-  // Reset button fallback
-  if (btnResetBackend && backendUrlInput) {
-    btnResetBackend.addEventListener('click', () => {
-      backendUrlInput.value = SERVER_URL;
-      chrome.storage.local.set({ customBackendUrl: SERVER_URL }, () => {
-        if (backendSaveMsg) {
-          backendSaveMsg.textContent = 'Reset to Default Backend URL!';
-          backendSaveMsg.style.display = 'block';
-          setTimeout(() => {
-            backendSaveMsg.style.display = 'none';
-            backendSaveMsg.textContent = 'URL updated successfully!';
-          }, 2000);
-        }
-        checkConnection();
-      });
-    });
-  }
 
   // Clear inputs action
   if (btnClear) {
@@ -351,41 +362,27 @@ document.addEventListener('DOMContentLoaded', () => {
     results.innerHTML = '<span style="color:#5C2D91; font-weight:bold; animation:pulse 1s infinite;">Checking clinical compliance portal...</span>';
 
     try {
-      let activeUrl = backendUrlInput ? backendUrlInput.value.trim() : SERVER_URL;
-      if (!activeUrl) {
-         throw new Error("Backend URL is empty.");
+      const activeUrl = normalizeBackendUrl(savedBackendUrl);
+      if (normalizeBackendUrl(backendUrlInput.value) !== activeUrl) {
+        throw new Error('Click Save to apply your changed backend URL before auditing.');
       }
-      if (!/^https?:\/\//i.test(activeUrl)) {
-         activeUrl = 'https://' + activeUrl;
-      }
-      const cleanActiveUrl = activeUrl.replace(/\/+$/, '');
-
-      const res = await fetch(`${cleanActiveUrl}/api/verify`, {
+      const data = await backendRequest(activeUrl, '/api/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ whatsappMessage: wa, fulfillmentConfirmation: ff, checkSource: 'companion_extension', checkId: `EXT-${crypto.randomUUID()}`, user: agentNameInput ? agentNameInput.value.trim() : '' })
+        body: JSON.stringify({ whatsappMessage: wa, fulfillmentConfirmation: ff, checkSource: 'companion_extension', checkId: `EXT-${crypto.randomUUID()}` }),
       });
-
-      if (!res.ok) {
-        let errText = 'Status ' + res.status;
-        try {
-          const errData = await res.json();
-          if (errData && errData.error) {
-            errText = errData.error;
-          }
-        } catch (e) {}
-        throw new Error('Compliance server error: ' + errText);
+      if (!Array.isArray(data.items) || typeof data.allMatch !== 'boolean') {
+        throw new Error('Unexpected audit response from the backend.');
       }
 
-      const data = await res.json();
-      
       // Initialize active results and render dynamically
       activeResult = data;
       declinedLimitItems = [];
       renderResults();
 
     } catch (err) {
-      results.innerHTML = '<span style="color:red">Error from OrderCheck: ' + err.message + '</span>';
+      showError(err);
+      await updateAuth();
     } finally {
       btnVerify.disabled = false;
     }

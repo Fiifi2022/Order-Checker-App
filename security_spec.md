@@ -11,10 +11,11 @@ Self-registration stores name, position, and Nest without an access role. Only a
 ## Authorization
 
 - Administrators can manage roles, blueprints, configuration, and operational data.
-- Warehouse and legacy DCO accounts can manage stock and adjustments and run operational audits and confirmations.
+- Warehouse and legacy DCO accounts have full blueprint administration, manage stock and adjustments, and run operational audits and confirmations.
 - CCA accounts can run audits and confirm orders, without changing quotas, stock, roles, or blueprint configuration.
-- Auditors can inspect data and run verification, without making operational changes.
-- Only administrators can clear or reset data.
+- Compliance Auditors have full blueprint administration and can inspect data and run verification.
+- Warehouse, legacy DCO, and Compliance Auditor accounts can clear and reset blueprint and allocation data. Only administrators can clear other system data or manage accounts and roles.
+- A person may have multiple roles, stored in a `roles` array whose permissions combine. Explicit arrays take precedence over the legacy `role` field; single-role records remain supported. Empty or invalid role assignments are rejected.
 
 District assignments remain profile metadata; this change does not implement district-specific data isolation.
 

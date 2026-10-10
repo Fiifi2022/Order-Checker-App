@@ -1,3 +1,4 @@
+import { assignedRoles } from '../../shared/roles';
 import AdminAccounts from './AdminAccounts';
 import { authFetch } from '../utils/authFetch';
 import React, { useState } from 'react';
@@ -56,8 +57,10 @@ export const ROLE_DEFINITIONS: Record<string, {
     badgeBg: 'bg-emerald-100',
     badgeText: 'text-emerald-800',
     borderColor: 'border-emerald-300',
-    description: 'Warehouse & fulfillment logistics team responsible for physical stock picking, packaging, batch handling, cold-chain dispatches, and inventory top-ups.',
+    description: 'Complete administrative authority over system blueprints, alongside warehouse stock, packaging, dispatch, and inventory top-ups.',
     capabilities: [
+      'Upload, edit, reset, and delete system blueprints',
+      'Manage blueprint districts, cycles, facilities, and quotas',
       'Inspect and manage physical cold-chain inventory',
       'Perform stock packaging and dispatch handoffs',
       'Authorize inventory quota adjustments & emergency top-ups',
@@ -65,12 +68,14 @@ export const ROLE_DEFINITIONS: Record<string, {
     ]
   },
   dco: {
-    title: 'Warehouse Team',
+    title: 'Warehouse Team (legacy DCO)',
     badgeBg: 'bg-emerald-100',
     badgeText: 'text-emerald-800',
     borderColor: 'border-emerald-300',
-    description: 'Warehouse & fulfillment logistics team responsible for physical stock picking, packaging, batch handling, cold-chain dispatches, and inventory top-ups.',
+    description: 'Complete administrative authority over system blueprints, alongside warehouse stock, packaging, dispatch, and inventory top-ups.',
     capabilities: [
+      'Upload, edit, reset, and delete system blueprints',
+      'Manage blueprint districts, cycles, facilities, and quotas',
       'Inspect and manage physical cold-chain inventory',
       'Perform stock packaging and dispatch handoffs',
       'Authorize inventory quota adjustments & emergency top-ups',
@@ -95,12 +100,14 @@ export const ROLE_DEFINITIONS: Record<string, {
     badgeBg: 'bg-slate-100',
     badgeText: 'text-slate-800',
     borderColor: 'border-slate-300',
-    description: 'Quality assurance and compliance observer reviewing discrepancies, logs, and ledger integrity.',
+    description: 'Compliance team with complete administrative authority over system blueprints, reviewing discrepancies, logs, and ledger integrity.',
     capabilities: [
+      'Upload, edit, reset, and delete system blueprints',
+      'Manage blueprint districts, cycles, facilities, and quotas',
       'Inspect immutable transaction history ledger',
       'View operational and supply chain dashboards',
       'Analyze discrepancy rates and error prevention stats',
-      'Read-only protection across quota and configuration settings'
+      'Run verification and review compliance records'
     ]
   }
 };
@@ -119,7 +126,7 @@ export default function RoleManagementModal({
   // Form fields
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [selectedRole, setSelectedRole] = useState<AppRole>('cca');
+  const [selectedRoles, setSelectedRoles] = useState<AppRole[]>(['cca']);
   const [selectedDistrict, setSelectedDistrict] = useState('All Districts');
   
   // UI states
@@ -146,6 +153,7 @@ export default function RoleManagementModal({
       return;
     }
 
+    if (!selectedRoles.length) { setErrorMessage('Select at least one role.'); return; }
     setIsSubmitting(true);
     try {
       const res = await authFetch('/api/roles', {
@@ -154,7 +162,7 @@ export default function RoleManagementModal({
         body: JSON.stringify({
           name: name.trim(),
           email: email.trim().toLowerCase(),
-          role: selectedRole,
+          roles: selectedRoles,
           district: selectedDistrict,
           addedBy: activeUser?.name || 'Administrator'
         })
@@ -168,7 +176,7 @@ export default function RoleManagementModal({
       setSuccessMessage(`Role successfully assigned to ${name}!`);
       setName('');
       setEmail('');
-      setSelectedRole('cca');
+      setSelectedRoles(['cca']);
       setSelectedDistrict('All Districts');
       
       onRoleAddedOrUpdated(data.roles, data.activeRoleId ? data.roles.find((r: any) => r.id === data.activeRoleId) : undefined);
@@ -213,7 +221,7 @@ export default function RoleManagementModal({
   const filteredRoles = roles.filter(r => 
     r.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     r.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    assignedRoles(r).some(role => role.toLowerCase().includes(searchTerm.toLowerCase()) || ROLE_DEFINITIONS[role]?.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (r.district && r.district.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
@@ -261,7 +269,7 @@ export default function RoleManagementModal({
               <span className="text-slate-500">Current Session:</span>
               <strong className="text-purple-900">{activeUser.name}</strong>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${ROLE_DEFINITIONS[activeUser.role]?.badgeBg} ${ROLE_DEFINITIONS[activeUser.role]?.badgeText}`}>
-                {ROLE_DEFINITIONS[activeUser.role]?.title || activeUser.role}
+                {assignedRoles(activeUser).map(role => ROLE_DEFINITIONS[role]?.title || role).join(' + ')}
               </span>
             </div>
           )}
@@ -314,7 +322,7 @@ export default function RoleManagementModal({
             </div>
           )}
 
-          {activeTab === 'accounts' ? <AdminAccounts onUpdated={() => onRoleAddedOrUpdated(roles)} onAssignRole={account => { setName(account.name); setEmail(account.email); setSelectedRole(account.role || 'cca'); setSelectedDistrict(account.district || 'All Districts'); setActiveTab('add'); }} /> : activeTab === 'manage' ? (
+          {activeTab === 'accounts' ? <AdminAccounts onUpdated={() => onRoleAddedOrUpdated(roles)} onAssignRole={account => { setName(account.name); setEmail(account.email); setSelectedRoles(account.role ? assignedRoles(account) : ['cca']); setSelectedDistrict(account.district || 'All Districts'); setActiveTab('add'); }} /> : activeTab === 'manage' ? (
             <div className="space-y-4">
               {/* Search & Actions */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -343,7 +351,7 @@ export default function RoleManagementModal({
                 <h3 className="font-bold text-sm text-purple-900">Pending sign-ups ({registrations.length})</h3>
                 {registrations.map(registration => <div key={registration.uid} className="flex items-center justify-between gap-3 rounded-xl bg-white p-3">
                   <div className="min-w-0 text-xs text-slate-600"><strong className="block text-sm text-slate-900">{registration.name}</strong><p className="break-all">{registration.email}</p><p>{registration.position} · Nest: {registration.nest}</p></div>
-                  <button type="button" onClick={() => { setName(registration.name); setEmail(registration.email); setSelectedRole('cca'); setActiveTab('add'); }} className="shrink-0 rounded-lg bg-purple-800 text-white px-3 py-2 text-xs font-bold">Review access</button>
+                  <button type="button" onClick={() => { setName(registration.name); setEmail(registration.email); setSelectedRoles(['cca']); setActiveTab('add'); }} className="shrink-0 rounded-lg bg-purple-800 text-white px-3 py-2 text-xs font-bold">Review access</button>
                 </div>)}
               </section>}
 
@@ -375,7 +383,7 @@ export default function RoleManagementModal({
                           <div className="flex items-center gap-2">
                             <h4 className="text-sm font-black text-slate-900">{member.name}</h4>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${roleDef.badgeBg} ${roleDef.badgeText} ${roleDef.borderColor}`}>
-                              {roleDef.title}
+                              {assignedRoles(member).map(role => ROLE_DEFINITIONS[role]?.title || role).join(' + ')}
                             </span>
                             {isActive && (
                               <span className="text-[10px] bg-purple-600 text-white font-black px-2 py-0.5 rounded-full shadow-2xs">
@@ -400,6 +408,7 @@ export default function RoleManagementModal({
 
                       {/* Member Actions */}
                       <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                        <button type="button" onClick={() => { setName(member.name); setEmail(member.email); setSelectedRoles(assignedRoles(member)); setSelectedDistrict(member.district || 'All Districts'); setActiveTab('add'); }} className="px-3 py-2 text-xs font-bold text-purple-800 rounded-lg border border-purple-200">Edit roles</button>
                         {isActive && (
                           <div className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-100 text-purple-800 text-xs font-bold rounded-xl border border-purple-200">
                             <Check className="w-3.5 h-3.5 text-purple-700" />
@@ -492,7 +501,7 @@ export default function RoleManagementModal({
                       type="email"
                       required
                       value={email}
-                      onChange={e => setEmail(e.target.value)}
+                      onChange={e => { setEmail(e.target.value); const member = roles.find(member => member.email.toLowerCase() === e.target.value.trim().toLowerCase()); if (member) { setName(member.name); setSelectedRoles(assignedRoles(member)); setSelectedDistrict(member.district || 'All Districts'); } }}
                       placeholder="e.g. kwame.mensah@zipline.com"
                       className="w-full text-xs px-3.5 py-2.5 pl-9 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
                     />
@@ -527,18 +536,20 @@ export default function RoleManagementModal({
               {/* Role Selection Cards */}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-700 block">
-                  Select Role Level <span className="text-rose-500">*</span>
+                  Select Roles (choose one or more) <span className="text-rose-500">*</span>
                 </label>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {(['admin', 'warehouse', 'cca', 'auditor'] as AppRole[]).map(roleKey => {
+                  {(['admin', 'warehouse', 'cca', 'auditor', ...(selectedRoles.includes('dco') ? ['dco'] : [])] as AppRole[]).map(roleKey => {
                     const def = ROLE_DEFINITIONS[roleKey];
-                    const isSelected = selectedRole === roleKey;
+                    const isSelected = selectedRoles.includes(roleKey);
 
                     return (
                       <div
                         key={roleKey}
-                        onClick={() => setSelectedRole(roleKey)}
+                        role="checkbox" aria-checked={isSelected} tabIndex={0}
+                        onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setSelectedRoles(current => current.includes(roleKey) ? current.filter(role => role !== roleKey) : [...current, roleKey]); } }}
+                        onClick={() => setSelectedRoles(current => current.includes(roleKey) ? current.filter(role => role !== roleKey) : [...current, roleKey])}
                         className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
                           isSelected
                             ? 'border-[#5C2D91] bg-purple-50/70 shadow-xs ring-2 ring-purple-500/20'

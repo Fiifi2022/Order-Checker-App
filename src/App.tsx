@@ -1,3 +1,4 @@
+import { hasRole, assignedRoles } from '../shared/roles';
 import { logoutUser } from './firebase';
 import { authFetch } from './utils/authFetch';
 import GeneralScreenshotInput, { type GeneralScreenshotHandle } from './components/GeneralScreenshotInput';
@@ -70,6 +71,32 @@ import RoleManagementModal, { ROLE_DEFINITIONS } from './components/RoleManageme
 import GeminiStatus from './components/GeminiStatus';
 
 export default function App({ authenticatedUser }: { authenticatedUser: UserRoleRecord }) {
+  const [extensionDownloading, setExtensionDownloading] = useState(false);
+  const [extensionDownloadError, setExtensionDownloadError] = useState('');
+  const downloadExtension = async () => {
+    setExtensionDownloading(true);
+    setExtensionDownloadError('');
+    try {
+      const response = await authFetch('/api/download-extension');
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Extension download failed.');
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'ordercheck-compliance-companion.zip';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setExtensionDownloadError(error instanceof Error ? error.message : 'Extension download failed.');
+    } finally {
+      setExtensionDownloading(false);
+    }
+  };
+
   // Navigation tabs - Supports both existing Order Checker & new Vaccine Allocation Module
   const [activeTab, setActiveTab] = useState<
     'vaccine_blueprint' | 'vaccine_checker' | 'vaccine_dashboard' | 'kpi_dashboard' | 'auditor' | 'extension' | 'history' | 'troubleshooter'
@@ -660,7 +687,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
           <div className="flex items-center gap-2 sm:gap-3">
             <GeminiStatus />
             <div 
-              onClick={() => { if (activeUser?.role === 'admin') setIsRoleModalOpen(true); }}
+              onClick={() => { if (hasRole(activeUser, 'admin')) setIsRoleModalOpen(true); }}
               className="flex items-center gap-2.5 bg-[#2C1349] hover:bg-[#39185e] p-1.5 sm:p-2 px-3 sm:px-4 rounded-2xl border border-purple-900/80 text-xs shadow-inner cursor-pointer transition-all"
               title="Click to manage team roles and permissions"
             >
@@ -670,11 +697,11 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                 </span>
                 <div className="flex items-center justify-end gap-1.5 mt-0.5">
                   <span className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded ${
-                    activeUser?.role === 'admin' ? 'bg-amber-400 text-slate-900' :
+                    hasRole(activeUser, 'admin') ? 'bg-amber-400 text-slate-900' :
                     (activeUser?.role === 'warehouse' || activeUser?.role === 'dco') ? 'bg-emerald-400 text-slate-900' :
                     activeUser?.role === 'cca' ? 'bg-blue-300 text-slate-900' : 'bg-slate-300 text-slate-900'
                   }`}>
-                    {ROLE_DEFINITIONS[activeUser?.role || 'admin']?.title || activeUser?.role || 'Admin'}
+                    {assignedRoles(activeUser).map(role => ROLE_DEFINITIONS[role]?.title || role).join(' + ')}
                   </span>
                   <span className="text-[10px] text-purple-300 hidden md:inline truncate max-w-[120px]">
                     {activeUser?.nest || activeUser?.district || 'All Districts'}
@@ -683,7 +710,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
               </div>
               
               <div className={`text-white p-1.5 rounded-xl flex items-center justify-center w-8 h-8 font-black text-sm shadow border border-white/20 shrink-0 ${
-                activeUser?.role === 'admin' ? 'bg-amber-500' :
+                hasRole(activeUser, 'admin') ? 'bg-amber-500' :
                 (activeUser?.role === 'warehouse' || activeUser?.role === 'dco') ? 'bg-emerald-600' :
                 activeUser?.role === 'cca' ? 'bg-blue-600' : 'bg-slate-700'
               }`}>
@@ -693,9 +720,9 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
 
             <button type="button" onClick={() => { void logoutUser().catch(() => window.alert('Could not sign out. Please retry.')); }} title="Sign out" className="inline-flex items-center gap-2 p-2 text-white rounded-xl hover:bg-white/10"><LogOut size={16} /><span className="hidden sm:inline text-xs">Sign out</span></button>
             {/* Manage Roles Button */}
-            {activeUser?.role === 'admin' && <button
+            {hasRole(activeUser, 'admin') && <button
               type="button"
-              onClick={() => { if (activeUser?.role === 'admin') setIsRoleModalOpen(true); }}
+              onClick={() => { if (hasRole(activeUser, 'admin')) setIsRoleModalOpen(true); }}
               className="inline-flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
               title="Account administration and team roles"
             >
@@ -813,8 +840,8 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
           </button>
 
           {/* Team Roles & Access Control modal trigger */}
-          {activeUser?.role === 'admin' && <button
-            onClick={() => { if (activeUser?.role === 'admin') setIsRoleModalOpen(true); }}
+          {hasRole(activeUser, 'admin') && <button
+            onClick={() => { if (hasRole(activeUser, 'admin')) setIsRoleModalOpen(true); }}
             className="py-4 px-3 text-xs md:text-sm font-bold border-b-2 border-transparent text-purple-700 hover:text-purple-900 transition-all flex items-center gap-2 cursor-pointer ml-auto"
           >
             <Users className="w-4 h-4 text-purple-700" />
@@ -1408,15 +1435,18 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                       Guaranteed zero manual server URI mappings. It connects automatically to this portal API.
                     </p>
                   </div>
-                  <a
-                    href="/api/download-extension"
+                  <button
+                    type="button"
+                    onClick={downloadExtension}
+                    disabled={extensionDownloading}
                     className="bg-white text-[#3B1A5E] hover:bg-[#F3E8FF] px-5 py-3 rounded-xl font-bold shadow transition-transform hover:-translate-y-0.5 whitespace-nowrap text-xs cursor-pointer shrink-0 z-10 flex items-center gap-2"
                   >
                     <Download className="w-4 h-4 text-[#5C2D91]" />
-                    Download Packed ZIP
-                  </a>
+                    {extensionDownloading ? 'Preparing ZIP…' : 'Download Packed ZIP'}
+                  </button>
                 </div>
 
+                {extensionDownloadError && <p role="alert" className="text-xs text-red-700">{extensionDownloadError}</p>}
                 {/* Direct Instruction Steps */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-bold text-[#3B1A5E] uppercase tracking-wider flex items-center gap-1.5">
@@ -1429,6 +1459,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                     <p className="py-2"><b>3. Extensions Dashboard:</b> Open Google Chrome and enter <code>chrome://extensions/</code> as the URL.</p>
                     <p className="py-2"><b>4. Developer Switch:</b> In the top-right corner, check the <b>"Developer mode"</b> toggle switch.</p>
                     <p className="pt-2"><b>5. Unpacked Upload:</b> Click the <b>"Load unpacked"</b> button in the top-left, and pick the extracted folder containing <code>manifest.json</code>.</p>
+                    <p className="pt-2"><b>6. Sign in:</b> Open the extension and sign in with your verified, approved portal email/password account. If you use Google only, ask an administrator for a password reset link to set a password on the same account.</p>
                   </div>
                 </div>
 
@@ -1446,7 +1477,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                     <pre>{`{
   "manifest_version": 3,
   "name": "OrderCheck Companion",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "permissions": [
     "activeTab",
     "scripting",

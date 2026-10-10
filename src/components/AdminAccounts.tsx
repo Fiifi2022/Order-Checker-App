@@ -1,3 +1,4 @@
+import { assignedRoles } from '../../shared/roles';
 import React, { useEffect, useState } from 'react';
 import { RefreshCw, Search } from 'lucide-react';
 import { authFetch } from '../utils/authFetch';
@@ -80,7 +81,7 @@ export default function AdminAccounts({ onAssignRole, onUpdated }: {
         <p className="text-xs text-slate-500">{visible.length} shown · {accounts.length} loaded{cursor ? ' · more available' : ''}</p>
         <div className="max-h-[540px] overflow-y-auto space-y-2">
           {visible.map(account => <button key={account.uid} disabled={busy || loading} onClick={() => choose(account)} className={`w-full text-left rounded-xl border p-3 ${selected?.uid === account.uid ? 'border-purple-500 bg-purple-50' : 'border-slate-200 hover:bg-slate-50'}`}>
-            <strong className="block text-sm text-slate-900">{account.name || 'Profile incomplete'}</strong><span className="block text-xs text-slate-600 break-all">{account.email || 'No email'}</span><span className="block text-xs text-slate-500 mt-1">{account.position || 'No position'} · {account.nest || 'No Nest'}</span><span className="block text-xs font-semibold mt-2 text-purple-800">{account.disabled ? 'Disabled' : account.role || 'Awaiting approval'} · {account.emailVerified ? 'Email verified' : 'Email unverified'}</span>
+            <strong className="block text-sm text-slate-900">{account.name || 'Profile incomplete'}</strong><span className="block text-xs text-slate-600 break-all">{account.email || 'No email'}</span><span className="block text-xs text-slate-500 mt-1">{account.position || 'No position'} · {account.nest || 'No Nest'}</span><span className="block text-xs font-semibold mt-2 text-purple-800">{account.disabled ? 'Disabled' : assignedRoles(account).join(' + ') || 'Awaiting approval'} · {account.emailVerified ? 'Email verified' : 'Email unverified'}</span>
           </button>)}
           {loading && <p role="status" className="p-3 text-sm text-slate-500">Loading accounts…</p>}
           {!loading && !visible.length && <p className="p-3 text-sm text-slate-500">No matching accounts.</p>}
@@ -95,7 +96,7 @@ export default function AdminAccounts({ onAssignRole, onUpdated }: {
             <button className="rounded-lg bg-purple-800 px-4 py-2 text-sm font-semibold text-white">Save profile</button>
           </fieldset>
         </form>
-        <div className="border-t border-slate-100 pt-4 space-y-3"><p className="text-sm">Access role: <strong>{selected.role || 'Unassigned'}</strong></p><button disabled={busy || loading} onClick={() => onAssignRole(selected)} className="rounded-lg border border-purple-200 px-3 py-2 text-sm text-purple-800">{selected.role ? 'Update role' : 'Approve and assign role'}</button></div>
+        <div className="border-t border-slate-100 pt-4 space-y-3"><p className="text-sm">Access roles: <strong>{assignedRoles(selected).join(' + ') || 'Unassigned'}</strong></p><button disabled={busy || loading} onClick={() => onAssignRole(selected)} className="rounded-lg border border-purple-200 px-3 py-2 text-sm text-purple-800">{selected.role ? 'Update role' : 'Approve and assign role'}</button></div>
         <div className="border-t border-slate-100 pt-4 space-y-3"><h5 className="text-sm font-bold">Password and recovery</h5>
           {selected.providers.includes('password') ? <>
             <button disabled={busy || loading} onClick={() => getLink('reset_link')} className="text-sm text-purple-800 underline">Create password reset link</button>

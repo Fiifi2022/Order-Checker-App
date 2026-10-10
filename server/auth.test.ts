@@ -56,7 +56,7 @@ test('management permissions are enforced server-side', () => {
     assert.equal(canAccess(role, 'POST', '/roles'), false);
     assert.equal(canAccess(role, 'DELETE', '/roles/someone'), false);
     assert.equal(canAccess(role, 'POST', '/app/clear-all'), false);
-    assert.equal(canAccess(role, 'POST', '/vaccine/blueprint-districts'), false);
+    assert.equal(canAccess(role, 'POST', '/vaccine/blueprint-districts'), role !== 'cca');
   }
   assert.equal(canAccess('admin', 'POST', '/roles'), true);
   assert.equal(canAccess('admin', 'POST', '/roles/switch'), false);
@@ -87,4 +87,38 @@ test('administrative account APIs require an administrator for reads and writes'
     assert.equal(canAccess('admin', method, '/admin/accounts'), true);
   }
   assert.equal((await request({ path: '/admin/accounts', method: 'GET' })).status, 403);
+});
+
+
+test('Warehouse and Compliance have complete blueprint access without account administration', () => {
+  const routes: [string, string][] = [
+    ['POST', '/vaccine/allocations/upload'], ['POST', '/vaccine/allocations/clear'],
+    ['POST', '/vaccine/allocations/reset-demo'], ['POST', '/vaccine/allocations/facility/topup'],
+    ['POST', '/vaccine/adjust'], ['POST', '/vaccine/aliases'], ['POST', '/vaccine/blueprint-months/add'],
+    ['POST', '/vaccine/blueprint-districts/add'], ['POST', '/vaccine/blueprint-districts'],
+    ['DELETE', '/vaccine/blueprint-districts/id'], ['PATCH', '/vaccine/blueprint-districts/id/rename'],
+    ['POST', '/vaccine/blueprint-districts/sync'], ['POST', '/vaccine/blueprint-districts/clear'],
+    ['POST', '/vaccine/blueprint-districts/id/topup'], ['POST', '/vaccine/blueprint-sheet'],
+    ['POST', '/vaccine/blueprint-sheet/sync'], ['POST', '/vaccine/blueprint/start-facility'],
+    ['POST', '/vaccine/blueprint/complete-facility'], ['PATCH', '/vaccine/facilities/id'],
+    ['POST', '/vaccine/facilities/id/vaccines'],
+  ];
+  for (const role of ['warehouse', 'dco', 'auditor']) {
+    for (const [method, path] of routes) assert.equal(canAccess(role, method, path), true, `${role}: ${path}`);
+    for (const path of ['/roles', '/admin/accounts', '/app/clear-all', '/activity/logs/clear', '/vaccine/audit-logs/clear']) {
+      assert.equal(canAccess(role, 'POST', path), false, `${role}: ${path}`);
+    }
+  }
+  for (const [method, path] of routes) assert.equal(canAccess('cca', method, path), false, path);
+});
+
+test('multiple stored roles combine permissions and honor subsequent revocation', async () => {
+  const account = { ...profile, role: 'auditor', roles: ['auditor', 'cca'] };
+  assert.equal((await request({ account, path: '/vaccine/confirm' })).next, true);
+  assert.equal((await request({ account, path: '/vaccine/blueprint-districts' })).next, true);
+  assert.equal((await request({ account: { ...account, roles: ['auditor'] }, path: '/vaccine/confirm' })).status, 403);
+  assert.equal((await request({ account: { ...account, role: 'admin', roles: ['cca'] }, path: '/roles' })).status, 403);
+  assert.equal((await request({ account: { ...account, role: 'admin', roles: [] } })).status, 403);
+  assert.equal((await request({ account: { ...account, roles: ['cca', 'admin'] }, path: '/admin/accounts', method: 'GET' })).next, true);
+  assert.equal(canAccess(['warehouse', 'admin'], 'POST', '/roles/switch'), false);
 });

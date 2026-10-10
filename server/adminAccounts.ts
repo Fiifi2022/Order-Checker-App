@@ -1,10 +1,11 @@
+import { assignedRoles, hasRole } from '../shared/roles';
 import type { RequestHandler } from 'express';
 import { registrationFields } from './registration';
 
 export interface ManagedAccount {
   uid: string; email: string; name: string; position: string; nest: string;
   emailVerified: boolean; disabled: boolean; providers: string[];
-  createdAt: string; lastSignInAt: string; role: string | null; district: string;
+  createdAt: string; lastSignInAt: string; role: string | null; roles: string[]; district: string;
 }
 export function accountSummary(user: any, profile: any, role: any): ManagedAccount {
   return {
@@ -13,7 +14,7 @@ export function accountSummary(user: any, profile: any, role: any): ManagedAccou
     emailVerified: user.emailVerified === true, disabled: user.disabled === true,
     providers: (user.providerData || []).map((provider: any) => provider.providerId),
     createdAt: user.metadata?.creationTime || '', lastSignInAt: user.metadata?.lastSignInTime || '',
-    role: role?.role || null, district: role?.district || '',
+    role: assignedRoles(role)[0] || null, roles: assignedRoles(role), district: role?.district || '',
   };
 }
 export function adminAccountHandlers(deps: {
@@ -27,7 +28,7 @@ export function adminAccountHandlers(deps: {
   audit: (actor: any, uid: string, action: string) => Promise<void>;
 }) {
   const guarded = (work: (req: any, res: any) => Promise<void>): RequestHandler => async (req, res) => {
-    if (res.locals.authUser?.role !== 'admin') { res.status(403).json({ error: 'Administrator access is required.' }); return; }
+    if (!hasRole(res.locals.authUser, 'admin')) { res.status(403).json({ error: 'Administrator access is required.' }); return; }
     res.setHeader('Cache-Control', 'no-store');
     try { await work(req, res); }
     catch (error: any) {

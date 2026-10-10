@@ -1,3 +1,4 @@
+import { hasRole, assignedRoles } from '../../shared/roles';
 import { authFetch } from '../utils/authFetch';
 /**
  * @license
@@ -964,7 +965,7 @@ export default function SystemAuditLogView({
       )}
 
       {/* Admin Log Reset / Clear Button */}
-      {currentUser?.role === 'admin' && (
+      {hasRole(currentUser, 'admin') && (
         <div className="flex justify-end pt-4">
           <button
             onClick={() => setShowClearConfirm(true)}
