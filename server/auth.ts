@@ -16,9 +16,12 @@ export function canAccess(role: string | readonly string[], method: string, path
   const blueprintPath = /^\/vaccine\/(?:blueprint(?:[/-]|$)|allocations\/(?:upload|clear|reset-demo|[^/]+\/topup)$|adjust$|aliases$|facilities\/)/.test(path);
   if (blueprintPath && ['warehouse', 'dco', 'auditor'].includes(role as string)) return true;
   if (blueprintPath && method !== 'GET') return false;
+  if (path === '/products/hints' && method === 'POST') return true;
+  if (path === '/products' || path.startsWith('/products/')) return method === 'GET' || ['warehouse', 'dco', 'auditor'].includes(role as string);
   if (/clear|reset-demo/.test(path)) return false;
   if (method === 'GET') return true;
   if (['/activity/log', '/verify', '/scan-screenshot', '/vaccine/validate'].includes(path)) return true;
+  if (method === 'POST' && /^\/audits\/[^/]+\/order-limit$/.test(path)) return true;
   if (role === 'auditor') return false;
   if (/topup|\/adjust$|dhd-inventory\/stock/.test(path)) return ['warehouse', 'dco'].includes(role as string);
   if (/blueprint|\/upload$|\/facilities\//.test(path)) return false;

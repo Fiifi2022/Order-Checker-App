@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OrderCheck Compliance Companion",
-  "version": "1.3.0",
+  "version": "1.4.1",
   "description": "Direct Zipline compliance cross-examiner. Scans orders across tabs and matches logs.",
   "permissions": [
     "activeTab",

@@ -1,3 +1,7 @@
+import { acknowledgeOrderLimit } from './order-limits.js';
+import { setupCatalog } from './catalog.js';
+import { setupScreenshots } from './screenshots.js';
+import { auditBody, profileRoles } from './audit.js';
 import { extensionConfig } from './config.js';
 import { normalizeBackendUrl, fetchJson } from './backend.js';
 import { signIn, signOut, backendRequest } from './auth.js';
@@ -20,6 +24,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let savedBackendUrl = SERVER_URL;
   let connectionAttempt = 0;
+  let contextRevision = 0, inputRevision = 0, hintRevision = 0, hintTimer;
+  const inputKey = () => JSON.stringify([whatsappText.value, fulfillmentText.value]);
+  const request = async (endpoint, options = {}) => {
+    const context = contextRevision;
+    const data = await backendRequest(normalizeBackendUrl(savedBackendUrl), endpoint, options);
+    if (context !== contextRevision) throw new Error('Account or backend changed. Retry on the current service.');
+    return data;
+  };
+  const clearHints = () => {
+    hintRevision++; clearTimeout(hintTimer);
+    for (const source of ['whatsapp', 'fulfillment']) { const box = document.getElementById(`${source}Hints`); box.replaceChildren(); box.hidden = true; }
+  };
+  const refreshHints = async () => {
+    const current = ++hintRevision;
+    for (const [source, text] of [['whatsapp', whatsappText.value], ['fulfillment', fulfillmentText.value]]) {
+      const box = document.getElementById(`${source}Hints`);
+      if (!text.trim()) { box.hidden = true; box.replaceChildren(); continue; }
+      try {
+        const data = await request('/api/products/hints', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope: 'general', text }) });
+        if (current !== hintRevision) return;
+        box.replaceChildren(); box.hidden = !data.products.length;
+        if (data.products.length) {
+          const heading = document.createElement('strong'); heading.textContent = 'Fulfillment System reminders'; box.append(heading);
+          for (const product of data.products) { const row = document.createElement('p'); row.textContent = [product.name, product.fulfillmentSystemName ? `System name: ${product.fulfillmentSystemName}` : '', product.receivingDetails].filter(Boolean).join('\n'); box.append(row); }
+        }
+      } catch (error) { if (current === hintRevision) { box.hidden = false; box.textContent = `Receiving reminders unavailable: ${error.message}`; } }
+    }
+  };
+  const invalidate = () => {
+    inputRevision++; activeResult = null; limitDecisions = {}; declinedLimitItems = [];
+    results.textContent = 'Inputs changed. Run Analyze to verify the current order.';
+    screenshots.invalidate(); clearHints();
+    hintTimer = setTimeout(refreshHints, 400);
+  };
+  const catalogUI = setupCatalog({ request, onUpdated: invalidate });
+  const screenshots = setupScreenshots({ request, inputs: inputKey, onText: (source, text) => {
+    const input = source === 'whatsapp' ? whatsappText : fulfillmentText; input.value = text;
+    chrome.storage.local.set({ [source === 'whatsapp' ? 'whatsappText' : 'fulfillmentText']: text }); invalidate();
+  } });
+  const resetContext = () => { contextRevision++; inputRevision++; activeResult = null; limitDecisions = {}; catalogUI.reset(); screenshots.reset(); clearHints(); };
+  document.getElementById('openPortal').addEventListener('click', () => {
+    try { chrome.tabs.create({ url: normalizeBackendUrl(savedBackendUrl) }); } catch (error) { showError(error); }
+  });
   const authStatus = document.getElementById('authStatus');
   const signInForm = document.getElementById('signInForm');
   const btnSignOut = document.getElementById('btnSignOut');
@@ -33,12 +80,14 @@ document.addEventListener('DOMContentLoaded', () => {
     signInForm.hidden = !!authSession;
     btnSignOut.hidden = !authSession;
     authStatus.textContent = authSession ? `Signed in as ${authSession.email}` : 'Sign in with your approved portal email/password account.';
+    if (!authSession) { resetContext(); }
     if (!authSession) agentNameInput.value = '';
   };
   const loadProfile = async () => {
-    const profile = await backendRequest(normalizeBackendUrl(savedBackendUrl), '/api/auth/me');
+    const profile = await request('/api/auth/me');
     agentNameInput.value = profile.name;
-    authStatus.textContent = `Signed in as ${profile.name} (${profile.role})`;
+    authStatus.textContent = `Signed in as ${profile.name} (${profileRoles(profile)})`;
+    void refreshHints();
   };
   signInForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -96,7 +145,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // State variables for dynamic interactive flows
   let activeResult = null;
   let declinedLimitItems = [];
+  let limitDecisions = {};
 
+  const saveLimitAcknowledgement = async (id, key, answer) => {
+    const context = contextRevision, version = inputRevision;
+    try { await request(`/api/audits/${encodeURIComponent(id)}/order-limit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, answer }) }); }
+    catch { if (context === contextRevision && version === inputRevision) {
+      const warning = document.createElement('p'); warning.textContent = 'Decision acknowledged here, but could not be saved to history.'; results.append(warning);
+    } }
+  };
   const renderResults = () => {
     if (!activeResult) return;
 
@@ -113,8 +170,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Display compared items list
     html += '<div style="margin-top:8px; border-top: 1px solid #F3E8FF; padding-top:6px;">';
     activeResult.items.forEach((it, idx) => {
-      const itemColor = it.status === 'match' ? '#047857' : (it.status === 'out of stock' ? '#D97706' : '#DC2626');
-      const itemSymbol = it.status === 'match' ? '✓' : (it.status === 'out of stock' ? '⚠' : '✗');
+      const itemColor = ['match', 'order limit applied'].includes(it.status) ? '#047857' : (it.status === 'out of stock' ? '#D97706' : '#DC2626');
+      const itemSymbol = ['match', 'order limit applied'].includes(it.status) ? '✓' : (it.status === 'out of stock' ? '⚠' : '✗');
       
       html += '<div style="border-bottom:1px solid #FAF5FF; padding:6px 0; font-size:10.5px;">';
       html += '<strong style="color:#3B1A5E;">' + itemSymbol + ' ' + escape(it.name) + '</strong>';
@@ -126,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Inline Order Limit confirmation block (matching React app's interactive behavior)
-      if (it.status === 'quantity mismatch' && !declinedLimitItems.includes(it.name)) {
+      if (it.fulfillment?.orderLimitEligible && it.fulfillment.orderLimitDecision === undefined && !declinedLimitItems.includes(it.name)) {
         html += '<div class="order-limit-prompt" style="background:#FFFDF5; border:1px solid #FCD34D; border-radius:6px; padding:6px; margin:6px 0; font-size:10px; text-align:left;">';
         html += '<div style="font-weight:bold; color:#78350F; margin-bottom:2px;">⚠ Order Limit Verification Required</div>';
         html += '<div style="color:#555; margin-bottom:4px;">Is this subject to an order limit of <strong>' + escape(it.found) + '</strong> units?</div>';
@@ -179,17 +236,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const idx = parseInt(e.target.getAttribute('data-index'), 10);
         const item = activeResult.items[idx];
         if (item) {
-          item.status = 'match';
-          item.action = 'Order Limit Confirmed. Limit of ' + item.found + ' units locked and applied successfully.';
-          
-          // Recompute overall match validation
-          const remainingIssues = activeResult.items.filter(it => it.status !== 'match' && it.status !== 'out of stock');
-          activeResult.allMatch = remainingIssues.length === 0;
-          activeResult.issueCount = remainingIssues.length;
-          if (activeResult.allMatch) {
-            activeResult.verdict = 'PASS: Perfect Match Verified (Order Limit Applied)';
-          }
+          limitDecisions[item.fulfillment.key] = true;
+          activeResult = acknowledgeOrderLimit(activeResult, item.fulfillment.key, true);
           renderResults();
+          void saveLimitAcknowledgement(activeResult.id, item.fulfillment.key, true);
         }
       });
     });
@@ -200,8 +250,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const idx = parseInt(e.target.getAttribute('data-index'), 10);
         const item = activeResult.items[idx];
         if (item) {
+          limitDecisions[item.fulfillment.key] = false;
           declinedLimitItems.push(item.name);
+          activeResult = acknowledgeOrderLimit(activeResult, item.fulfillment.key, false);
           renderResults();
+          void saveLimitAcknowledgement(activeResult.id, item.fulfillment.key, false);
         }
       });
     });
@@ -227,8 +280,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  whatsappText.addEventListener('input', () => chrome.storage.local.set({ whatsappText: whatsappText.value }));
-  fulfillmentText.addEventListener('input', () => chrome.storage.local.set({ fulfillmentText: fulfillmentText.value }));
+  whatsappText.addEventListener('input', () => { chrome.storage.local.set({ whatsappText: whatsappText.value }); invalidate(); });
+  fulfillmentText.addEventListener('input', () => { chrome.storage.local.set({ fulfillmentText: fulfillmentText.value }); invalidate(); });
 
   const saveBackend = async (value) => {
     try {
@@ -263,6 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnClear.addEventListener('click', () => {
       whatsappText.value = '';
       fulfillmentText.value = '';
+      invalidate(); screenshots.reset(); clearHints();
       chrome.storage.local.set({ whatsappText: '', fulfillmentText: '' }, () => {
         results.innerHTML = '<p style="color:#6B7280; margin:0; text-align:center;">Inputs cleared. Ready for new audit data!</p>';
       });
@@ -334,6 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
 
           if (hasUpdated) {
+            invalidate();
             results.innerHTML = '<span style="color:#047857; font-size:11px; font-weight:bold;">✓ Page data captured! Ready for analysis.</span>';
           } else {
             results.innerHTML = '<span style="color:#6B7280; font-size:11px;">No screen state detected. You can paste details manually.</span>';
@@ -348,7 +403,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Capture selection trigger click
   btnCapture.addEventListener('click', captureSelection);
 
-  btnVerify.addEventListener('click', async () => {
+  const verify = async () => {
     const wa = whatsappText.value.trim();
     const ff = fulfillmentText.value.trim();
 
@@ -358,6 +413,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (btnVerify.disabled) return;
+    const version = inputRevision, context = contextRevision;
+    activeResult = null;
     btnVerify.disabled = true;
     results.innerHTML = '<span style="color:#5C2D91; font-weight:bold; animation:pulse 1s infinite;">Checking clinical compliance portal...</span>';
 
@@ -366,25 +423,29 @@ document.addEventListener('DOMContentLoaded', () => {
       if (normalizeBackendUrl(backendUrlInput.value) !== activeUrl) {
         throw new Error('Click Save to apply your changed backend URL before auditing.');
       }
-      const data = await backendRequest(activeUrl, '/api/verify', {
+      const catalog = await request('/api/products');
+      if (version !== inputRevision || context !== contextRevision) return;
+      const data = await request('/api/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ whatsappMessage: wa, fulfillmentConfirmation: ff, checkSource: 'companion_extension', checkId: `EXT-${crypto.randomUUID()}` }),
+        body: JSON.stringify(auditBody(wa, ff, catalog.revision, limitDecisions)),
       });
       if (!Array.isArray(data.items) || typeof data.allMatch !== 'boolean') {
         throw new Error('Unexpected audit response from the backend.');
       }
 
+      if (version !== inputRevision || context !== contextRevision) return;
+      void refreshHints();
       // Initialize active results and render dynamically
       activeResult = data;
-      declinedLimitItems = [];
       renderResults();
 
     } catch (err) {
-      showError(err);
+      if (version === inputRevision && context === contextRevision) showError(err);
       await updateAuth();
     } finally {
       btnVerify.disabled = false;
     }
-  });
+  };
+  btnVerify.addEventListener('click', () => { limitDecisions = {}; declinedLimitItems = []; void verify(); });
 });

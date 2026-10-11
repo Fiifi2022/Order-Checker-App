@@ -1,3 +1,8 @@
+import { acknowledgeOrderLimit } from '../shared/orderLimitAcknowledgement';
+import ProductReceivingHints from './components/ProductReceivingHints';
+import ProductCatalog from './components/ProductCatalog';
+import { applyGeneralCatalog } from './utils/productCatalog';
+import { setCatalogRevision, canManageCatalog } from '../shared/productCatalog';
 import { hasRole, assignedRoles } from '../shared/roles';
 import { logoutUser } from './firebase';
 import { authFetch } from './utils/authFetch';
@@ -5,7 +10,7 @@ import GeneralScreenshotInput, { type GeneralScreenshotHandle } from './componen
 import GeneralMonitoring from './components/GeneralMonitoring';
 import { GeneralOrderLimitPrompt, GeneralProductName } from './components/GeneralFulfillmentSummary';
 import { createGeneralAuditRun, completeGeneralAuditRun, isCurrentGeneralAuditRun, type GeneralAuditRun } from './utils/generalAuditRun';
-import { applyGeneralOrderLimitDecision, buildGeneralAuditCheckSummary, type runGeneralAuditor } from './utils/generalAuditor';
+import { buildGeneralAuditCheckSummary, type runGeneralAuditor } from './utils/generalAuditor';
 import GeneralVerificationConfidence from './components/GeneralVerificationConfidence';
 import GeneralDiscrepancySubtitle from './components/GeneralDiscrepancySubtitle';
 /**
@@ -150,6 +155,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   const [roles, setRoles] = useState<UserRoleRecord[]>([authenticatedUser]);
   const [activeUser, setActiveUser] = useState<UserRoleRecord | null>(authenticatedUser);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [loadingRoles, setLoadingRoles] = useState(false);
 
   const fetchRoles = async () => {
@@ -424,9 +430,12 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   const answerGeneralOrderLimit = (key: string, answer: boolean) => {
     if (!result || !generalDetails || loading || !generalDetails.products.some(product => product.key === key && product.orderLimitEligible)) return;
     if (result.whatsappMessage !== currentGeneralInputs.current.whatsappMessage || result.fulfillmentConfirmation !== currentGeneralInputs.current.fulfillmentConfirmation) return;
-    const confirmed = applyGeneralOrderLimitDecision(result as unknown as ReturnType<typeof runGeneralAuditor>, key, answer);
-    void runGeneralVerification({ ...generalDetails.orderLimitDecisions, [key]: answer }, result.id,
-      { ...result, ...confirmed } as unknown as AuditRecord);
+    const confirmed = acknowledgeOrderLimit(result as unknown as ReturnType<typeof runGeneralAuditor>, key, answer);
+    setResult(confirmed as unknown as AuditRecord);
+    void authFetch(`/api/audits/${encodeURIComponent(result.id)}/order-limit`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, answer }),
+    }).then(response => { if (!response.ok) throw new Error('Acknowledgement was not saved.'); })
+      .catch(() => setGeneralServiceWarning('Order-limit decision acknowledged on screen, but could not be saved to history.'));
   };
 
   const runGeneralVerification = async (orderLimitDecisions: Record<string, boolean> = {}, existingCheckId?: string, immediateResult?: AuditRecord) => {
@@ -457,6 +466,11 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
     }, 100);
 
     try {
+      const catalogResponse = await authFetch('/api/products', { signal: controller.signal });
+      if (!catalogResponse.ok) throw new Error('Product catalog unavailable. Reload and retry the audit.');
+      const catalog = await catalogResponse.json();
+      setCatalogRevision(catalog.revision);
+      applyGeneralCatalog(catalog.products);
       let liveOsu: string[] = [];
       try { const response = await authFetch('/api/osu', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]) }); if (!response.ok) throw new Error(); liveOsu = await response.json(); } catch { if (!controller.signal.aborted) setGeneralServiceWarning('OSU register unavailable. Confirmation quantities still determine stock status.'); }
       if (controller.signal.aborted || revision !== generalAuditRevision.current) return;
@@ -470,6 +484,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
         body: JSON.stringify({
           ...run.inputs,
           auditScope: 'general_auditor',
+          productCatalogRevision: catalog.revision,
           checkSource: 'order_checker_app',
           checkId: existingCheckId || `AUD-${crypto.randomUUID()}`,
           generalOrderLimitDecisions: { ...orderLimitDecisions },
@@ -683,6 +698,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
             </div>
           </div>
           
+          <button type="button" onClick={() => setIsCatalogOpen(true)} className="rounded-xl bg-white/10 border border-white/20 px-3 py-2 text-xs font-bold hover:bg-white/20">Product Catalog</button>
           {/* Operator Profile Badge & Role Manager */}
           <div className="flex items-center gap-2 sm:gap-3">
             <GeminiStatus />
@@ -979,6 +995,8 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
 
                 <GeneralScreenshotInput ref={customerImage} label="Customer Request" resetKey={generalImageReset} inputsKey={JSON.stringify([whatsappMessage, fulfillmentConfirmation])} onInvalidate={invalidateGeneralAudit} onText={text => handleCustomChange('whatsapp', text)} />
 
+                <ProductReceivingHints scope="general" text={whatsappMessage} />
+
                 {/* Render normal text input mode or as parsed result visualization */}
                 <div className="relative flex-1 flex flex-col gap-1.5">
                   <textarea
@@ -1009,6 +1027,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                   </div>
                   
                   <GeneralScreenshotInput ref={fulfillmentImage} label="Fulfillment Confirmation" resetKey={generalImageReset} inputsKey={JSON.stringify([whatsappMessage, fulfillmentConfirmation])} onInvalidate={invalidateGeneralAudit} onText={text => handleCustomChange('fulfillment', text)} />
+                  <ProductReceivingHints scope="general" text={fulfillmentConfirmation} />
                   <div className="relative flex-1">
                     <textarea
                       id="fulfillment-input"
@@ -1430,9 +1449,9 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                   <div className="absolute right-0 top-0 translate-x-6 -translate-y-6 opacity-10 bg-purple-200 w-32 h-32 rounded-full"></div>
                   <div className="space-y-1 text-center sm:text-left">
                     <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-purple-300">PRE-CONFIGURED PLUG-IN PACKAGE</span>
-                    <h3 className="text-lg font-bold text-white">Pre-packaged Compliance Extension</h3>
+                    <h3 className="text-lg font-bold text-white">Compliance Companion v1.4.1</h3>
                     <p className="text-xs text-purple-100 select-none pb-0.5">
-                      Guaranteed zero manual server URI mappings. It connects automatically to this portal API.
+                      Connects to this portal with shared catalog edits, alias suggestions, screenshot scanning, and receiving reminders.
                     </p>
                   </div>
                   <button
@@ -1460,6 +1479,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                     <p className="py-2"><b>4. Developer Switch:</b> In the top-right corner, check the <b>"Developer mode"</b> toggle switch.</p>
                     <p className="pt-2"><b>5. Unpacked Upload:</b> Click the <b>"Load unpacked"</b> button in the top-left, and pick the extracted folder containing <code>manifest.json</code>.</p>
                     <p className="pt-2"><b>6. Sign in:</b> Open the extension and sign in with your verified, approved portal email/password account. If you use Google only, ask an administrator for a password reset link to set a password on the same account.</p>
+                    <p className="pt-2"><b>Updating an installed copy:</b> Replace its files with this download, click Reload in chrome://extensions, and refresh the pages used for capture.</p>
                   </div>
                 </div>
 
@@ -1477,7 +1497,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                     <pre>{`{
   "manifest_version": 3,
   "name": "OrderCheck Companion",
-  "version": "1.3.0",
+  "version": "1.4.1",
   "permissions": [
     "activeTab",
     "scripting",
@@ -1659,6 +1679,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
         </div>
       </footer>
 
+      {isCatalogOpen && <ProductCatalog canEdit={canManageCatalog(assignedRoles(activeUser))} onClose={() => setIsCatalogOpen(false)} onUpdated={invalidateGeneralAudit} />}
       {/* Team Roles & Access Control (RBAC) Management Modal */}
       <RoleManagementModal
         isOpen={isRoleModalOpen}

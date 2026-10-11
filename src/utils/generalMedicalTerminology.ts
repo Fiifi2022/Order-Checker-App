@@ -16,10 +16,10 @@ export interface GeneralMedicalTerm {
   contextualAliases: string[];
   note: string;
 }
-export const generalMedicalTerminology: readonly GeneralMedicalTerm[] = data;
+export let generalMedicalTerminology: readonly GeneralMedicalTerm[] = data;
 // Approved local catalogue identities. These mappings apply only to General
 // Auditor product orders, not to clinical substitution or other tabs.
-export const generalApprovedProductIdentities = [
+export let generalApprovedProductIdentities = [
   { canonicalId: 'ANTI_SNAKE', canonicalName: 'Anti Snake Serum Injection', aliases: [
     'ASV', 'Anti Snake Serum Injection', 'Anti Snake Serum', 'Anti Snake Venom',
     'Snake Venom Antiserum', 'Snake Venom Antivenom', 'Snake Antivenom', 'Antivenom',
@@ -32,7 +32,7 @@ export const generalApprovedProductIdentities = [
     'Rabies Injection', 'Rabies Inj', 'Anti Rabies Injection', 'Anti Rabies Inj',
     'Anti Rabies', 'Rabies Shot', 'Antirabies'
   ] }
-] as const;
+] as { canonicalId: string; canonicalName: string; aliases: string[] }[];
 export const generalMedicalAbbreviations: Record<string, string> = {
   PCM: 'Paracetamol', AL: 'Artemether/Lumefantrine', ACT: 'Artemisinin-based Combination Therapy (class)',
   ORS: 'Oral Rehydration Salts', ORT: 'Oral Rehydration Therapy; local ORS context required',
@@ -64,7 +64,7 @@ const forms: Record<string, string> = { tab: 'tablet', tabs: 'tablet', tablets: 
   exam: 'examination', diluents: 'diluent', droppers: 'dropper', vaccines: 'vaccine', solutions: 'solution' };
 const formPattern = new RegExp(`\\b(${Object.keys(forms).join('|')})\\b`, 'g');
 const standardWords = (text: string) => generalTerminologyKey(text).replace(formPattern, token => forms[token]);
-const approvedIdentityPatterns = generalApprovedProductIdentities.map(identity => ({ identity,
+let approvedIdentityPatterns = generalApprovedProductIdentities.map(identity => ({ identity,
   pattern: new RegExp(`(^|[^a-z0-9])(${identity.aliases.map(generalTerminologyKey).sort((a, b) => b.length - a.length).map(escape).join('|')})(?=$|[^a-z0-9])`, 'i')
 }));
 export function resolveGeneralApprovedIdentity(value: string) {
@@ -83,30 +83,44 @@ export function resolveGeneralApprovedIdentity(value: string) {
 }
 export const resolveCanonicalProduct = resolveGeneralApprovedIdentity;
 const qualifiers = /\b(?:tablet|capsule|syrup|suspension|solution|cream|ointment|injection|infusion|drops|inhaler|nebule|suppository|intravenous|intramuscular|subcutaneous|oral|adult|paediatric|infant|neonate|sodium|potassium|sulphate|surgical|examination)\b/g;
-const candidates = new Map<string, Set<string>>();
-for (const term of generalMedicalTerminology) {
-  for (const alias of [term.canonicalName, ...term.aliases]) {
-    if (term.contextualAliases.some(value => generalTerminologyKey(value) === generalTerminologyKey(alias))) continue;
-    let target = standardWords(term.normalizationName);
-    const source = standardWords(alias);
-    if (term.canonicalName === 'Cannula' && ['branula', 'venflon', 'iv line'].includes(generalTerminologyKey(alias))) target = 'intravenous cannula';
-    for (const qualifier of source.match(qualifiers) || []) {
-      if (qualifier === 'sodium' && /normal saline/.test(target)) continue;
-      if (qualifier === 'drops' && term.canonicalName === 'Oral Polio Vaccine') continue;
-      if (qualifier === 'injection' && term.canonicalName === 'Inactivated Polio Vaccine') continue;
-      if (!new RegExp(`\\b${qualifier}\\b`).test(target)) target += ` ${qualifier}`;
-    }
-    const aliasKey = generalTerminologyKey(alias);
-    const values = candidates.get(aliasKey) || new Set<string>();
-    values.add(target);
-    candidates.set(aliasKey, values);
-  }
+let replacements: Map<string, string>;
+let ageDefaults: Map<string, GeneralMedicalTerm>;
+let pattern: RegExp;
+export function setGeneralMedicalTerminology(terms: GeneralMedicalTerm[]) {
+  generalMedicalTerminology = terms;
+  generalApprovedProductIdentities = terms.filter(term => ['ANTI_SNAKE', 'ANTI_RABIES_VACCINE'].includes(term.canonicalId || '')).map(term => ({ canonicalId: term.canonicalId!, canonicalName: term.canonicalName, aliases: term.aliases }));
+  approvedIdentityPatterns = generalApprovedProductIdentities.map(identity => ({ identity,
+    pattern: new RegExp(`(^|[^a-z0-9])(${[identity.canonicalName, ...identity.aliases].map(generalTerminologyKey).sort((a, b) => b.length - a.length).map(escape).join('|')})(?=$|[^a-z0-9])`, 'i') }));
+  rebuildTerminology();
 }
-// Duplicate meanings (e.g. deworming tablet) never become automatic aliases.
-const replacements = new Map([...candidates].filter(([, values]) => values.size === 1).map(([alias, values]) => [alias, [...values][0]]));
-const ageDefaults = new Map(generalMedicalTerminology.filter(term => term.ageGroup && term.strength)
-  .flatMap(term => term.aliases.filter(alias => !/\d/.test(alias)).map(alias => [generalTerminologyKey(alias), term] as const)));
-const pattern = new RegExp(`(^|[^a-z0-9])(${[...replacements.keys()].sort((a, b) => b.length - a.length).map(escape).join('|')})(?=$|[^a-z0-9])`, 'g');
+function rebuildTerminology() {
+  const candidates = new Map<string, Set<string>>();
+  for (const term of generalMedicalTerminology) {
+    for (const alias of [term.canonicalName, ...term.aliases]) {
+      if (term.contextualAliases.some(value => generalTerminologyKey(value) === generalTerminologyKey(alias))) continue;
+      let target = standardWords(term.normalizationName);
+      const source = standardWords(alias);
+      if (term.canonicalName === 'Cannula' && ['branula', 'venflon', 'iv line'].includes(generalTerminologyKey(alias))) target = 'intravenous cannula';
+      for (const qualifier of source.match(qualifiers) || []) {
+        if (qualifier === 'sodium' && /normal saline/.test(target)) continue;
+        if (qualifier === 'drops' && term.canonicalName === 'Oral Polio Vaccine') continue;
+        if (qualifier === 'injection' && term.canonicalName === 'Inactivated Polio Vaccine') continue;
+        if (!new RegExp(`\\b${qualifier}\\b`).test(target)) target += ` ${qualifier}`;
+      }
+      const aliasKey = generalTerminologyKey(alias);
+      const values = candidates.get(aliasKey) || new Set<string>();
+      values.add(target);
+      candidates.set(aliasKey, values);
+    }
+  }
+  // Duplicate meanings (e.g. deworming tablet) never become automatic aliases.
+  replacements = new Map([...candidates].filter(([, values]) => values.size === 1).map(([alias, values]) => [alias, [...values][0]]));
+  ageDefaults = new Map(generalMedicalTerminology.filter(term => term.ageGroup && term.strength)
+    .flatMap(term => term.aliases.filter(alias => !/\d/.test(alias)).map(alias => [generalTerminologyKey(alias), term] as const)));
+  pattern = new RegExp(`(^|[^a-z0-9])(${[...replacements.keys()].sort((a, b) => b.length - a.length).map(escape).join('|')})(?=$|[^a-z0-9])`, 'g');
+
+}
+rebuildTerminology();
 
 /** General-only identity normalization. No quantities or final statuses are set here. */
 export function expandGeneralMedicalTerms(value: string): string {
@@ -174,7 +188,7 @@ export function isGeneralBiologic(value: string): boolean {
   return /\b(?:vaccine|diluent|dropper|rabies|snake|immunoglobulin|antivenom|antiserum|tetanus|polio|measles|rubella|rotavirus|calmette|bcg|opv|ipv|pcv|penta|rota|yf|mr|tt|td|rig|hrig|erig|asv)\b/i.test(expandGeneralMedicalTerms(value));
 }
 
-export const generalTerminologyAliases = generalMedicalTerminology.map(term => ({
+export const getGeneralTerminologyAliases = () => generalMedicalTerminology.map(term => ({
   name: term.canonicalName, canonicalId: term.canonicalId, aliases: term.aliases, acronyms: term.acronyms.length ? term.acronyms : undefined,
   genericName: term.genericName !== term.canonicalName ? term.genericName : undefined,
   brandNames: term.brandNames.length ? term.brandNames : undefined, formulation: term.formulation || undefined,
@@ -182,6 +196,7 @@ export const generalTerminologyAliases = generalMedicalTerminology.map(term => (
   contextual: term.contextualAliases.length > 0, contextualAliases: term.contextualAliases,
   note: term.note.startsWith('Preserve specified strength, dosage form, route') ? undefined : term.note
 }));
+export const generalTerminologyAliases = getGeneralTerminologyAliases();
 export function relevantGeneralAbbreviations(input: string): Record<string, string> {
   const text = ` ${input.toUpperCase().replace(/[^A-Z0-9]+/g, ' ')} `;
   return Object.fromEntries(Object.entries(generalMedicalAbbreviations).filter(([term]) => text.includes(` ${term} `)));

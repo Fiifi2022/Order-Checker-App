@@ -1,9 +1,12 @@
+import { getCatalogRevision } from '../../shared/productCatalog';
 import catalogue from './generalPackagingCatalogue.json';
 
 // Snapshot of the approved catalogue already embedded in server.ts.
 // Conflicting normalized entries remain unsupported rather than choosing a factor.
-const indexes = new WeakMap<Function, Map<string, number | null>>();
+let indexes = new WeakMap<Function, Map<string, number | null>>();
+let indexRevision = -1;
 export function getGeneralPackagingFactor(name: string, normalize: (name: string) => string) {
+  if (indexRevision !== getCatalogRevision()) { indexes = new WeakMap(); indexRevision = getCatalogRevision(); }
   let index = indexes.get(normalize);
   if (!index) {
     index = new Map();

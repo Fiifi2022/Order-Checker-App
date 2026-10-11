@@ -270,6 +270,11 @@ export function getAliases() {
   return customAliases;
 }
 
+export function replaceAliases(aliases: Record<string, string[]>) {
+  customAliases = { ...aliases };
+  return customAliases;
+}
+
 export function updateAliases(updated: Record<string, string[]>) {
   customAliases = { ...DEFAULT_ALIASES, ...updated };
   return customAliases;

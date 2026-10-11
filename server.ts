@@ -1,3 +1,7 @@
+import { orderLimitAcknowledgementHandler } from './server/orderLimitAcknowledgement';
+import { catalogAliasAssistant } from './server/catalogAliasAssistant';
+import { defaultProducts, applyCatalog, saveCatalogProduct, productCatalogHandlers } from './server/productCatalog';
+import type { ProductCatalog } from './shared/productCatalog';
 import { hasRole, roleAssignment, type AppRole } from './shared/roles';
 import { accountSummary, adminAccountHandlers } from './server/adminAccounts';
 import { registrationHandlers } from './server/registration';
@@ -15,7 +19,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import fs from 'fs/promises';
 import fsSync from 'fs';
-import AdmZip from 'adm-zip';
+import { buildExtensionPackage, resolveExtensionBackendUrl } from './server/extensionPackage';
 import { adminAuth, adminDb, collection, getDocs, doc, setDoc, getDoc, deleteDoc, query, orderBy, limit, writeBatch, runTransaction } from './server/firebaseAdmin';
 import { actorContext, createAuthentication } from './server/auth';
 import * as vaccineService from './server/vaccineService';
@@ -120,6 +124,43 @@ app.use('/api', createAuthentication(
     return null;
   },
 ));
+// One versioned catalog document: transactional updates prevent lost edits.
+const catalogReference = adminDb.collection('product_catalog').doc('current');
+const catalogSeed: ProductCatalog = { revision: 1, products: defaultProducts() };
+async function readProductCatalog(): Promise<ProductCatalog> {
+  return adminDb.runTransaction(async transaction => {
+    const snapshot = await transaction.get(catalogReference);
+    if (snapshot.exists) return snapshot.data() as ProductCatalog;
+    transaction.set(catalogReference, catalogSeed);
+    return catalogSeed;
+  });
+}
+const catalogHandlers = productCatalogHandlers({
+  read: readProductCatalog,
+  save: (input, actor) => adminDb.runTransaction(async transaction => {
+    const snapshot = await transaction.get(catalogReference);
+    const updated = saveCatalogProduct(snapshot.exists ? snapshot.data() as ProductCatalog : catalogSeed, input, actor);
+    transaction.set(catalogReference, updated);
+    return updated;
+  }),
+});
+app.get('/api/products', catalogHandlers.read);
+app.post('/api/products/hints', catalogHandlers.hints);
+app.post('/api/products', catalogHandlers.save);
+app.post('/api/products/suggest-aliases', catalogAliasAssistant({ read: readProductCatalog, getClient: getGeminiClient }));
+// Refresh the same persisted vocabulary before text matching and allocation parsing.
+app.use('/api', async (req, res, next) => {
+  if (req.path !== '/verify' && !req.path.startsWith('/vaccine/')) { next(); return; }
+  try {
+    const catalog = await readProductCatalog();
+    if (req.path === '/verify' && req.body?.productCatalogRevision !== undefined && req.body.productCatalogRevision !== catalog.revision) {
+      res.status(409).json({ error: 'Product aliases changed during this audit. Run verification again.' }); return;
+    }
+    applyCatalog(catalog); next();
+  }
+  catch { res.status(503).json({ error: 'Product catalog unavailable. Please retry before auditing.' }); }
+});
+
 app.get('/api/auth/me', (_req, res) => res.json(res.locals.authUser));
 
 const registration = registrationHandlers({
@@ -2122,6 +2163,21 @@ app.get('/api/audits', async (req, res) => {
   }
 });
 
+// Acknowledge only the selected limit on existing evidence; no parsing or Gemini request.
+app.post('/api/audits/:id/order-limit', orderLimitAcknowledgementHandler({
+  read: async id => {
+    const cached = audits.find(record => record.id === id);
+    if (cached) return cached;
+    const snapshot = await getDoc(doc(getFirestoreDb(), 'audits', id));
+    return snapshot.exists() ? snapshot.data() : null;
+  },
+  save: async record => {
+    const index = audits.findIndex(existing => existing.id === record.id);
+    if (index >= 0) audits[index] = record; else audits.unshift(record);
+    await setDoc(doc(getFirestoreDb(), 'audits', record.id), cleanFirestorePayload(record));
+  },
+}));
+
 // Update audit status / resolution notes (discrepancy resolution workflow)
 app.patch('/api/audits/:id', async (req, res) => {
   const { id } = req.params;
@@ -4008,17 +4064,8 @@ app.get('/api/vaccine/aliases', async (req, res) => {
 });
 
 // Update product aliases
-app.post('/api/vaccine/aliases', async (req, res) => {
-  try {
-    const { aliases } = req.body;
-    if (!aliases || typeof aliases !== 'object') {
-      return res.status(400).json({ error: 'Valid aliases dictionary required' });
-    }
-    const updated = vaccineService.updateAliases(aliases);
-    return res.json(updated);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+app.post('/api/vaccine/aliases', (_req, res) => {
+  res.status(410).json({ error: 'Update vaccine aliases in Product Catalog so changes are saved permanently.' });
 });
 
 // Vaccine Dashboard Metrics - synchronized with Allocation Blueprint
@@ -4231,27 +4278,8 @@ app.post('/api/activity/logs/clear', (req, res) => {
 // Compile companion Chrome extension into packaged ZIP on the fly
 app.get('/api/download-extension', async (req, res) => {
   try {
-    // Render terminates TLS at its proxy; its public service and custom domains use HTTPS.
-    const configuredUrl = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL;
-    const requestHost = req.get('host');
-    if (!configuredUrl && !requestHost) throw new Error('Configure APP_URL with the public backend URL.');
-    const localHost = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(requestHost || '');
-    const publicUrl = new URL(configuredUrl || `${localHost ? 'http' : 'https'}://${requestHost}`);
-    if (!['http:', 'https:'].includes(publicUrl.protocol) || publicUrl.username || publicUrl.password) {
-      throw new Error('APP_URL must be an HTTP(S) URL without credentials.');
-    }
-    const extDir = path.join(process.cwd(), 'extension');
-    const zip = new AdmZip();
-    // Package the maintained assets only, so downloads cannot silently serve an outdated fallback.
-    for (const file of ['manifest.json', 'popup.html', 'popup.js', 'backend.js', 'auth.js', 'content.js', 'icon.png']) {
-      zip.addFile(file, await fs.readFile(path.join(extDir, file)));
-    }
-    zip.addFile('config.js', Buffer.from(`export const extensionConfig = ${JSON.stringify({
-      backendUrl: publicUrl.origin,
-      firebaseApiKey: firebaseConfig.firebaseConfig.apiKey,
-    }, null, 2)};\n`));
-
-    const zipBuffer = zip.toBuffer();
+    const backendUrl = resolveExtensionBackendUrl({ appUrl: process.env.APP_URL, renderUrl: process.env.RENDER_EXTERNAL_URL, host: req.get('host') });
+    const zipBuffer = await buildExtensionPackage(backendUrl, firebaseConfig.firebaseConfig.apiKey);
     res.setHeader("Content-Disposition", "attachment; filename=ordercheck-compliance-companion.zip");
     res.setHeader("Content-Type", "application/zip");
     res.status(200).send(zipBuffer);

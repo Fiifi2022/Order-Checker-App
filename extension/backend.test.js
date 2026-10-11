@@ -56,3 +56,34 @@ test('reports HTML responses and times out a stalled service', async () => {
     await assert.rejects(fetchJson('https://example.com', {}, 10), /took too long/);
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('companion uses all assigned roles and the current deterministic general audit contract', async () => {
+  const { profileRoles, auditBody } = await import('./audit.js');
+  const { webcrypto } = await import('node:crypto');
+  const previousCrypto = globalThis.crypto;
+  globalThis.crypto = webcrypto;
+  try {
+    assert.equal(profileRoles({ role: 'cca', roles: ['cca', 'auditor', 'warehouse'] }), 'CCA + Compliance + Warehouse');
+    assert.equal(profileRoles({ role: 'cca', roles: ['auditor'] }), 'Compliance');
+    assert.equal(profileRoles({ role: 'warehouse' }), 'Warehouse');
+    const body = auditBody('Customer', 'Fulfillment', 12, { item: true });
+    assert.equal(body.auditScope, 'general_auditor');
+    assert.equal(body.productCatalogRevision, 12);
+    assert.equal(body.checkSource, 'companion_extension');
+    assert.deepEqual(body.generalOrderLimitDecisions, { item: true });
+  } finally { globalThis.crypto = previousCrypto; }
+});
+
+test('catalog drafts preserve canonical keys, optional details, explicit unlinking, and revision', async () => {
+  const { catalogDraft, initialLinkedProductId } = await import('./catalog.js');
+  const product = { id: 'g', name: 'Original', scope: 'general', aliases: ['O'], contextualAliases: [], note: '' };
+  const values = { displayName: 'Renamed', scope: 'general', category: 'medicine', aliases: 'O\nOther\n', contextualAliases: 'O', fulfillmentSystemName: 'System Original', receivingDetails: 'Supply by box', linkedProductId: '', note: 'Note' };
+  const draft = catalogDraft(product, values, 3);
+  assert.equal(draft.name, 'Original'); assert.equal(draft.displayName, 'Renamed'); assert.equal(draft.revision, 3);
+  assert.equal(draft.receivingDetails, values.receivingDetails); assert.equal(draft.linkedProductId, '');
+  assert.deepEqual(draft.aliases, ['O', 'Other']);
+  const counterpart = { ...product, id: 'v', scope: 'vaccine' };
+  assert.equal(initialLinkedProductId(product, [product, counterpart]), 'v');
+  assert.equal(initialLinkedProductId({ ...product, linkedProductId: '' }, [product, counterpart]), '');
+  assert.equal(initialLinkedProductId(product, [product, counterpart, { ...counterpart, id: 'v2' }]), '');
+});

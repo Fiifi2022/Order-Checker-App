@@ -150,6 +150,15 @@
       text-align: right;
       margin-top: 8px;
     }
+    [hidden] { display: none !important; }
+    .catalog-product { display:block;width:100%;text-align:left;padding:7px;border:0;border-bottom:1px solid #eee;background:white;cursor:pointer;font-size:11px; }
+    #catalogProducts { max-height:145px;overflow:auto;border:1px solid #ddd;border-radius:6px;margin:6px 0; }
+    #catalogForm label { display:block;font-size:11px;margin:8px 0; }
+    #catalogForm input:not([type=checkbox]), #catalogForm select { width:100%;box-sizing:border-box;padding:6px;margin-top:3px; }
+    #catalogForm textarea { margin-top:3px; }
+    #catalogSuggestions label { display:block;font-size:11px;margin:5px 0; }
+    .receiving-reminders { background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px;font-size:11px;white-space:pre-wrap;margin-top:6px; }
+    .scan-row { font-size:10px;margin:5px 0; } .scan-row input { max-width:100%;font-size:10px; }
   </style>
 </head>
 <body>
@@ -157,7 +166,7 @@
     <div style="background-color:#5C2D91; padding:4px; border-radius:4px;">⚡</div>
     <div>
       <h3>OrderCheck Companion</h3>
-      <p>Clinical Dispatch Audit Extension v1.3</p>
+      <p>Clinical Dispatch Audit Extension v1.4.1</p>
     </div>
     <button id="btnKeepOpen" class="btn-keep-open" title="📌 Open in a standalone stay-open window, so it won't auto-close when clicking outside!">📌 Keep Open</button>
   </div>
@@ -177,14 +186,43 @@
   <button id="btnSignOut" class="btn-clear" hidden>Sign out</button>
   <label for="agentName" style="display:block; margin:8px 0 4px; font-size:10px; font-weight:bold; color:#5C2D91;">Agent name</label>
   <input id="agentName" type="text" readonly placeholder="Filled from your signed-in account" style="box-sizing:border-box; width:100%; padding:7px; border:1px solid #E5E7EB; border-radius:6px; font-size:11px; margin-bottom:8px;">
+  <button id="openCatalog" class="btn-secondary" type="button">Product Catalog · aliases &amp; receiving details</button>
+  <button id="openPortal" class="btn-secondary" type="button">Open portal · blueprints &amp; role management</button>
+  <section id="catalogPanel" hidden aria-label="Product Catalog">
+    <div class="section-title">Product Catalog <button id="closeCatalog" type="button">Close</button></div>
+    <input id="catalogSearch" type="search" aria-label="Search products" placeholder="Search products or aliases" style="width:100%;box-sizing:border-box;" />
+    <select id="catalogScope" aria-label="Filter by checker"><option value="">Both checkers</option><option value="general">General Auditor</option><option value="vaccine">Vaccine Checker</option></select>
+    <button id="reloadCatalog" type="button">Reload</button><button id="addCatalogProduct" type="button" disabled>Add product</button>
+    <div id="catalogProducts"></div>
+    <form id="catalogForm" hidden><fieldset id="catalogFields" disabled>
+      <label>Product name<input name="displayName" required maxlength="160" /></label>
+      <label>Used in<select name="scope"><option value="general">General Auditor</option><option value="vaccine">Vaccine Checker</option></select></label>
+      <label>Category<input name="category" required maxlength="60" /></label>
+      <label>Fulfillment System name (optional)<input name="fulfillmentSystemName" maxlength="160" /></label>
+      <label>How this product is received / supplied (optional)<textarea name="receivingDetails" maxlength="2000" placeholder="e.g. Received in boxes containing 10 units"></textarea></label>
+      <label>Sync new aliases and changed receiving details to<select name="linkedProductId"></select></label>
+      <label>Aliases — one per line<textarea name="aliases"></textarea></label>
+      <label id="catalogContextLabel">Aliases requiring context — one per line<textarea name="contextualAliases"></textarea></label>
+      <label>Notes<textarea name="note" maxlength="2000"></textarea></label>
+      <button id="suggestCatalogAliases" type="button" class="btn-secondary">Suggest aliases with Gemini</button>
+      <div id="catalogSuggestions"></div><button id="addAliasSuggestions" type="button" hidden>Add selected suggestions to draft</button>
+      <button id="saveCatalogProduct" type="submit" class="btn-primary">Save product</button>
+    </fieldset></form>
+    <p id="catalogStatus" role="status" style="font-size:11px;"></p>
+    <p style="font-size:10px;">Keep strengths, formulations, and vaccine companions separate. Receiving reminders do not change quantities.</p>
+  </section>
   <textarea id="whatsappText" placeholder="Pasted or extracted WhatsApp message goes here..."></textarea>
 
+  <div class="scan-row"><label>Customer screenshot <input id="whatsappImage" type="file" accept="image/png,image/jpeg,image/webp" /></label><button id="whatsappScan" type="button" disabled>Scan screenshot</button><p id="whatsappScanStatus" role="status"></p></div>
+  <aside id="whatsappHints" class="receiving-reminders" role="status" hidden></aside>
   <div class="section-title">
     <span>Fulfillment system log</span>
     <span style="font-size:8px; color:#888; font-weight:normal;">Will pull highlighted text</span>
   </div>
   <textarea id="fulfillmentText" placeholder="Highlight text on the fulfillment page and click button below..."></textarea>
-  
+
+  <div class="scan-row"><label>Fulfillment screenshot <input id="fulfillmentImage" type="file" accept="image/png,image/jpeg,image/webp" /></label><button id="fulfillmentScan" type="button" disabled>Scan screenshot</button><p id="fulfillmentScanStatus" role="status"></p></div>
+  <aside id="fulfillmentHints" class="receiving-reminders" role="status" hidden></aside>
   <div style="display: flex; gap: 8px;">
     <button id="btnCapture" class="btn-secondary" style="margin-top: 4px; flex: 1;">✨ Grab Active Page</button>
     <button id="btnClear" class="btn-clear" style="margin-top: 4px; flex: 1;">🗑 Clear Inputs</button>

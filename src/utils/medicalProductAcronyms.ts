@@ -10,7 +10,7 @@ export interface ProductAcronym {
 // allocation, or package-conversion rules. Add locally confirmed aliases here.
 // References: existing OrderCheck catalogue and prompts, FDA acetaminophen
 // terminology, WHO malaria/HIV terminology, and ISBT blood component terminology.
-export const medicalProductAcronyms: readonly ProductAcronym[] = [
+export let medicalProductAcronyms: readonly ProductAcronym[] = [
   { name: 'Paracetamol', aliases: ['PCM', 'APAP', 'Acetaminophen', 'Panadol'], category: 'medicine' },
   { name: 'Amoxicillin', aliases: ['Amox', 'Amoxil', 'Amoxycillin'], category: 'medicine' },
   { name: 'Artemether Lumefantrine', aliases: ['AL', 'Coartem'], category: 'medicine' },
@@ -71,13 +71,24 @@ Blood components are different products: WB, PRBC/RBC, FFP, PLT, SDP, RDP, PRP a
 Product knowledge never authorizes allocation, clinical substitution, quantity conversion, or a stock/order-limit exemption. Use the exact original product name as name and a supported expansion as normalizedName. All final validation stays deterministic.`;
 
 const wordKey = (value: string) => value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/['’]/g, '').replace(/−/g, '-').replace(/(?<=[a-z])-(?=[a-z])/g, ' ').replace(/\s+/g, ' ').trim();
-const aliases = medicalProductAcronyms.filter(entry => !entry.contextual)
-  .flatMap(entry => [...entry.aliases, entry.name].map(alias => ({ alias: wordKey(alias), name: wordKey(entry.name) })))
-  .sort((a, b) => b.alias.length - a.alias.length);
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const aliasPattern = new RegExp(`(^|[^a-z0-9])(${[...new Set(aliases.map(entry => entry.alias))].map(escapeRegExp).join('|')})(?=$|[^a-z0-9])`, 'g');
-const aliasNames = new Map(aliases.map(entry => [entry.alias, entry.name]));
-const bloodNames = medicalProductAcronyms.filter(entry => entry.category === 'blood').map(entry => wordKey(entry.name));
+let aliasPattern: RegExp;
+let aliasNames: Map<string, string>;
+let bloodNames: string[];
+export function setMedicalProductAcronyms(terms: ProductAcronym[]) {
+  medicalProductAcronyms = terms;
+  rebuildAcronyms();
+}
+function rebuildAcronyms() {
+  const aliases = medicalProductAcronyms.filter(entry => !entry.contextual)
+    .flatMap(entry => [...entry.aliases, entry.name].map(alias => ({ alias: wordKey(alias), name: wordKey(entry.name) })))
+    .sort((a, b) => b.alias.length - a.alias.length);
+  aliasPattern = new RegExp(`(^|[^a-z0-9])(${[...new Set(aliases.map(entry => entry.alias))].map(escapeRegExp).join('|')})(?=$|[^a-z0-9])`, 'g');
+  aliasNames = new Map(aliases.map(entry => [entry.alias, entry.name]));
+  bloodNames = medicalProductAcronyms.filter(entry => entry.category === 'blood').map(entry => wordKey(entry.name));
+
+}
+rebuildAcronyms();
 
 export function expandGeneralProductAcronyms(name: string): string {
   const expanded = wordKey(name).replace(aliasPattern, (_match, before: string, alias: string) => before + aliasNames.get(alias));

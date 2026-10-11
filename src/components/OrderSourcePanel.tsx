@@ -1,3 +1,4 @@
+import ProductReceivingHints from './ProductReceivingHints';
 import { authFetch } from '../utils/authFetch';
 import React, { useEffect, useRef, useState } from 'react';
 import VaccineScreenshotInput from './VaccineScreenshotInput';
@@ -301,6 +302,7 @@ export const OrderSourcePanel: React.FC<OrderSourcePanelProps> = ({
                 placeholder="Paste WhatsApp customer message here...&#10;e.g.&#10;Please dispatch for Konkoma SDA Clinic:&#10;BCG - 10&#10;OPV - 20&#10;Penta - 15"
                 className="w-full min-h-52 p-4 bg-purple-50/25 border border-purple-100 rounded-xl text-xs leading-relaxed font-mono text-slate-800 outline-none focus:border-[#5C2D91] focus:ring-1 focus:ring-[#5C2D91] transition-all resize-y"
               />
+              <ProductReceivingHints scope="vaccine" text={whatsappMessage} />
               <p className="text-[11px] text-slate-500">Include the facility, vaccine names, quantities, and units. Review any scanned text before confirming.</p>
             </div>
 
@@ -319,6 +321,7 @@ export const OrderSourcePanel: React.FC<OrderSourcePanelProps> = ({
                 placeholder="Paste FS confirmation message...&#10;e.g.&#10;Facility: Konkoma SDA Clinic&#10;BCG: 10&#10;OPV: 20&#10;Penta: 15"
                 className="w-full min-h-52 flex-1 p-4 bg-purple-50/25 border border-purple-100 rounded-xl text-xs leading-relaxed font-mono text-slate-800 outline-none focus:border-[#5C2D91] focus:ring-1 focus:ring-[#5C2D91] transition-all resize-y"
               />
+              <ProductReceivingHints scope="vaccine" text={fulfillmentConfirmation} />
               <p className="text-[11px] text-slate-500">Paste the packed manifest, including diluents and droppers. Quantities are checked against the request and allocation.</p>
             </div>
           </>
@@ -344,6 +347,7 @@ export const OrderSourcePanel: React.FC<OrderSourcePanelProps> = ({
               className="w-full h-56 p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 outline-none focus:border-[#5C2D91] focus:ring-1 focus:ring-[#5C2D91] transition-all resize-none shadow-inner"
             />
 
+            <ProductReceivingHints scope="vaccine" text={fulfillmentConfirmation} />
             {/* Live Facility Recognition & Blueprint Discrepancy Status */}
             {fulfillmentConfirmation.trim() && (
               <div className="space-y-2">

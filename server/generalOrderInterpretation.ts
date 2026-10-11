@@ -1,3 +1,5 @@
+import { intentAliases } from '../shared/generalIntentAliases';
+import { getCatalogRevision } from '../shared/productCatalog';
 import { Type } from '@google/genai';
 import { createHash } from 'node:crypto';
 import packaging from '../src/utils/generalPackagingCatalogue.json';
@@ -6,18 +8,16 @@ import { extractGeneralInput, parseGeneralProducts, normalizeGeneralProductName,
 import { auditSemanticSchema, validateAuditSemantics, interpretAuditInputs, approvedProductName, type SemanticPair, type InterpretedAudit } from './auditSemantics';
 import { getAliases, matchVaccineName } from './vaccineService';
 import { geminiUsage } from './geminiUsage';
-import { generalTerminologyAliases, generalCombinationTerminology, relevantGeneralAbbreviations, getGeneralMedicalAmbiguity, isGeneralBiologic, generalApprovedProductIdentities, resolveGeneralApprovedIdentity } from '../src/utils/generalMedicalTerminology';
+import { getGeneralTerminologyAliases, generalCombinationTerminology, relevantGeneralAbbreviations, getGeneralMedicalAmbiguity, isGeneralBiologic, generalApprovedProductIdentities, resolveGeneralApprovedIdentity } from '../src/utils/generalMedicalTerminology';
 import { selectGeneralSemanticContext } from './generalSemanticContext';
 import type { GeneralSemanticReview } from '../src/utils/generalAuditTypes';
 
 // Explicit identities already supplied in OrderCheck requirements, not guessed strengths.
-const intentAliases = [
-  { name: 'Simple Linctus 125mg/5ml Syrup (Adult)', aliases: ['simple linctus adult', 'adult linctus', 'adult simple linctus'] },
-  { name: 'Simple Linctus 31.25mg/5ml Syrup (Paediatric)', aliases: ['simple linctus child', 'simple linctus for children', 'paediatric linctus', 'pediatric linctus', "the children's simple linctus"] },
-  { name: 'Paracetamol 120mg/5ml Syrup', aliases: ['PCM syrup 120/5', 'paracetamol syrup 120/5'] }
-];
-export const generalProductCatalog = [...new Set([...packaging.map(row => row.name), ...medicalProductAcronyms.map(row => row.name), ...intentAliases.map(row => row.name), ...generalApprovedProductIdentities.map(row => row.canonicalName)])];
-export const generalProductAliases = [...medicalProductAcronyms.map(row => ({ name: row.name, aliases: row.aliases, contextual: !!row.contextual, note: row.note })), ...intentAliases, ...generalTerminologyAliases, generalCombinationTerminology, ...generalApprovedProductIdentities.map(row => ({ name: row.canonicalName, canonicalId: row.canonicalId, aliases: [...row.aliases], contextual: false }))];
+
+const currentGeneralProductCatalog = () => [...new Set([...getGeneralTerminologyAliases().map(row => row.name), ...packaging.map(row => row.name), ...medicalProductAcronyms.map(row => row.name), ...intentAliases.map(row => row.name), ...generalApprovedProductIdentities.map(row => row.canonicalName)])];
+const currentGeneralProductAliases = () => [...medicalProductAcronyms.map(row => ({ name: row.name, aliases: row.aliases, contextual: !!row.contextual, note: row.note })), ...(getCatalogRevision() ? [] : intentAliases), ...getGeneralTerminologyAliases(), generalCombinationTerminology, ...generalApprovedProductIdentities.map(row => ({ name: row.canonicalName, canonicalId: row.canonicalId, aliases: [...row.aliases], contextual: false }))];
+export const generalProductCatalog = currentGeneralProductCatalog();
+export const generalProductAliases = currentGeneralProductAliases();
 const str = { type: Type.STRING };
 const strings = { type: Type.ARRAY, items: str };
 const nullableString = { type: Type.STRING, nullable: true };
@@ -70,7 +70,7 @@ Expand only supported whole-token acronyms and catalog aliases. Approved canonic
 function obvious(customer: string, fulfilment: string) {
   const a = extractGeneralInput(customer, 'customer_request');
   const b = extractGeneralInput(fulfilment, 'fulfillment_confirmation', a.ordererName, a.facilityName);
-  const known = new Set(generalProductCatalog.map(normalizeGeneralProductName));
+  const known = new Set(currentGeneralProductCatalog().map(normalizeGeneralProductName));
   const headers = [a.ordererName, a.facilityName, b.ordererName, b.facilityName];
   if (headers.includes('N/A') || a.ordererName !== b.ordererName || a.facilityName !== b.facilityName) {
     // A product-only order with approved identities does not need Gemini.
@@ -251,7 +251,7 @@ function rememberProducts(result: GeneralInterpretedAudit, version: string) {
   for (const [source, products] of [['customer_request', data.customerProducts], ['fulfillment_confirmation', data.fulfilmentProducts]] as const) {
     for (const product of products) {
       // Context-dependent meanings must be reinterpreted in their original context.
-      if (generalProductAliases.some(entry => 'contextual' in entry && entry.contextual && ('contextualAliases' in entry ? entry.contextualAliases as string[] : entry.aliases).some(alias =>
+      if (currentGeneralProductAliases().some(entry => 'contextual' in entry && entry.contextual && ('contextualAliases' in entry ? entry.contextualAliases as string[] : entry.aliases).some(alias =>
         ` ${key(product.originalText)} `.includes(` ${key(alias)} `)))) continue;
       const keys = [productCacheKey(version, source, product.originalText), identityCacheKey(version, source, product.originalText)].filter((value): value is string => !!value);
       for (const cacheKey of keys) {
@@ -267,8 +267,10 @@ export async function interpretGeneralOrder(customer: string, fulfilment: string
   if (obvious(customer, fulfilment)) return fallback('skipped', 'Explicit product identities and known aliases; semantic interpretation unnecessary');
   if (customer.length + fulfilment.length > 40_000) return fallback('fallback', 'Input exceeds interpretation limit');
   const vaccineAliases = getAliases();
+  const generalProductCatalog = currentGeneralProductCatalog();
+  const generalProductAliases = currentGeneralProductAliases();
   const catalog = [...new Set([...generalProductCatalog, ...Object.keys(vaccineAliases), ...parseGeneralProducts(customer, 'customer_request').map(p => p.name), ...parseGeneralProducts(fulfilment, 'fulfillment_confirmation').map(p => p.name)])];
-  const version = createHash('sha256').update(JSON.stringify([generalProductCatalog, generalProductAliases, vaccineAliases])).digest('hex');
+  const version = createHash('sha256').update(JSON.stringify([getCatalogRevision(), generalProductCatalog, generalProductAliases, vaccineAliases])).digest('hex');
   const cacheKey = JSON.stringify([customer, fulfilment, version]);
   const existing = cache.get(cacheKey);
   if (existing && existing.expires > Date.now()) {
