@@ -7,7 +7,7 @@ export type GeneralAuditMetaField = {
   status?: string;
 };
 
-const DISCREPANCY_STATUSES = new Set(['quantity mismatch', 'missing item', 'extra item']);
+const DISCREPANCY_STATUSES = new Set(['quantity mismatch', 'missing item', 'extra item', 'vaccine pairing mismatch']);
 
 export function normalizeAuditText(value: unknown): string {
   return String(value ?? '')

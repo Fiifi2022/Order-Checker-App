@@ -155,17 +155,19 @@ test('numeric metadata never adds products to the two-input comparison', () => {
   assert.equal(result.meta.dropArea?.whatsappValue, 'Zone 7');
 });
 
-test('vaccines do not introduce accessories absent from both entered inputs', () => {
+test('vaccines flag absent required companions without inventing product rows', () => {
   const result = runProductAudit('MR Vaccine - 10\nOPV Vaccine - 15', 'MR Vaccine [10/10]\nOPV Vaccine [15/15]');
   assert.deepEqual(result.items.map(item => item.name), ['MR Vaccine', 'OPV Vaccine']);
-  assert.equal(result.allMatch, true);
-  assert.doesNotMatch(JSON.stringify(result), /diluent|dropper|out of stock/i);
+  assert.equal(result.allMatch, false);
+  assert.equal(result.issueCount, 2);
+  assert.match(result.generalAudit.discrepancies.join(' '), /MR Diluent/);
+  assert.match(result.generalAudit.discrepancies.join(' '), /OPV Dropper/);
 });
 
-test('accessories entered only in system confirmation remain extra items', () => {
+test('required vaccine accessories supplied in matching quantities are accepted', () => {
   const result = runProductAudit('MR Vaccine - 10', 'MR Vaccine [10/10]\nMR Diluent [10/10]');
-  assert.deepEqual(result.items.map(item => item.status), ['match', 'extra item']);
-  assert.equal(result.issueCount, 1);
+  assert.deepEqual(result.items.map(item => item.status), ['match', 'match']);
+  assert.equal(result.issueCount, 0);
 });
 
 const completeRequest = 'Name of Orderer: Isaac Awuyem\nFacility: Gbimsi CHPS\nORS - 5';

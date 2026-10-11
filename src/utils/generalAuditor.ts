@@ -2,6 +2,10 @@ import { expandGeneralMedicalTerms, getGeneralMedicalAmbiguity, stripGeneralRepe
 import { generalQuantityBasis } from './generalPackaging';
 import { expandGeneralProductAcronyms, isGeneralBloodProduct } from './medicalProductAcronyms';
 import { traceGeneralAudit } from './generalAuditDebug';
+import { resolveVaccinePairingName } from '../../shared/vaccinePairing';
+import { applyGeneralVaccinePairing } from './generalVaccinePairing';
+import { resolveCatalogVaccineName, isConflictingVaccineAlias } from '../../shared/generalVaccineCatalog';
+import { generalProductCategory, type GeneralProductCategory } from './generalProductCategory';
 import type { GeneralFieldResult, GeneralAuditDetails, GeneralProductResult, GeneralAuditCheckSummary, GeneralSemanticReview } from './generalAuditTypes';
 import type { AuditItem } from '../../server/deterministicAudit';
 import { calculateGeneralAuditSummary, getGeneralAuditorAction, normalizeAuditText } from '../../server/generalAuditRules';
@@ -21,8 +25,9 @@ export interface GeneralProductEvidence {
   source: GeneralProductSource;
   line: number;
 }
-export interface GeneralComparisonItem extends Omit<AuditItem, 'status'> {
-  status: AuditItem['status'] | 'pending order limit' | 'order limit applied';
+export interface GeneralComparisonItem extends Omit<AuditItem, 'status' | 'category'> {
+  category: GeneralProductCategory;
+  status: AuditItem['status'] | 'pending order limit' | 'order limit applied' | 'vaccine pairing mismatch';
   provenance: GeneralProductEvidence[];
   difference: number;
   fulfillment: GeneralProductResult;
@@ -47,7 +52,10 @@ export function generalProductDisplayName(value: string): string {
 // These substitutions compare names already present in the inputs. They never
 // enumerate a catalogue or supply an implicit strength, form, or pack size.
 export function normalizeGeneralProductName(name: string): string {
-  const base = stripGeneralRepeatedAlias(stripGeneralListPrefix(name)).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const sourceName = stripGeneralRepeatedAlias(stripGeneralListPrefix(name));
+  const catalogName = isConflictingVaccineAlias(sourceName) ? sourceName :
+    resolveCatalogVaccineName(sourceName) || resolveVaccinePairingName(sourceName) || sourceName;
+  const base = catalogName.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/\bcoartem\s*\(\s*(?:al|act)\s*\)/g, 'coartem')
     .replace(/\b(artemether\s*\+?\s*lumefantrine)\s*\(\s*(?:al|act)\s*\)/g, '$1')
     .replace(/\bartemether\s*(?:\/|\+|&)\s*lumefantrine\b/g, 'artemether lumefantrine')
@@ -262,7 +270,8 @@ function compareExtractedGeneralProducts(customerProducts: GeneralProductEvidenc
     const fulfillmentStatus: GeneralProductResult['fulfillmentStatus'] = baseStatus === 'out of stock' ? 'out of stock' :
       decision === true ? 'order limit applied' :
       baseStatus === 'match' ? 'fully supplied' : 'discrepancy';
-    const fulfillment: GeneralProductResult = { key, name, requested: requested.length ? requestedQuantity : found.reduce((total, item) => total + (item.ratioRequestedQuantity ?? 0), 0), supplied: foundQuantity,
+    const category = generalProductCategory(name, normalizeGeneralProductName);
+    const fulfillment: GeneralProductResult = { key, name, category, requested: requested.length ? requestedQuantity : found.reduce((total, item) => total + (item.ratioRequestedQuantity ?? 0), 0), supplied: foundQuantity,
       difference: Math.abs(comparableRequested - comparableSupplied), fulfillmentStatus, orderLimitEligible,
       requestedUnit: [...requestedUnits][0] || '', suppliedUnit: [...foundUnits][0] || '',
       discrepancyKind: baseStatus === 'missing item' ? 'missing' : baseStatus === 'extra item' ? 'extra' : 'quantity',
@@ -273,7 +282,7 @@ function compareExtractedGeneralProducts(customerProducts: GeneralProductEvidenc
       items.length ? `${quantity}${units.size === 1 ? ` ${[...units][0]}` : ''}` : 'None';
     const requestedText = display(requested, requestedQuantity, requestedUnits);
     const status: GeneralComparisonItem['status'] = fulfillmentStatus === 'order limit applied' ? fulfillmentStatus : baseStatus;
-    return { name, category: 'Medical Product', requested: requestedText, found: display(found, foundQuantity, foundUnits), status,
+    return { name, category, requested: requestedText, found: display(found, foundQuantity, foundUnits), status,
       fulfillment, difference: fulfillment.difference, action: decision === true ? `${name} could not be fully fulfilled because the applicable order limit was reached.` : getGeneralAuditorAction(status, name, requestedText), provenance: [...requested, ...found] };
   });
 }
@@ -544,7 +553,7 @@ export function buildGeneralAuditCheckSummary(items: { status: string; requested
   for (const item of items) {
     if (item.status === 'missing item' || item.status === 'extra item') {
       failedChecks++; // No second quantity check when there is no paired product.
-    } else if (item.status === 'quantity mismatch') {
+    } else if (item.status === 'quantity mismatch' || item.status === 'vaccine pairing mismatch') {
       passedChecks++; // Paired identity.
       failedChecks++; // Quantity validation only.
     } else if (item.status === 'match' || item.status === 'order limit applied' || item.status === 'out of stock') {
@@ -563,6 +572,14 @@ export function buildGeneralAuditCheckSummary(items: { status: string; requested
 
 /** Rebuild every product-derived total while retaining authoritative header checks. */
 export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFieldResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = []) {
+  items = applyGeneralVaccinePairing(items, normalizeGeneralProductName);
+  items = items.map(item => {
+    const category = generalProductCategory(item.name, normalizeGeneralProductName, item.category);
+    return item.category === category && item.fulfillment.category === category ? item :
+      { ...item, category, fulfillment: { ...item.fulfillment, category } };
+  });
+  requestedCount = Math.max(requestedCount, items.filter(item => item.fulfillment.vaccineCompanionFor ||
+    item.provenance.some(product => product.source === 'customer_request')).length);
   const metadataIssues = [
     ordererName.status === 'mismatch' ? 'Orderer Name Mismatch' : ordererName.status === 'not available in system entry' ? 'Orderer Name Not Found' : '',
     facilityName.status === 'mismatch' ? 'Facility Name Mismatch' : facilityName.status === 'not available in system entry' ? 'Facility Not Found' : '',
@@ -572,6 +589,7 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   // Counts remain visible; missing/extra products already contribute one issue
   // each, so a count difference must not count the same problem again.
   const discrepancies = [...metadataIssues, ...items.filter(item => item.fulfillment.fulfillmentStatus === 'discrepancy').map(item =>
+    item.fulfillment.vaccinePairingError ? item.fulfillment.vaccinePairingError :
     item.status === 'quantity mismatch' ? `${item.name} quantity mismatch: requested ${item.requested}, entered ${item.found}, difference ${item.difference}` :
     item.status === 'missing item' ? `${item.name} missing from System Entry` : `${item.name} extra in System Entry`)];
   const pendingOrderLimitCount = items.filter(item => item.fulfillment.fulfillmentStatus === 'pending order limit').length;

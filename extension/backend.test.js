@@ -60,8 +60,8 @@ test('reports HTML responses and times out a stalled service', async () => {
 test('companion uses all assigned roles and the current deterministic general audit contract', async () => {
   const { profileRoles, auditBody } = await import('./audit.js');
   const { webcrypto } = await import('node:crypto');
-  const previousCrypto = globalThis.crypto;
-  globalThis.crypto = webcrypto;
+  const previousCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true, writable: true });
   try {
     assert.equal(profileRoles({ role: 'cca', roles: ['cca', 'auditor', 'warehouse'] }), 'CCA + Compliance + Warehouse');
     assert.equal(profileRoles({ role: 'cca', roles: ['auditor'] }), 'Compliance');
@@ -71,7 +71,10 @@ test('companion uses all assigned roles and the current deterministic general au
     assert.equal(body.productCatalogRevision, 12);
     assert.equal(body.checkSource, 'companion_extension');
     assert.deepEqual(body.generalOrderLimitDecisions, { item: true });
-  } finally { globalThis.crypto = previousCrypto; }
+  } finally {
+    if (previousCrypto) Object.defineProperty(globalThis, 'crypto', previousCrypto);
+    else delete globalThis.crypto;
+  }
 });
 
 test('catalog drafts preserve canonical keys, optional details, explicit unlinking, and revision', async () => {

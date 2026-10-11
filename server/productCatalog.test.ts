@@ -45,6 +45,39 @@ test('new products and edited aliases drive deterministic matching and reload co
   assert.equal(matchVaccineName('Local Polio Name').canonical, 'OPV');
   applyCatalog(seed);
 });
+test('catalog fluid abbreviation matches the full canonical name without Gemini', async () => {
+  applyCatalog(seed);
+  const headers = 'Facility: Catalog CHPS\nOrderer: Test User\n';
+  let calls = 0;
+  const result = await runGeneralSemanticAudit(headers + 'NS 500ml - 2', headers + 'Sodium Chloride 0.9% Infusion 500ml [2/2]', {}, {}, () => {
+    calls++; throw new Error('Catalog aliases should match without Gemini');
+  });
+  assert.equal(calls, 0);
+  assert.equal(result.allMatch, true);
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].status, 'match');
+  const quantity = runGeneralAuditor(headers + 'NS 500ml - 2', headers + 'Sodium Chloride 0.9% Infusion 500ml [1/2]');
+  assert.equal(quantity.allMatch, false);
+  assert.notEqual(normalizeGeneralProductName('NS 500ml'), normalizeGeneralProductName('Sodium Chloride 0.45% Infusion 500ml'));
+  assert.notEqual(normalizeGeneralProductName('NS 500ml'), normalizeGeneralProductName('Sodium Chloride 0.9% Infusion 1000ml'));
+  assert.notEqual(normalizeGeneralProductName('PCM 500mg Tablet'), normalizeGeneralProductName('Paracetamol 500mg Injection'));
+});
+test('loaded catalog display and fulfilment names participate in both checkers', () => {
+  const catalog: ProductCatalog = { revision: 2, products: [...seed.products,
+    { id: 'catalog-labels', scope: 'general', name: 'Example Logistics Item', displayName: 'Example Widget', fulfillmentSystemName: 'Fulfilment Widget', category: 'consumable', aliases: ['ELI'], contextualAliases: [], note: '' },
+    { id: 'catalog-vaccine-labels', scope: 'vaccine', name: 'Example Vaccine', displayName: 'Local Vaccine', fulfillmentSystemName: 'Fulfilment Vaccine', category: 'vaccine', aliases: ['EVX'], contextualAliases: [], note: '' },
+  ] };
+  try {
+    applyCatalog(JSON.parse(JSON.stringify(catalog)));
+    const headers = 'Facility: Catalog CHPS\nOrderer: Test User\n';
+    for (const alias of ['ELI', 'Example Widget', 'Example Logistics Item']) {
+      const audit = runGeneralAuditor(headers + alias + ' - 2', headers + 'Fulfilment Widget [2/2]');
+      assert.equal(audit.allMatch, true, alias);
+      assert.equal(audit.items.length, 1);
+    }
+    for (const alias of ['EVX', 'Local Vaccine', 'Fulfilment Vaccine']) assert.equal(matchVaccineName(alias).canonical, 'Example Vaccine');
+  } finally { applyCatalog(seed); }
+});
 test('catalog edits reject alias conflicts, stale revisions, and invalid payloads', () => {
   const draft = { revision: 1, scope: 'general', name: 'New Item', category: 'consumable', aliases: ['PCM'], contextualAliases: [], note: '' };
   assert.throws(() => saveCatalogProduct(seed, draft, 'admin'), /already belongs/);

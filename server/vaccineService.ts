@@ -4,19 +4,21 @@
  * WhatsApp/FS cross-validation, concurrency protection, and audit logs.
  */
 import { createHash } from 'node:crypto';
+import { CLINICAL_PAIRINGS, vaccinePairingFailure } from '../shared/vaccinePairing';
+export { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 
 export const DEFAULT_DOSES_PER_VIAL: Record<string, number> = {
-  'BCG': 20,
-  'OPV': 20,
+  'BCG': CLINICAL_PAIRINGS.BCG.dosesPerVial,
+  'OPV': CLINICAL_PAIRINGS.OPV.dosesPerVial,
   'Penta': 10,
   'PENTA': 10,
   'PCV': 2,
-  'Rota': 1,
+  'Rota': CLINICAL_PAIRINGS.Rota.dosesPerVial,
   'ROTA': 1,
-  'MR': 10,
-  'Yellow Fever': 10,
+  'MR': CLINICAL_PAIRINGS.MR.dosesPerVial,
+  'Yellow Fever': CLINICAL_PAIRINGS['Yellow Fever'].dosesPerVial,
   'YF': 10,
-  'Men A': 10,
+  'Men A': CLINICAL_PAIRINGS['Men A'].dosesPerVial,
   'MEN A': 10,
   'HPV': 1,
   'IPV': 10,
@@ -790,15 +792,6 @@ export function parseVaccineLines(text: string): ParsedVaccineLine[] {
 }
 
 // Clinical Diluent & Dropper Pairings for Cold Chain Vaccines
-export const CLINICAL_PAIRINGS: Record<string, { type: 'diluent' | 'dropper'; name: string; accessoryCanonical: string }> = {
-  'BCG': { type: 'diluent', name: 'BCG Diluent', accessoryCanonical: 'BCG Diluent' },
-  'MR': { type: 'diluent', name: 'MR Diluent', accessoryCanonical: 'MR Diluent' },
-  'Yellow Fever': { type: 'diluent', name: 'Yellow Fever Diluent', accessoryCanonical: 'Yellow Fever Diluent' },
-  'Men A': { type: 'diluent', name: 'Men A Diluent', accessoryCanonical: 'Men A Diluent' },
-  'OPV': { type: 'dropper', name: 'OPV Dropper', accessoryCanonical: 'OPV Dropper' },
-  'Rota': { type: 'dropper', name: 'Rota Dropper', accessoryCanonical: 'Rota Dropper' }
-};
-
 function getFsProductType(canonical: string): FsProductType {
   const pairing = Object.values(CLINICAL_PAIRINGS).find(item => item.accessoryCanonical === canonical);
   if (pairing?.type === 'diluent') return 'DILUENT';
@@ -1412,7 +1405,8 @@ export function validateVaccineOrder(params: {
     const configuredPairing = CLINICAL_PAIRINGS[canonicalName];
     if (configuredPairing) {
       const companion = comparisonMap.get(configuredPairing.accessoryCanonical);
-      if (comp.fsQty > 0 && companion && companion.fsQty <= 0) {
+      const pairingFailure = companion && vaccinePairingFailure(comp.fsQty, companion.fsQty);
+      if (pairingFailure === 'missing' && companion) {
         comp.companionDiscrepancy = { type: 'MISSING_COMPANION_PRODUCT', product: comp.vaccine, companion: configuredPairing.accessoryCanonical };
         const label = configuredPairing.type === 'diluent' ? 'REQUIRED DILUENT MISSING' : 'REQUIRED ACCESSORY MISSING';
         const error = `🔴 ${label}: ${configuredPairing.name} is required when ${comp.vaccine} quantity is ${comp.fsQty}.`;
@@ -1422,7 +1416,7 @@ export function validateVaccineOrder(params: {
         companion.errors.push(error);
         companion.errorDetail = error;
         companion.status = 'missing_diluent_dropper';
-      } else if (comp.fsQty > 0 && companion && companion.fsQty > 0 && companion.fsQty !== comp.fsQty) {
+      } else if (pairingFailure === 'quantity' && companion) {
         comp.companionDiscrepancy = { type: 'COMPANION_QUANTITY_MISMATCH', product: comp.vaccine, companion: configuredPairing.accessoryCanonical, productQuantity: comp.fsQty, companionQuantity: companion.fsQty };
         const difference = Math.abs(companion.fsQty - comp.fsQty);
         const label = configuredPairing.type === 'diluent' ? 'DILUENT QUANTITY MISMATCH' : 'ACCESSORY QUANTITY MISMATCH';
@@ -1433,7 +1427,7 @@ export function validateVaccineOrder(params: {
         companion.errors.push(error);
         companion.errorDetail = error;
         companion.status = 'missing_diluent_dropper';
-      } else if (comp.fsQty <= 0 && companion && companion.fsQty > 0) {
+      } else if (pairingFailure === 'orphan' && companion) {
         comp.companionDiscrepancy = { type: 'MISSING_COMPANION_PRODUCT', product: configuredPairing.accessoryCanonical, companion: comp.vaccine };
         const label = configuredPairing.type === 'diluent' ? 'ORPHAN DILUENT' : 'ORPHAN ACCESSORY';
         const error = `🔴 ${label}: ${configuredPairing.name} is present (${companion.fsQty}) without ${comp.vaccine}.`;

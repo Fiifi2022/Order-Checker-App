@@ -7,7 +7,7 @@ export interface VerificationItem {
   name: string;
   requested: string;
   found: string;
-  status: 'match' | 'quantity mismatch' | 'missing item' | 'extra item' | 'out of stock';
+  status: 'match' | 'quantity mismatch' | 'missing item' | 'extra item' | 'out of stock' | 'vaccine pairing mismatch';
   action?: string;
   category?: string;
 }

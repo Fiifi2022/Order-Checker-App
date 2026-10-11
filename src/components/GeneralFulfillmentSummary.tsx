@@ -1,5 +1,6 @@
 import type { GeneralAuditDetails, GeneralProductResult } from '../utils/generalAuditTypes';
 import { generalProductDisplayName } from '../utils/generalAuditor';
+import GeneralProductCategoryBadge from './GeneralProductCategoryBadge';
 
 export function GeneralProductName({ name }: { name: string }) {
   return <>{generalProductDisplayName(name)}</>;
@@ -49,6 +50,7 @@ export default function GeneralFulfillmentSummary({ details }: { details: Genera
       return products.length ? <div key={group.title} className="text-xs space-y-1">
         <h5 className="font-semibold">{group.title}</h5>
         <ul className="list-disc pl-4 space-y-1">{products.map(product => <li key={product.key}>
+          <GeneralProductCategoryBadge category={product.category} />{' '}
           <GeneralProductName name={product.name} /> — {product.conversion || product.requestedUnit !== product.suppliedUnit
             ? `Requested ${product.requested} ${product.requestedUnit}; Supplied ${product.supplied} ${product.suppliedUnit}`
             : group.status === 'order limit applied' ? `Requested ${product.requested}, Supplied ${product.supplied}, Difference ${product.difference}; Reason: Order Limit` : `${product.supplied}/${product.requested} supplied/requested`}

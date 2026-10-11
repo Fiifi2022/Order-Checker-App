@@ -5,7 +5,7 @@ import type { RequestHandler } from 'express';
 import { assignedRoles } from '../shared/roles';
 import packaging from '../src/utils/generalPackagingCatalogue.json';
 import { generalApprovedProductIdentities } from '../src/utils/generalMedicalTerminology';
-import { setCatalogRevision, canManageCatalog, catalogKey, checkAliasConflicts, validateCatalogProduct, type CatalogProduct, type ProductCatalog } from '../shared/productCatalog';
+import { catalogProductNames, setCatalogRevision, canManageCatalog, catalogKey, checkAliasConflicts, validateCatalogProduct, type CatalogProduct, type ProductCatalog } from '../shared/productCatalog';
 import { generalMedicalTerminology } from '../src/utils/generalMedicalTerminology';
 import { medicalProductAcronyms } from '../src/utils/medicalProductAcronyms';
 import { applyGeneralCatalog } from '../src/utils/productCatalog';
@@ -54,7 +54,7 @@ export function defaultProducts(): CatalogProduct[] {
 export function applyCatalog(catalog: ProductCatalog) {
   setCatalogRevision(catalog.revision);
   applyGeneralCatalog(catalog.products);
-  vaccineService.replaceAliases(Object.fromEntries(catalog.products.filter(product => product.scope === 'vaccine').map(product => [product.name, product.aliases])));
+  vaccineService.replaceAliases(Object.fromEntries(catalog.products.filter(product => product.scope === 'vaccine').map(product => [product.name, catalogProductNames(product)])));
 }
 export function saveCatalogProduct(catalog: ProductCatalog, input: any, actor: string): ProductCatalog {
   if (input?.revision !== catalog.revision) throw Object.assign(new Error('The catalog changed. Reload it before saving.'), { status: 409 });

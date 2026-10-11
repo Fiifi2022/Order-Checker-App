@@ -6,6 +6,7 @@ import { createGeneralAuditRun, completeGeneralAuditRun } from '../src/utils/gen
 import { runGeneralSemanticAudit } from './generalSemanticAudit';
 import { interpretGeneralOrder } from './generalOrderInterpretation';
 import { getAliases, matchVaccineName } from './vaccineService';
+import { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 
 const headers = 'Facility: Terminology CHPS\nOrderer: Isaac Awuyem\n';
 const audit = (a: string, b: string) => runGeneralAuditor(headers + `${a} - 5`, headers + `${b} [5/5]`);
@@ -54,7 +55,15 @@ test('full vaccine meanings and accessories match in General only, and zero rati
     ['Td', 'Tetanus-Diphtheria Vaccine'], ['DT vaccine', 'Diphtheria-Tetanus Vaccine'],
     ['Rabies inj', 'Anti Rabies Vaccine Injection'], ['HRIG', 'Human Rabies Immunoglobulin'],
     ['ERIG', 'Equine Rabies Immunoglobulin'], ['Polyvalent ASV', 'Polyvalent Snake Antivenom']
-  ]) assert.equal(audit(a, b).allMatch, true, a);
+  ]) {
+    assert.equal(normalizeGeneralProductName(a), normalizeGeneralProductName(b), a);
+    const primary = Object.entries(CLINICAL_PAIRINGS).find(([name]) => normalizeGeneralProductName(name) === normalizeGeneralProductName(b));
+    const accessory = Object.entries(CLINICAL_PAIRINGS).find(([, pairing]) => normalizeGeneralProductName(pairing.name) === normalizeGeneralProductName(b));
+    const companion = primary?.[1].name || accessory?.[0];
+    const system = `${b} [5/5]${companion ? `\n${companion} [5/5]` : ''}`;
+    const customer = `${a} - 5${accessory ? `\n${accessory[0]} - 5` : ''}`;
+    assert.equal(runGeneralAuditor(headers + customer, headers + system).allMatch, true, a);
+  }
   const stock = runGeneralAuditor(headers + 'Adult linctus - 5\nPaed linctus - 5', headers + 'Simple Linctus 125mg/5ml Syrup (Adult) [0/1]\nSimple Linctus 31.25mg/5ml Syrup (Paediatric) [0/1]');
   assert.equal(stock.items.length, 2);
   assert.deepEqual(stock.items.map(item => item.status), ['out of stock', 'out of stock']);
@@ -122,11 +131,12 @@ test('recognized acronyms, common names and repeated identity labels get one gre
     ['Oral Polio Vaccine (OPV)', 'OPV'],
     ['Packed Red Blood Cells (PRBC) O+', 'PRBC O+']
   ]) {
-    const result = await runGeneralSemanticAudit(headers + `${request} - 5`, headers + `${fulfilled} [5/5]`, {}, {},
+    const companion = fulfilled === 'OPV' ? '\nOPV Dropper [5/5]' : '';
+    const result = await runGeneralSemanticAudit(headers + `${request} - 5`, headers + `${fulfilled} [5/5]` + companion, {}, {},
       () => { throw new Error('Known aliases must not need an API call'); });
     assert.equal(result.allMatch, true, `${request}: ${JSON.stringify(result.generalAudit.discrepancies)}`);
     assert.equal(result.issueCount, 0, request);
-    assert.equal(result.items.length, 1, request);
+    assert.equal(result.items.length, companion ? 2 : 1, request);
     assert.equal(result.items[0].status, 'match', request);
     assert.equal(result.semanticAnalysis.status, 'skipped', request);
   }

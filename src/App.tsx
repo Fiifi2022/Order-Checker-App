@@ -19,6 +19,7 @@ import GeneralDiscrepancySubtitle from './components/GeneralDiscrepancySubtitle'
  */
 
 import GeneralAuditDetails from './components/GeneralAuditDetails';
+import GeneralProductCategoryBadge from './components/GeneralProductCategoryBadge';
 import type { GeneralAuditDetails as GeneralAuditDetailsPayload } from './utils/generalAuditTypes';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
@@ -598,6 +599,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
           leftBorder: 'border-l-amber-500'
         };
       case 'missing item':
+      case 'vaccine pairing mismatch':
         return {
           bg: 'bg-rose-100 text-rose-800 border-rose-200',
           dot: 'bg-rose-500',
@@ -1250,7 +1252,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                                   <div className="space-y-1">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <h4 className="font-bold text-[#3B1A5E] text-base leading-none">{generalDetails ? <GeneralProductName name={item.name} /> : item.name}</h4>
-                                      {item.category && (
+                                      {generalDetails ? <GeneralProductCategoryBadge category={item.category} /> : item.category && (
                                         <span className={`text-[9px] uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded-full border ${getCategoryBadgeStyle(item.category).bg}`}>
                                           {getCategoryBadgeStyle(item.category).label}
                                         </span>

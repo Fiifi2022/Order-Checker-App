@@ -1,5 +1,6 @@
 import data from './generalMedicalTerminologyData.json';
 import { medicalProductAcronyms, expandGeneralProductAcronyms } from './medicalProductAcronyms';
+import { resolveCatalogVaccineName } from '../../shared/generalVaccineCatalog';
 
 export interface GeneralMedicalTerm {
   canonicalId?: string;
@@ -102,6 +103,10 @@ function rebuildTerminology() {
       const source = standardWords(alias);
       if (term.canonicalName === 'Cannula' && ['branula', 'venflon', 'iv line'].includes(generalTerminologyKey(alias))) target = 'intravenous cannula';
       for (const qualifier of source.match(qualifiers) || []) {
+        // A form already defined by this catalog identity must normalize the
+        // same way for the full name and its approved aliases (e.g. NS drip).
+        if (term.formulation && standardWords(term.formulation) === qualifier &&
+          new RegExp(`\\b${qualifier}\\b`).test(standardWords(term.canonicalName))) continue;
         if (qualifier === 'sodium' && /normal saline/.test(target)) continue;
         if (qualifier === 'drops' && term.canonicalName === 'Oral Polio Vaccine') continue;
         if (qualifier === 'injection' && term.canonicalName === 'Inactivated Polio Vaccine') continue;
@@ -150,10 +155,10 @@ export function expandGeneralMedicalTerms(value: string): string {
 export function stripGeneralRepeatedAlias(value: string): string {
   return value.replace(/\(([^()]*)\)/g, (annotation, label: string, offset: number) => {
     const alias = generalTerminologyKey(label);
-    const known = replacements.has(alias) || medicalProductAcronyms.some(term => !term.contextual &&
+    const known = replacements.has(alias) || !!resolveCatalogVaccineName(label) || medicalProductAcronyms.some(term => !term.contextual &&
       [term.name, ...term.aliases].some(name => generalTerminologyKey(name) === alias));
     if (!known || getGeneralMedicalAmbiguity(label)) return annotation;
-    const identity = (name: string) => expandGeneralProductAcronyms(expandGeneralMedicalTerms(name))
+    const identity = (name: string) => expandGeneralProductAcronyms(expandGeneralMedicalTerms(resolveCatalogVaccineName(name.trim()) || name))
       .replace(/[()[\]]/g, ' ').replace(/\s+/g, ' ').trim();
     const surrounding = identity(value.slice(0, offset) + ' ' + value.slice(offset + annotation.length));
     const repeated = identity(label);

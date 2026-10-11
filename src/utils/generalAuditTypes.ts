@@ -1,3 +1,5 @@
+import type { GeneralProductCategory } from './generalProductCategory';
+
 export interface GeneralFieldResult {
   whatsappValue: string;
   fulfillmentValue: string;
@@ -36,6 +38,9 @@ export interface GeneralAuditDetails {
 
 export type GeneralFulfillmentStatus = 'fully supplied' | 'out of stock' | 'pending order limit' | 'order limit applied' | 'discrepancy';
 export interface GeneralProductResult {
+  category?: GeneralProductCategory;
+  vaccineCompanionFor?: string;
+  vaccinePairingError?: string;
   key: string;
   name: string;
   requested: number;

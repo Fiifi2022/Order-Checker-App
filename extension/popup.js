@@ -175,6 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       html += '<div style="border-bottom:1px solid #FAF5FF; padding:6px 0; font-size:10.5px;">';
       html += '<strong style="color:#3B1A5E;">' + itemSymbol + ' ' + escape(it.name) + '</strong>';
+      if (it.category) html += ' <span style="display:inline-block;border:1px solid #DDD6FE;border-radius:8px;padding:1px 5px;font-size:9px;color:#5C2D91;">' + escape(it.category) + '</span>';
       html += ' (Req: ' + escape(it.requested) + ' | Sys: ' + escape(it.found) + ')';
       html += '<br/><span style="color:' + itemColor + '; font-size:9.5px; font-weight:600;">Status: ' + escape(it.status.toUpperCase()) + '</span>';
       

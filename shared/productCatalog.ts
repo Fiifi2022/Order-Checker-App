@@ -16,6 +16,11 @@ export interface CatalogProduct {
 }
 export interface ProductCatalog { revision: number; products: CatalogProduct[]; updatedAt?: string; updatedBy?: string }
 export const catalogKey = (value: string) => value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/['’]/g, '').replace(/(?<=[a-z])-(?=[a-z])/g, ' ').replace(/\s+/g, ' ').trim();
+export function catalogProductNames(product: CatalogProduct): string[] {
+  const names = [product.name, product.displayName, product.fulfillmentSystemName, ...product.aliases]
+    .filter((name): name is string => typeof name === 'string' && !!name.trim());
+  return [...new Map(names.map(name => [catalogKey(name), name.trim()])).values()];
+}
 export function canManageCatalog(roles: readonly string[]) {
   return roles.some(role => ['admin', 'warehouse', 'dco', 'auditor'].includes(role));
 }

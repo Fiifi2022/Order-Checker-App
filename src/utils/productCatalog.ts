@@ -1,13 +1,19 @@
-import type { CatalogProduct } from '../../shared/productCatalog';
+import { catalogProductNames, type CatalogProduct } from '../../shared/productCatalog';
 import { setGeneralMedicalTerminology } from './generalMedicalTerminology';
 import { setMedicalProductAcronyms } from './medicalProductAcronyms';
+import { setVaccinePairingCatalog } from '../../shared/vaccinePairing';
+import { setGeneralVaccineCatalog } from '../../shared/generalVaccineCatalog';
+import { setGeneralProductCategories } from './generalProductCategory';
 
 export function applyGeneralCatalog(products: CatalogProduct[]) {
+  setVaccinePairingCatalog(products);
+  setGeneralVaccineCatalog(products);
+  setGeneralProductCategories(products);
   const general = products.filter(product => product.scope === 'general');
   setGeneralMedicalTerminology(general.map(product => ({
     canonicalName: product.name, normalizationName: product.name, genericName: product.name,
     acronyms: [], brandNames: [], formulation: null, strength: null, ageGroup: null,
-    ...product.terminology, aliases: product.aliases, contextualAliases: product.contextualAliases,
+    ...product.terminology, aliases: catalogProductNames(product), contextualAliases: product.contextualAliases,
     category: product.category, note: product.note,
   })));
   setMedicalProductAcronyms(general.filter(product => product.acronym).map(product => ({
