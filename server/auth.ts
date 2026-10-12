@@ -30,14 +30,15 @@ export function canAccess(role: string | readonly string[], method: string, path
 export function createAuthentication(
   verify: (token: string) => Promise<any>,
   findProfile: (email: string) => Promise<AuthProfile | null>,
+  budget: <T>(req: any, task: () => Promise<T>) => Promise<T> = (_req, task) => task(),
 ): RequestHandler {
   return async (req, res, next) => {
     if (req.path === '/health' && req.method === 'GET') { next(); return; }
     const match = /^Bearer (\S+)$/i.exec(req.headers.authorization || '');
     if (!match) { res.status(401).json({ error: 'Sign in to continue.' }); return; }
     let identity: any;
-    try { identity = await verify(match[1]); }
-    catch { res.status(401).json({ error: 'Your session has expired. Please sign in again.' }); return; }
+    try { identity = await budget(req, () => verify(match[1])); }
+    catch (error: any) { res.status(error?.code === 'FS_CONTEXT_TIMEOUT' ? 503 : 401).json({ error: error?.code === 'FS_CONTEXT_TIMEOUT' ? 'Authentication service timed out. Please retry.' : 'Your session has expired. Please sign in again.' }); return; }
     const registrationRequest = (req.path === '/auth/register' && req.method === 'POST') || (req.path === '/auth/registration' && req.method === 'GET');
     if (registrationRequest) {
       if (!identity.uid || !identity.email || identity.firebase?.sign_in_provider === 'anonymous') {
@@ -50,7 +51,7 @@ export function createAuthentication(
       res.status(403).json({ error: 'A verified email account is required.' }); return;
     }
     let profile: AuthProfile | null;
-    try { profile = await findProfile(identity.email.toLowerCase()); }
+    try { profile = await budget(req, () => findProfile(identity.email.toLowerCase())); }
     catch { res.status(503).json({ error: 'Account access could not be verified. Please retry.' }); return; }
     if (!profile || !assignedRoles(profile).length) {
       res.status(403).json({ error: 'Your account has not been granted access. Contact an administrator.' }); return;

@@ -2,6 +2,8 @@ console.log("[Compliance Companion] Extension script active.");
 
 // Listen for scrape request
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request?.action !== 'scrape') return false;
+  try {
   if (request.action === "scrape") {
     // 1. Read mouse highlight selection currently made by user on active screen
     const selectedText = window.getSelection() ? window.getSelection().toString().trim() : '';
@@ -28,5 +30,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       fulfillment: fallbackText || ""
     });
   }
-  return true;
+  } catch (error) { sendResponse({ error: `Page capture failed: ${error.message}` }); }
+  return false;
 });

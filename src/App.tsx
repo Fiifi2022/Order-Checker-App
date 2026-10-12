@@ -1451,9 +1451,9 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                   <div className="absolute right-0 top-0 translate-x-6 -translate-y-6 opacity-10 bg-purple-200 w-32 h-32 rounded-full"></div>
                   <div className="space-y-1 text-center sm:text-left">
                     <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-purple-300">PRE-CONFIGURED PLUG-IN PACKAGE</span>
-                    <h3 className="text-lg font-bold text-white">Compliance Companion v1.4.1</h3>
+                    <h3 className="text-lg font-bold text-white">Compliance Companion v1.5.5</h3>
                     <p className="text-xs text-purple-100 select-none pb-0.5">
-                      Connects to this portal with shared catalog edits, alias suggestions, screenshot scanning, and receiving reminders.
+                      Shared catalog, screenshot scanning, Fulfilment Only audits, and confirmed allocation deductions.
                     </p>
                   </div>
                   <button
@@ -1481,7 +1481,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                     <p className="py-2"><b>4. Developer Switch:</b> In the top-right corner, check the <b>"Developer mode"</b> toggle switch.</p>
                     <p className="pt-2"><b>5. Unpacked Upload:</b> Click the <b>"Load unpacked"</b> button in the top-left, and pick the extracted folder containing <code>manifest.json</code>.</p>
                     <p className="pt-2"><b>6. Sign in:</b> Open the extension and sign in with your verified, approved portal email/password account. If you use Google only, ask an administrator for a password reset link to set a password on the same account.</p>
-                    <p className="pt-2"><b>Updating an installed copy:</b> Replace its files with this download, click Reload in chrome://extensions, and refresh the pages used for capture.</p>
+                    <p className="pt-2"><b>Updating an installed copy:</b> In chrome://extensions, check OrderCheck Details for the loaded folder. Replace the files in that exact folder, click Reload, and reopen the popup. Its header must show v1.5.5. Refresh the pages used for capture.</p>
                   </div>
                 </div>
 
@@ -1499,7 +1499,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                     <pre>{`{
   "manifest_version": 3,
   "name": "OrderCheck Companion",
-  "version": "1.4.1",
+  "version": "1.5.5",
   "permissions": [
     "activeTab",
     "scripting",

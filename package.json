@@ -9,7 +9,8 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test server/*.test.ts extension/*.test.js"
+    "test": "node --import tsx --test server/*.test.ts extension/*.test.js",
+    "test:firestore": "node scripts/test-firestore.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -35,6 +36,7 @@
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "linkedom": "^0.18.13",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",

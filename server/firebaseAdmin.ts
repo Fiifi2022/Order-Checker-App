@@ -22,6 +22,9 @@ if (!projectId || !clientEmail || !privateKey) {
     'Missing Firebase Admin credentials. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.'
   );
 }
+if (projectId !== config.firebaseConfig.projectId) {
+  throw new Error('Firebase Admin project must match the portal Firebase project in firebase-applet-config.json.');
+}
 
 const adminApp =
   getApps().find(app => app.name === 'ordercheck-server') ||

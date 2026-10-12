@@ -5,6 +5,7 @@
  */
 import { createHash } from 'node:crypto';
 import { CLINICAL_PAIRINGS, vaccinePairingFailure } from '../shared/vaccinePairing';
+import { normalizeFacilityName } from './blueprintFacility';
 export { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 
 export const DEFAULT_DOSES_PER_VIAL: Record<string, number> = {
@@ -257,6 +258,12 @@ export function getAuditLogs(): VaccineAuditLogRecord[] {
   return auditLogsStore;
 }
 
+export function publishVaccineAudit(record: VaccineAuditLogRecord) {
+  const index = auditLogsStore.findIndex(item => item.id === record.id);
+  if (index >= 0) auditLogsStore.splice(index, 1);
+  auditLogsStore.unshift(record);
+}
+
 export function getAuditLog(id: string): VaccineAuditLogRecord | undefined {
   return auditLogsStore.find(record => record.id === id);
 }
@@ -296,6 +303,14 @@ export function normalizeProductName(value: string): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
     .replace(/\s+/g, ' ');
+}
+
+// Live dropdown selections require a complete alias, never a substring of another product.
+export function matchExactVaccineName(rawName: string): { canonical: string; confidence: 'high' | 'none' } {
+  const normalized = normalizeProductName(rawName || '');
+  const matches = Object.entries(customAliases).filter(([canonical, aliases]) =>
+    [canonical, ...aliases].some(alias => normalizeProductName(alias) === normalized)).map(([canonical]) => canonical);
+  return matches.length === 1 ? { canonical: matches[0], confidence: 'high' } : { canonical: rawName, confidence: 'none' };
 }
 
 export function matchVaccineName(rawName: string): { canonical: string; confidence: 'high' | 'medium' | 'none' } {
@@ -658,7 +673,7 @@ export interface ParsedVaccineLinesResult {
   errors: string[];
 }
 
-const FS_METADATA_LINE = /^(?:(?:facility|hospital|clinic|district|order|orderer|name|customer|sender|phone|contact|date|delivered|received|status|dr|cca|to|for|recipient|dispatch)\s*[:=–—].*|(?:packing slip|items loaded|order verified))$/i;
+const FS_METADATA_LINE = /^(?:(?:facility|hospital|clinic|health\s*cent(?:re|er)|hc|chps|dhd|district|order|orderer|name|customer|sender|phone|contact|date|delivered|received|status|dr|cca|to|for|recipient|dispatch)\s*[:=–—].*|(?:packing slip|items loaded|order verified))$/i;
 const PRODUCT_LINE_HINT = /\b(vaccine|bcg|opv|penta|pentavalent|pcv|pneumococcal|rota|rotavirus|mr|measles|rubella|yellow fever|\byf\b|men\s*a|mena|meningitis|hpv|papilloma|ipv|polio|tetanus|\btd\b|diluent|dropper|syringe|needle|soloshot|r21|malaria)\b/i;
 
 const SMALL_QUANTITY_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
@@ -800,12 +815,19 @@ function getFsProductType(canonical: string): FsProductType {
   return matchVaccineName(canonical).confidence === 'none' ? 'OTHER_ACCESSORY' : 'PRIMARY_VACCINE';
 }
 
+// Companion products and catalog-recognized consumables are checked normally,
+// but only tracked when the selected Blueprint has a row for them.
+export function canSupplyWithoutAllocation(name: string): boolean {
+  const type = getFsProductType(name);
+  return type === 'DILUENT' || type === 'DROPPER' || (type === 'OTHER_ACCESSORY' && isDeviceProduct(name) && matchVaccineName(name).confidence === 'high');
+}
+
 // Extract facility name from text if present
 export function extractFacilityFromText(text: string): string | null {
   if (!text) return null;
 
   // 1. Check explicit label pattern (e.g. 'Facility: ...', 'Health Centre: ...', 'Hospital: ...', 'Clinic: ...', 'CHPS: ...', 'Delivered to: ...', 'To: ...', etc.)
-  const match = text.match(/(?:facility|hospital|clinic|health\s*cent(?:er|re)|chps|polyclinic|dispensary|delivered\s*to|ordering\s*facility|destination|location|site|recipient|to|for)\s*[:=–—]\s*([^\n\r,]+)/i);
+  const match = text.match(/(?:facility|hospital|clinic|health\s*cent(?:er|re)|hc|dhd|chps|polyclinic|dispensary|delivered\s*to|ordering\s*facility|destination|location|site|recipient|to|for)\s*[:=–—]\s*([^\n\r,]+)/i);
   if (match) {
     const candidate = match[1].trim().replace(/^['"]|['"]$/g, '').replace(/[-–—.,]+$/, '').trim();
     if (candidate.length > 2) {
@@ -825,7 +847,7 @@ export function extractFacilityFromText(text: string): string | null {
   // 3. Scan first few lines for standard health facility naming patterns
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 4);
   for (const line of lines) {
-    if (/(?:hospital|clinic|health\s*cent(?:er|re)|chps|polyclinic)/i.test(line)) {
+    if (/(?:hospital|clinic|health\s*cent(?:er|re)|\bhc\b|\bdhd\b|chps|polyclinic)/i.test(line)) {
       const cleaned = line.replace(/^(?:order\s*for|dispatch\s*to|delivery\s*to|to|facility)\s*[:=–—]?\s*/i, '').trim();
       if (cleaned.length > 3) {
         return cleaned;
@@ -848,6 +870,9 @@ export interface DirectOrderItemInput {
 
 // Comprehensive Vaccine Allocation Validation Logic
 export function validateVaccineOrder(params: {
+  facilitySnapshot?: FacilityAllocationRecord;
+  recordAudit?: boolean;
+  onAudit?: (record: VaccineAuditLogRecord) => void;
   facilityId: string;
   orderSource: 'whatsapp' | 'fs_only';
   whatsappMessage?: string;
@@ -876,7 +901,7 @@ export function validateVaccineOrder(params: {
   auditLogId?: string;
 } {
   const { facilityId, orderSource, whatsappMessage = '', fulfillmentConfirmation = '', directItems, checkId } = params;
-  const facility = getFacilityById(facilityId);
+  const facility = params.facilitySnapshot || getFacilityById(facilityId);
 
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -904,14 +929,15 @@ export function validateVaccineOrder(params: {
   }
   if (extractedFsFacility) {
     facilityFoundInFs = extractedFsFacility;
-    const fsFacMatch = extractedFsFacility.toLowerCase().trim() === facility.facilityName.toLowerCase().trim() ? facility : getFacilityByName(extractedFsFacility);
-    if (fsFacMatch && fsFacMatch.id !== facility.id) {
+    if (normalizeFacilityName(extractedFsFacility) !== normalizeFacilityName(facility.facilityName)) {
       facilityMismatch = true;
       errors.push(`🔴 FACILITY MISMATCH: The active Allocation Blueprint is set to "${facility.facilityName}", but the FS Confirmation specifies "${extractedFsFacility}".`);
-    } else if (!fsFacMatch && !extractedFsFacility.toLowerCase().includes(facility.facilityName.toLowerCase()) && !facility.facilityName.toLowerCase().includes(extractedFsFacility.toLowerCase())) {
-      facilityMismatch = true;
-      errors.push(`🔴 UNKNOWN FACILITY: Facility "${extractedFsFacility}" specified in the FS Confirmation was not found in the Allocation Blueprint sheets.`);
     }
+  }
+  const customerFacility = orderSource === 'whatsapp' ? extractFacilityFromText(whatsappMessage) : null;
+  if (customerFacility && normalizeFacilityName(customerFacility) !== normalizeFacilityName(facility.facilityName)) {
+    facilityMismatch = true;
+    errors.push(`🔴 FACILITY MISMATCH: The customer request identifies "${customerFacility}", but the selected Allocation Blueprint is "${facility.facilityName}".`);
   }
 
   // Never audit product allocations against a facility other than the one named
@@ -919,8 +945,8 @@ export function validateVaccineOrder(params: {
   if (facilityMismatch) {
     const timestamp = new Date().toISOString();
     const auditId = checkId || `AUD-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
-    errorsPreventedCount++;
-    auditLogsStore.unshift({
+    if (params.recordAudit !== false) errorsPreventedCount++;
+    const record: VaccineAuditLogRecord = {
       id: auditId,
       timestamp,
       facilityId: facility.id,
@@ -934,7 +960,9 @@ export function validateVaccineOrder(params: {
       auditResult: 'DO_NOT_PROCESS',
       errorsDetected: [...errors],
       confirmed: false
-    });
+    };
+    params.onAudit?.(record);
+    if (params.recordAudit !== false) auditLogsStore.unshift(record);
 
     return {
       isValid: false,
@@ -1269,9 +1297,9 @@ export function validateVaccineOrder(params: {
     const isAllocated = !!findFacilityVaccineAlloc(facility, canonicalName);
     const productType = comp.productType || getFsProductType(canonicalName);
     const isOptionalAccessory = productType === 'DILUENT' || productType === 'DROPPER';
-    const requiresBlueprintAllocation = productType === 'PRIMARY_VACCINE';
+    const requiresBlueprintAllocation = !canSupplyWithoutAllocation(canonicalName);
     const checksBlueprintBalance = requiresBlueprintAllocation || isAllocated;
-    if (isOptionalAccessory && !isAllocated) {
+    if (!requiresBlueprintAllocation && !isAllocated) {
       // Accessories may be omitted from the allocation blueprint entirely.
       comp.isNotAllocated = false;
       comp.remainingBefore = 0;
@@ -1465,7 +1493,7 @@ export function validateVaccineOrder(params: {
         );
         if (isMatch) {
           const diffMinutes = Math.max(1, Math.round((now - txTime) / 60000));
-          duplicateAlertsCount++;
+          if (params.recordAudit !== false) duplicateAlertsCount++;
           duplicateWarning = {
             isDuplicate: true,
             message: `POSSIBLE DUPLICATE ORDER: An identical order for ${facility.facilityName} was processed ${diffMinutes} minute(s) ago (TX: ${tx.id}). Please verify with CCA/customer before confirming.`,
@@ -1480,7 +1508,7 @@ export function validateVaccineOrder(params: {
   }
 
   const isValid = errors.length === 0;
-  if (!isValid) {
+  if (!isValid && params.recordAudit !== false) {
     errorsPreventedCount++;
   }
 
@@ -1514,7 +1542,8 @@ export function validateVaccineOrder(params: {
     errorsDetected: [...errors],
     confirmed: false
   };
-  auditLogsStore.unshift(auditRecord);
+  if (params.recordAudit !== false) auditLogsStore.unshift(auditRecord);
+  params.onAudit?.(auditRecord);
 
   return {
     isValid,
@@ -1589,6 +1618,10 @@ export async function confirmVaccineOrder(params: {
   updatedFacility?: FacilityAllocationRecord;
 }> {
   const { facilityId, orderSource, items, ccaUser, orderId, rawOrderText, rawFsText } = params;
+  const identities = items.map(item => matchVaccineName(item.vaccine).canonical);
+  if (!items.length || items.some(item => !Number.isSafeInteger(item.currentOrder) || item.currentOrder <= 0) || new Set(identities).size !== identities.length) {
+    return { success: false, error: 'ALLOCATION ERROR: Positive integer quantities and unique product identities are required.' };
+  }
 
   // Concurrency lock per facility to prevent race conditions across multiple CCAs
   const lockKey = facilityId;
@@ -1622,7 +1655,7 @@ export async function confirmVaccineOrder(params: {
     for (const item of items) {
       const found = findFacilityVaccineAlloc(facility, item.vaccine);
       if (!found) {
-        if (getFsProductType(item.vaccine) === 'DILUENT' || getFsProductType(item.vaccine) === 'DROPPER') {
+        if (canSupplyWithoutAllocation(item.vaccine)) {
           // Pairing accessories are valid FS confirmation items even when the
           // facility blueprint has no separate accessory allocation row.
           continue;
@@ -1632,7 +1665,7 @@ export async function confirmVaccineOrder(params: {
           error: `ALLOCATION ERROR: ${item.vaccine} has no allocation configured for this facility.`
         };
       }
-      if (item.currentOrder > found.alloc.remaining) {
+      if (!Number.isFinite(found.alloc.remaining) || found.alloc.remaining < 0 || item.currentOrder > found.alloc.remaining) {
         return {
           success: false,
           error: `ALLOCATION CHANGED: The available allocation for ${found.key} has changed since your last check. Current remaining: ${found.alloc.remaining}, Requested: ${item.currentOrder}. Please review the order.`

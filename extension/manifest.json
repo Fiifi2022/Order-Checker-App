@@ -1,16 +1,20 @@
 {
   "manifest_version": 3,
   "name": "OrderCheck Compliance Companion",
-  "version": "1.4.1",
+  "version": "1.5.14",
   "description": "Direct Zipline compliance cross-examiner. Scans orders across tabs and matches logs.",
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "sidePanel"
   ],
   "host_permissions": [
-    "http://*/*",
-    "https://*/*"
+    "http://localhost:3000/*",
+    "https://fulfillment-gh1-production.platform.flyzipline.com/*",
+    "https://fulfillment-gh3-production.platform.flyzipline.com/*",
+    "https://identitytoolkit.googleapis.com/*",
+    "https://securetoken.googleapis.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -19,13 +23,30 @@
   "content_scripts": [
     {
       "matches": [
-        "http://*/*",
-        "https://*/*"
+        "https://web.whatsapp.com/*",
+        "https://fulfillment-gh1-production.platform.flyzipline.com/*",
+        "https://fulfillment-gh3-production.platform.flyzipline.com/*"
       ],
       "js": [
         "content.js"
       ]
+    },
+    {
+      "matches": [
+        "https://fulfillment-gh1-production.platform.flyzipline.com/*",
+        "https://fulfillment-gh3-production.platform.flyzipline.com/*"
+      ],
+      "js": [
+        "fs-content.js"
+      ]
     }
   ],
-  "minimum_chrome_version": "102"
+  "minimum_chrome_version": "116",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "popup.html?sidepanel=true"
+  }
 }

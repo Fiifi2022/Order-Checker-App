@@ -21,10 +21,20 @@ export function resolveExtensionBackendUrl({ appUrl, renderUrl, host }: { appUrl
   throw new Error('Extension download needs a valid app address. Set APP_URL to your app’s HTTPS base URL, or download from localhost.');
 }
 
-export const extensionAssets = ['manifest.json', 'popup.html', 'popup.js', 'backend.js', 'auth.js', 'catalog.js', 'screenshots.js', 'audit.js', 'order-limits.js', 'content.js', 'icon.png'];
+export const extensionAssets = ['manifest.json', 'popup.html', 'popup.js', 'backend.js', 'auth.js', 'catalog.js', 'screenshots.js', 'audit.js', 'audit-contract.js', 'vaccine.js', 'vaccine-api.js', 'vaccine-display.js', 'order-limits.js', 'content.js', 'fs-content.js', 'fs-state.js', 'fs-script.js', 'fs-origins.js', 'fs-messaging.js', 'fs-connection.js', 'fs-panel.js', 'background.js', 'icon.png'];
 export async function buildExtensionPackage(backendUrl: string, firebaseApiKey: string, directory = path.join(process.cwd(), 'extension')) {
   const zip = new AdmZip();
-  for (const file of extensionAssets) zip.addFile(file, await readFile(path.join(directory, file)));
-  zip.addFile('config.js', Buffer.from(`export const extensionConfig = ${JSON.stringify({ backendUrl, firebaseApiKey }, null, 2)};\n`));
+  for (const file of extensionAssets) {
+    const data = await readFile(path.join(directory, file));
+    if (file === 'manifest.json') {
+      const manifest = JSON.parse(data.toString());
+      const origin = new URL(backendUrl).origin + '/*';
+      if (!manifest.host_permissions.includes(origin)) manifest.host_permissions.push(origin);
+      zip.addFile(file, Buffer.from(JSON.stringify(manifest, null, 2)));
+    } else zip.addFile(file, data);
+  }
+  const manifest = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8'));
+  const fsOrigins = manifest.content_scripts.filter((script: any) => script.js?.includes('fs-content.js')).flatMap((script: any) => script.matches.map((pattern: string) => new URL(pattern).origin));
+  zip.addFile('config.js', Buffer.from(`export const extensionConfig = ${JSON.stringify({ backendUrl, firebaseApiKey, fsOrigins }, null, 2)};\n`));
   return zip.toBuffer();
 }

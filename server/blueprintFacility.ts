@@ -1,10 +1,20 @@
 export const FACILITY_NOT_FOUND = 'Facility not found in the selected Allocation Blueprint.';
 export const FACILITY_AMBIGUOUS = 'Multiple matching facilities found. Blueprint selection is required.';
 
+// Older sheets have no lifecycle flag. Explicitly disabled/archived records
+// must never accept new fulfilments; selecting a UI tab is not activation.
+export function assertBlueprintActive(sheet: any, row?: any) {
+  if (sheet?.worksheetRole === 'other' || [sheet, row].some(value => value && (value.active === false || value.isActive === false || value.archived === true || value.deleted === true || ['inactive', 'archived', 'deleted'].includes(String(value.status || '').toLowerCase())))) {
+    throw new Error('ALLOCATION ERROR: The selected Allocation Blueprint or facility record is inactive. Select an active allocation cycle and audit again.');
+  }
+}
+
 // Formatting normalization only: no substring, edit-distance, or word-dropping matches.
 export function normalizeFacilityName(value: unknown): string {
   return String(value || '').normalize('NFKC').toLowerCase()
     .replace(/\bc[.\s]*h[.\s]*p[.\s]*s\b/g, 'chps')
+    .replace(/\bh[.\s]*c\b\.?/g, 'health centre')
+    .replace(/\bd[.\s]*h[.\s]*d\b\.?/g, 'district health directorate')
     .replace(/\bhealth\s+center\b/g, 'health centre')
     .replace(/[’']/g, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');

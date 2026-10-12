@@ -1,0 +1,84 @@
+[
+  {
+    "id": "west_mamprusi",
+    "district": "West Mamprusi",
+    "month": "September 2026",
+    "worksheetRole": "allocation",
+    "rows": [
+      {
+        "id": "bp_wm_4",
+        "facility": "Tuni CHPS",
+        "subDistrict": "",
+        "vaccines": {
+          "BCG": {
+            "carryOver": "",
+            "allocation": 2,
+            "distributed": "",
+            "balance": 2
+          },
+          "OPV": {
+            "carryOver": "",
+            "allocation": 2,
+            "distributed": "",
+            "balance": 2
+          },
+          "MR": {
+            "carryOver": "",
+            "allocation": 5,
+            "distributed": "",
+            "balance": 5
+          },
+          "PENTA": {
+            "carryOver": "",
+            "allocation": 4,
+            "distributed": "",
+            "balance": 4
+          },
+          "YF": {
+            "carryOver": "",
+            "allocation": 2,
+            "distributed": "",
+            "balance": 2
+          },
+          "ROTA": {
+            "carryOver": "",
+            "allocation": 2,
+            "distributed": "",
+            "balance": 2
+          },
+          "IPV": {
+            "carryOver": "",
+            "allocation": 4,
+            "distributed": 4,
+            "balance": 0,
+            "takenHistory": "4"
+          },
+          "PCV": {
+            "carryOver": "",
+            "allocation": 8,
+            "distributed": "",
+            "balance": 8
+          },
+          "MEN A": {
+            "carryOver": "",
+            "allocation": 2,
+            "distributed": "",
+            "balance": 2
+          },
+          "HPV": {
+            "carryOver": "",
+            "allocation": 0,
+            "distributed": "",
+            "balance": 0
+          },
+          "TD": {
+            "carryOver": "",
+            "allocation": 0,
+            "distributed": "",
+            "balance": 0
+          }
+        }
+      }
+    ]
+  }
+]

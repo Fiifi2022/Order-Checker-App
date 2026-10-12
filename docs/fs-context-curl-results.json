@@ -1,0 +1,413 @@
+{
+  "authentication": "Fixture verifier, not a valid live Firebase ID token. No live account curl test is claimed.",
+  "liveSnapshot": {
+    "inputs": {
+      "a": {
+        "facility": {
+          "id": "",
+          "name": "Tuni CHPS",
+          "district": "East Mamprusi",
+          "region": "North East"
+        },
+        "products": [
+          {
+            "id": "",
+            "name": "BCG",
+            "quantity": "1"
+          }
+        ],
+        "manualFacilityId": ""
+      },
+      "b": {
+        "facility": {
+          "id": "",
+          "name": "Presbyterian HC, Namolgo",
+          "district": "Talensi",
+          "region": "Upper East"
+        },
+        "products": [],
+        "manualFacilityId": ""
+      },
+      "c": {
+        "facility": {
+          "id": "",
+          "name": "Tuni CHPS",
+          "district": "East Mamprusi",
+          "region": "North East"
+        },
+        "products": [
+          {
+            "id": "",
+            "name": "Unallocated Product",
+            "quantity": "1"
+          }
+        ],
+        "manualFacilityId": ""
+      },
+      "west_bcg": {
+        "facility": {
+          "id": "",
+          "name": "Tuni CHPS",
+          "district": "West Mamprusi",
+          "region": "North East"
+        },
+        "products": [
+          {
+            "id": "",
+            "name": "BCG",
+            "quantity": "1"
+          }
+        ],
+        "manualFacilityId": ""
+      },
+      "west_unallocated": {
+        "facility": {
+          "id": "",
+          "name": "Tuni CHPS",
+          "district": "West Mamprusi",
+          "region": "North East"
+        },
+        "products": [
+          {
+            "id": "",
+            "name": "Unallocated Product",
+            "quantity": "1"
+          }
+        ],
+        "manualFacilityId": ""
+      }
+    },
+    "before": {
+      "a": {
+        "status": "not_found",
+        "message": "Facility not found in the current Allocation Blueprint.",
+        "products": []
+      },
+      "b": {
+        "status": "not_found",
+        "message": "Facility not found in the current Allocation Blueprint.",
+        "products": []
+      },
+      "c": {
+        "status": "not_found",
+        "message": "Facility not found in the current Allocation Blueprint.",
+        "products": []
+      },
+      "west_bcg": {
+        "status": "matched",
+        "message": "",
+        "facility": {
+          "id": "west_mamprusi:bp_wm_4",
+          "facilityName": "Tuni CHPS",
+          "district": "West Mamprusi",
+          "region": "",
+          "cycle": "September 2026",
+          "fsFacilityId": ""
+        },
+        "products": [
+          {
+            "name": "BCG",
+            "id": "",
+            "canonical": "BCG",
+            "quantity": "1",
+            "allocationKey": "BCG",
+            "balance": 2,
+            "status": "available",
+            "message": ""
+          }
+        ],
+        "companions": [
+          {
+            "name": "BCG Diluent",
+            "id": "",
+            "canonical": "BCG Diluent",
+            "quantity": "",
+            "balance": null,
+            "status": "missing_record",
+            "message": "Allocation record missing for this product or presentation.",
+            "accompanying": true
+          }
+        ],
+        "refreshedAt": "2026-10-12T12:12:18.375Z"
+      },
+      "west_unallocated": {
+        "status": "matched",
+        "message": "",
+        "facility": {
+          "id": "west_mamprusi:bp_wm_4",
+          "facilityName": "Tuni CHPS",
+          "district": "West Mamprusi",
+          "region": "",
+          "cycle": "September 2026",
+          "fsFacilityId": ""
+        },
+        "products": [
+          {
+            "name": "Unallocated Product",
+            "id": "",
+            "canonical": "Unallocated Product",
+            "quantity": "1",
+            "balance": null,
+            "status": "untracked",
+            "message": "Product is not allocation-tracked."
+          }
+        ],
+        "companions": [],
+        "refreshedAt": "2026-10-12T12:12:18.391Z"
+      }
+    },
+    "after": {
+      "a": {
+        "status": "not_found",
+        "message": "Facility not found in the current Allocation Blueprint.",
+        "products": []
+      },
+      "b": {
+        "status": "not_found",
+        "message": "Facility not found in the current Allocation Blueprint.",
+        "products": []
+      },
+      "c": {
+        "status": "not_found",
+        "message": "Facility not found in the current Allocation Blueprint.",
+        "products": []
+      },
+      "west_bcg": {
+        "status": "matched",
+        "message": "",
+        "facility": {
+          "id": "west_mamprusi:bp_wm_4",
+          "facilityName": "Tuni CHPS",
+          "district": "West Mamprusi",
+          "region": "",
+          "cycle": "September 2026",
+          "fsFacilityId": ""
+        },
+        "products": [
+          {
+            "name": "BCG",
+            "id": "",
+            "canonical": "BCG",
+            "quantity": "1",
+            "allocationKey": "BCG",
+            "balance": 2,
+            "status": "ok",
+            "message": ""
+          }
+        ],
+        "companions": [
+          {
+            "name": "BCG Diluent",
+            "id": "",
+            "canonical": "BCG Diluent",
+            "quantity": "",
+            "allocationKey": "",
+            "balance": null,
+            "status": "untracked",
+            "message": "No allocation record for this product or presentation.",
+            "accompanying": true
+          }
+        ],
+        "refreshedAt": "2026-10-12T12:12:18.460Z"
+      },
+      "west_unallocated": {
+        "status": "matched",
+        "message": "",
+        "facility": {
+          "id": "west_mamprusi:bp_wm_4",
+          "facilityName": "Tuni CHPS",
+          "district": "West Mamprusi",
+          "region": "",
+          "cycle": "September 2026",
+          "fsFacilityId": ""
+        },
+        "products": [
+          {
+            "name": "Unallocated Product",
+            "id": "",
+            "canonical": "Unallocated Product",
+            "quantity": "1",
+            "allocationKey": "",
+            "balance": null,
+            "status": "untracked",
+            "message": "No allocation record for this product or presentation."
+          }
+        ],
+        "companions": [],
+        "refreshedAt": "2026-10-12T12:12:18.475Z"
+      }
+    }
+  },
+  "syntheticFormattingFixture": {
+    "inputs": {
+      "a": {
+        "facility": {
+          "id": "",
+          "name": "Tuni CHPS",
+          "district": "East Mamprusi",
+          "region": "North East"
+        },
+        "products": [
+          {
+            "id": "",
+            "name": "BCG Vaccine 0.05mL",
+            "quantity": "1"
+          }
+        ],
+        "manualFacilityId": ""
+      },
+      "b": {
+        "facility": {
+          "id": "",
+          "name": "Presbyterian HC, Namolgo",
+          "district": "Talensi",
+          "region": "Upper East"
+        },
+        "products": [],
+        "manualFacilityId": ""
+      },
+      "c": {
+        "facility": {
+          "id": "",
+          "name": "Tuni CHPS",
+          "district": "East Mamprusi",
+          "region": "North East"
+        },
+        "products": [
+          {
+            "id": "",
+            "name": "Unallocated Product",
+            "quantity": "1"
+          }
+        ],
+        "manualFacilityId": ""
+      }
+    },
+    "before": {
+      "a": {
+        "status": "matched",
+        "message": "",
+        "facility": {
+          "id": "fixture-east:tuni",
+          "facilityName": "Tuni CHPS",
+          "district": "East Mamprusi",
+          "region": "North East",
+          "cycle": "October 2026",
+          "fsFacilityId": ""
+        },
+        "products": [
+          {
+            "name": "BCG Vaccine 0.05mL",
+            "id": "",
+            "canonical": "BCG Vaccine 0.05mL",
+            "quantity": "1",
+            "balance": null,
+            "status": "untracked",
+            "message": "Product is not allocation-tracked."
+          }
+        ],
+        "companions": [],
+        "refreshedAt": "2026-10-12T12:12:18.490Z"
+      },
+      "b": {
+        "status": "not_found",
+        "message": "Facility not found in the current Allocation Blueprint.",
+        "products": []
+      },
+      "c": {
+        "status": "matched",
+        "message": "",
+        "facility": {
+          "id": "fixture-east:tuni",
+          "facilityName": "Tuni CHPS",
+          "district": "East Mamprusi",
+          "region": "North East",
+          "cycle": "October 2026",
+          "fsFacilityId": ""
+        },
+        "products": [
+          {
+            "name": "Unallocated Product",
+            "id": "",
+            "canonical": "Unallocated Product",
+            "quantity": "1",
+            "balance": null,
+            "status": "untracked",
+            "message": "Product is not allocation-tracked."
+          }
+        ],
+        "companions": [],
+        "refreshedAt": "2026-10-12T12:12:18.516Z"
+      }
+    },
+    "after": {
+      "a": {
+        "status": "matched",
+        "message": "",
+        "facility": {
+          "id": "fixture-east:tuni",
+          "facilityName": "Tuni CHPS",
+          "district": "East Mamprusi",
+          "region": "North East",
+          "cycle": "October 2026",
+          "fsFacilityId": ""
+        },
+        "products": [
+          {
+            "name": "BCG Vaccine 0.05mL",
+            "id": "",
+            "canonical": "BCG Vaccine 0.05 mL",
+            "quantity": "1",
+            "allocationKey": "BCG Vaccine 0.05 mL",
+            "balance": 6,
+            "status": "ok",
+            "message": ""
+          }
+        ],
+        "companions": [],
+        "refreshedAt": "2026-10-12T12:12:18.532Z"
+      },
+      "b": {
+        "status": "matched",
+        "message": "",
+        "facility": {
+          "id": "fixture-talensi:namolgo",
+          "facilityName": "Presbyterian Health Center",
+          "district": "Talensi",
+          "region": "Upper East",
+          "cycle": "October 2026",
+          "fsFacilityId": ""
+        },
+        "products": [],
+        "companions": [],
+        "refreshedAt": "2026-10-12T12:12:18.546Z"
+      },
+      "c": {
+        "status": "matched",
+        "message": "",
+        "facility": {
+          "id": "fixture-east:tuni",
+          "facilityName": "Tuni CHPS",
+          "district": "East Mamprusi",
+          "region": "North East",
+          "cycle": "October 2026",
+          "fsFacilityId": ""
+        },
+        "products": [
+          {
+            "name": "Unallocated Product",
+            "id": "",
+            "canonical": "Unallocated Product",
+            "quantity": "1",
+            "allocationKey": "",
+            "balance": null,
+            "status": "untracked",
+            "message": "No allocation record for this product or presentation."
+          }
+        ],
+        "companions": [],
+        "refreshedAt": "2026-10-12T12:12:18.559Z"
+      }
+    }
+  }
+}

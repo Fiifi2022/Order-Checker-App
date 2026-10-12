@@ -1,5 +1,14 @@
 import * as vaccineService from './vaccineService';
-import { resolveBlueprintFacility, normalizeFacilityName, FACILITY_NOT_FOUND, FACILITY_AMBIGUOUS, type BlueprintFacilityContext } from './blueprintFacility';
+import { resolveBlueprintFacility, normalizeFacilityName, assertBlueprintActive, FACILITY_NOT_FOUND, FACILITY_AMBIGUOUS, type BlueprintFacilityContext } from './blueprintFacility';
+
+// Shared by verified deductions and advisory FS reads; keep Blueprint arithmetic here.
+export function blueprintAllocationNumbers(value: any) {
+  const carryOver = Number(value.carryOver) || 0;
+  const original = Number(value.allocation) || 0;
+  const taken = Number(value.distributed) || 0;
+  const remaining = value.balance !== undefined && value.balance !== '' ? Number(value.balance) : Math.max(0, carryOver + original - taken);
+  return { carryOver, original, taken, remaining };
+}
 
 export function blueprintFacilitySnapshot(facility: vaccineService.FacilityAllocationRecord, sheet: any, row: any) {
   const snapshot = structuredClone(facility);
@@ -9,10 +18,7 @@ export function blueprintFacilitySnapshot(facility: vaccineService.FacilityAlloc
   for (const [name, data] of Object.entries(row.vaccines || {})) {
     const value: any = data || {};
     const canonical = vaccineService.matchVaccineName(name).canonical;
-    const carryOver = Number(value.carryOver) || 0;
-    const original = Number(value.allocation) || 0;
-    const taken = Number(value.distributed) || 0;
-    const remaining = value.balance !== undefined && value.balance !== '' ? Number(value.balance) : Math.max(0, carryOver + original - taken);
+    const { carryOver, original, taken, remaining } = blueprintAllocationNumbers(value);
     if (!Number.isFinite(remaining)) throw new Error('Invalid Blueprint balance. Correct the sheet before retrying.');
     if (snapshot.vaccines[canonical]) throw new Error('Duplicate vaccine columns found in the facility row. Correct the sheet before retrying.');
     snapshot.vaccines[canonical] = vaccineService.buildVaccineDetail(canonical, {original,carryOver,taken,remaining,takenHistory:value.takenHistory});
@@ -33,6 +39,8 @@ export async function persistBlueprintConfirmation(options: {
   productKey: (vaccines: any, name: string, products: string[]) => string;
   progress: (row: any, products: string[]) => string;
   debug: (details: Record<string, unknown>) => void;
+  authorize?: (transaction: any, snapshot: vaccineService.FacilityAllocationRecord, alreadyCommitted: boolean) => Promise<void>;
+  activity?: (result: any) => any;
 }) {
   const {facility,context,params,db,doc,runTransaction,clean,productKey,progress,debug} = options;
   const sheetId = context.sheetId || context.selectedSheetId!;
@@ -49,6 +57,8 @@ export async function persistBlueprintConfirmation(options: {
     catch (error: any) { debug({candidateCount:error.candidateCount || 0,save:'rejected'}); throw error; }
     debug({candidateCount:target.candidateCount,resolvedDocumentId:sheetId,rowId:target.row.id || null,rowIndex:target.rowIndex,save:'pending'});
     const snapshot = blueprintFacilitySnapshot(facility,sheet,target.row);
+    if (!savedTransaction.exists()) assertBlueprintActive(sheet, target.row);
+    await options.authorize?.(transaction, snapshot, savedTransaction.exists());
     if (savedTransaction.exists()) {
       const previous = savedTransaction.data();
       if (previous.sourceSheetId !== sheetId || previous.facilityId !== facility.id ||
@@ -81,6 +91,8 @@ export async function persistBlueprintConfirmation(options: {
     transaction.set(sheetRef,clean(sheet),{merge:true});
     transaction.set(allocationRef,clean(result.updatedFacility),{merge:true});
     transaction.set(transactionRef,clean(result.transaction));
+    const activity = options.activity?.(result);
+    if (activity) transaction.set(doc(db, 'activity_logs', activity.id), clean(activity));
     return {result,sheet,rowIndex:target.rowIndex};
   });
 }

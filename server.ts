@@ -1,3 +1,4 @@
+import { fsContextHandlers, fsReadBudget, startFsReadBudget, isFsCompanionRead } from './server/fsContext';
 import { orderLimitAcknowledgementHandler } from './server/orderLimitAcknowledgement';
 import { catalogAliasAssistant } from './server/catalogAliasAssistant';
 import { defaultProducts, applyCatalog, saveCatalogProduct, productCatalogHandlers } from './server/productCatalog';
@@ -23,8 +24,11 @@ import { buildExtensionPackage, resolveExtensionBackendUrl } from './server/exte
 import { adminAuth, adminDb, collection, getDocs, doc, setDoc, getDoc, deleteDoc, query, orderBy, limit, writeBatch, runTransaction } from './server/firebaseAdmin';
 import { actorContext, createAuthentication } from './server/auth';
 import * as vaccineService from './server/vaccineService';
-import { resolveBlueprintFacility, normalizeFacilityName, FACILITY_NOT_FOUND, FACILITY_AMBIGUOUS } from './server/blueprintFacility';
+import { resolveBlueprintFacility, normalizeFacilityName, assertBlueprintActive, FACILITY_NOT_FOUND, FACILITY_AMBIGUOUS } from './server/blueprintFacility';
 import { persistBlueprintConfirmation, blueprintSaveError } from './server/blueprintConfirmation';
+import { companionVaccineHandlers } from './server/companionVaccine';
+import { normalizeCompanionAuditMode } from './shared/companionAudit';
+import { CompanionFacilityError, resolveCompanionFacility, companionFacilityErrors } from './server/companionFacility';
 import { createRetryableLoader } from './server/retryableLoader';
 import * as activityService from './server/activityService';
 import { analyzeAuditLanguage } from './server/auditSemantics';
@@ -44,7 +48,7 @@ const firebaseConfig = JSON.parse(
 );
 
 // Explicitly set environment variables for sub-libraries/gRPC
-process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
+process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.firebaseConfig.projectId;
 process.env.FIRESTORE_DATABASE = firebaseConfig.firestoreDatabaseId;
 
 function getFirestoreDb() { return adminDb; }
@@ -106,6 +110,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use('/api', startFsReadBudget);
 app.use('/api', createAuthentication(
   token => adminAuth.verifyIdToken(token, true),
   async email => {
@@ -123,6 +128,7 @@ app.use('/api', createAuthentication(
     }
     return null;
   },
+  fsReadBudget,
 ));
 // One versioned catalog document: transactional updates prevent lost edits.
 const catalogReference = adminDb.collection('product_catalog').doc('current');
@@ -150,6 +156,7 @@ app.post('/api/products', catalogHandlers.save);
 app.post('/api/products/suggest-aliases', catalogAliasAssistant({ read: readProductCatalog, getClient: getGeminiClient }));
 // Refresh the same persisted vocabulary before text matching and allocation parsing.
 app.use('/api', async (req, res, next) => {
+  if (req.method === 'GET' && isFsCompanionRead(req.path)) { next(); return; }
   if (req.path !== '/verify' && !req.path.startsWith('/vaccine/')) { next(); return; }
   try {
     const catalog = await readProductCatalog();
@@ -766,7 +773,7 @@ async function generateAuditContent(ai: any, options: any): Promise<any> {
 
 // Health-check endpoint for client/extension pings
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date() });
+  res.json({ status: 'ok' });
 });
 
 // Last known state only. Diagnostics must never consume Gemini quota.
@@ -831,6 +838,13 @@ app.post('/api/verify', async (req, res) => {
   }
 
   console.log('[API POST /api/verify] Keys received in body:', typeof body === 'object' ? Object.keys(body) : 'primitive/none');
+  const companionMode = normalizeCompanionAuditMode(body.auditMode);
+  if (body.auditMode !== undefined && !companionMode) return res.status(400).json({ error: 'Unsupported audit mode. Use whatsapp_and_fulfillment or fulfillment_only.', allMatch: false, items: [] });
+  if (companionMode === 'fulfillment_only' || body.auditScope === 'vaccine_checker' || (body.auditMode === 'customer_fulfillment' && body.auditScope !== 'general_auditor')) {
+    req.body = body;
+    return companionVaccine.verify(req, res, () => {});
+  }
+  if (companionMode === 'whatsapp_and_fulfillment' && !body.auditScope) body.auditScope = 'general_auditor';
   const isGeneralAuditor = body.auditScope === 'general_auditor';
 
   // Extract variables with complete backward-compatible fallback maps (Task 7)
@@ -895,6 +909,17 @@ app.post('/api/verify', async (req, res) => {
   const verificationStartedAt = new Date(startTime).toISOString();
   const checkId = String(body.checkId || '');
   try {
+    let selectedCompanionFacility: vaccineService.FacilityAllocationRecord | undefined;
+    if (isGeneralAuditor && companionMode) {
+      try { await loadDistrictsFromFirestore(); }
+      catch { throw new CompanionFacilityError(503, 'Could not read the current Allocation Blueprint. Retry before dispatch.'); }
+      selectedCompanionFacility = resolveCompanionFacility(body, fulfillmentConfirmation);
+      resolveBlueprintFacility(Object.values(blueprintDistricts), { facilityName: selectedCompanionFacility.facilityName,
+        sheetId: selectedCompanionFacility.sourceSheetId, rowId: selectedCompanionFacility.sourceRowId,
+        district: selectedCompanionFacility.district, cycle: selectedCompanionFacility.cycle });
+      const errors = companionFacilityErrors(selectedCompanionFacility, whatsappMessage, fulfillmentConfirmation);
+      if (errors.length) throw new CompanionFacilityError(409, errors.join(' '));
+    }
     let response: any;
     if (isGeneralAuditor) {
       response = { text: JSON.stringify(await runGeneralSemanticAudit(whatsappMessage, fulfillmentConfirmation, body.generalOrderLimitDecisions || {}, { osuItems }, getGeminiClient)) };
@@ -1960,6 +1985,11 @@ app.post('/api/verify', async (req, res) => {
       resolvedAt: payload.allMatch ? new Date().toISOString() : undefined
     };
 
+    if (isGeneralAuditor && companionMode) Object.assign(auditRecord, { auditId: auditRecord.id, auditMode: companionMode,
+      isValid: auditRecord.allMatch, discrepancies: payload.generalAudit.discrepancies,
+      facilityId: selectedCompanionFacility!.id, facilityName: selectedCompanionFacility!.facilityName,
+      canCommit: false, allocationStatus: 'not_applicable', auditStatus: auditRecord.allMatch ? 'passed' : 'failed' });
+
     // Save to local in-memory store (most recent first)
     const previousCheckIndex = audits.findIndex(a => a.id === auditRecord.id);
     if (previousCheckIndex >= 0) audits.splice(previousCheckIndex, 1);
@@ -1989,7 +2019,8 @@ app.post('/api/verify', async (req, res) => {
   } catch (error: any) {
     console.warn('Gemini verification encountered an issue, seamlessly switching to Deterministic Compliance Engine:', error?.message);
     if (isGeneralAuditor) {
-      return res.status(422).json({ error: error.message || 'Unable to read the current audit inputs.' });
+      return res.status(error instanceof CompanionFacilityError ? error.status : error.message === FACILITY_NOT_FOUND ? 404 : error.message === FACILITY_AMBIGUOUS ? 409 : companionMode && /Could not load saved Allocation Blueprint/.test(error.message) ? 503 : 422)
+        .json({ error: error.message || 'Unable to read the current audit inputs.', allMatch: false, items: [], auditStatus: 'requires_review' });
     }
     try {
       const fallbackPayload = runDeterministicAuditFallback(whatsappMessage, fulfillmentConfirmation);
@@ -2370,7 +2401,7 @@ app.delete('/api/audits', (req, res) => {
 // Get all facilities with their current vaccine allocations
 app.get('/api/vaccine/allocations', async (req, res) => {
   try {
-    await ensureBlueprintLoaded();
+    await loadDistrictsFromFirestore();
     const facilities = vaccineService.getAllFacilities();
     return res.json(facilities);
   } catch (err: any) {
@@ -2381,6 +2412,7 @@ app.get('/api/vaccine/allocations', async (req, res) => {
 // Get specific facility allocation by ID
 app.get('/api/vaccine/allocations/:id', async (req, res) => {
   try {
+    await loadDistrictsFromFirestore();
     const facility = vaccineService.getFacilityById(req.params.id);
     if (!facility) return res.status(404).json({ error: 'Facility not found' });
     return res.json(facility);
@@ -2759,6 +2791,7 @@ async function loadDistrictsFromFirestore() {
   try {
     const db = getFirestoreDb();
     const snap = await getDocs(collection(db, 'vaccine_districts'));
+    if (snap.empty) { blueprintDistricts = {}; syncAllBlueprintDistrictsToService(); }
     if (!snap.empty) {
       blueprintDistricts = {};
       snap.forEach(docSnap => {
@@ -2782,10 +2815,59 @@ async function loadDistrictsFromFirestore() {
 const ensureBlueprintLoaded = createRetryableLoader(loadDistrictsFromFirestore);
 void ensureBlueprintLoaded().catch(() => {});
 
+const companionVaccine = companionVaccineHandlers({
+  refresh: async () => { await loadDistrictsFromFirestore(); syncAllBlueprintDistrictsToService(); },
+  verifyFacility: facility => { const target = resolveBlueprintFacility(Object.values(blueprintDistricts), { facilityName: facility.facilityName,
+    sheetId: facility.sourceSheetId, rowId: facility.sourceRowId, district: facility.district, cycle: facility.cycle });
+    assertBlueprintActive(target.sheet, target.row); },
+  storage: () => ({ db: getFirestoreDb(), doc, runTransaction, clean: cleanFirestorePayload,
+    productKey: findMatchingVaccineKeyInBlueprint, progress: getFacilityBlueprintStatus, debug: () => {} }),
+  publish: committed => {
+    blueprintDistricts[committed.sheet.id] = committed.sheet;
+    vaccineService.publishConfirmedVaccineOrder(committed.result.updatedFacility!, committed.result.transaction!);
+  },
+  activity: (event, data, actor) => {
+    const confirmed = event === 'confirmed';
+    const facility = data.updatedFacility;
+    const transaction = data.transaction;
+    const id = confirmed ? transaction.id + '-confirmed' : data.orderId;
+    return { id, timestamp: confirmed ? transaction.timestamp : data.validatedAt,
+      module: 'vaccine_checker', actionType: confirmed ? 'checker_order_confirmed' : 'checker_order_verified', actor,
+      facility: confirmed ? facility.facilityName : data.facilitySelected, district: confirmed ? facility.district : data.district,
+      cycle: confirmed ? facility.cycle : data.allocationSheet,
+      title: confirmed ? 'Extension fulfilment confirmed' : 'Extension allocation audit',
+      summary: confirmed ? 'Confirmed quantities deducted from the Allocation Blueprint.' : data.isValid ? 'Order verified against current allocation balances.' : 'Order blocked by allocation audit.',
+      badgeType: confirmed || data.isValid ? 'success' : 'error',
+      details: { auditCheckId: confirmed ? transaction.id : data.orderId, orderId: confirmed ? transaction.id : data.orderId,
+        facilityId: confirmed ? facility.id : data.facilityId, orderSource: confirmed ? transaction.source : data.orderSource,
+        verdict: confirmed || data.isValid ? 'GREEN_LIGHT' : 'DO_NOT_PROCESS', errorsDetected: data.errors || [],
+        clientSource: 'companion_extension', transactionId: transaction?.id, items: confirmed ? transaction.items : data.items }
+    };
+  },
+  publishActivity: record => {
+    if (!activityService.getActivityLogs({ limit: 2000 }).some(item => item.id === record.id)) activityService.logActivity(record);
+  }
+});
+app.post('/api/vaccine/allocations/commit', companionVaccine.commit);
+app.get('/api/vaccine/allocations/commit/:orderId', companionVaccine.status);
+// These advisory reads bypass catalog seeding and unrelated history/service syncs.
+const fsContext = fsContextHandlers({
+  readSheets: async () => (await getDocs(collection(getFirestoreDb(), 'vaccine_districts'))).docs.map(snapshot => ({ ...snapshot.data(), id: snapshot.id })),
+  readCatalog: async () => { const snapshot = await catalogReference.get(); return snapshot.exists ? snapshot.data() : catalogSeed; },
+  applyCatalog,
+  listFacilities: sheets => {
+    blueprintDistricts = Object.fromEntries(sheets.map(sheet => [sheet.id, sheet]));
+    syncAllBlueprintDistrictsToService();
+    return vaccineService.getAllFacilities();
+  },
+});
+app.get('/api/vaccine/companion/facilities', fsContext.facilities);
+app.get('/api/vaccine/companion/context', fsContext.context);
+
 // GET all blueprint district sheets
 app.get('/api/vaccine/blueprint-districts', async (req, res) => {
   try {
-    await ensureBlueprintLoaded();
+    await loadDistrictsFromFirestore();
     return res.json({
       districts: Object.values(blueprintDistricts),
       activeDistrictId,
@@ -4282,6 +4364,7 @@ app.get('/api/download-extension', async (req, res) => {
     const zipBuffer = await buildExtensionPackage(backendUrl, firebaseConfig.firebaseConfig.apiKey);
     res.setHeader("Content-Disposition", "attachment; filename=ordercheck-compliance-companion.zip");
     res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Cache-Control", "no-store");
     res.status(200).send(zipBuffer);
   } catch (error: any) {
     console.error("Extension compiler error:", error);

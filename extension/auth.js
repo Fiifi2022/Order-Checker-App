@@ -40,13 +40,13 @@ export async function getToken() {
   }
 }
 
-export async function backendRequest(baseUrl, endpoint, options = {}) {
+export async function backendRequest(baseUrl, endpoint, options = {}, timeoutMs) {
   const token = await getToken();
   try {
     return await fetchJson(`${baseUrl}${endpoint}`, {
       ...options,
       headers: { ...options.headers, Authorization: `Bearer ${token}` },
-    }, endpoint === '/api/verify' ? 180000 : 90000);
+    }, timeoutMs ?? (endpoint === '/api/verify' ? 180000 : 90000));
   } catch (error) {
     if (error.status === 401) await signOut();
     throw error;

@@ -159,6 +159,14 @@
     #catalogSuggestions label { display:block;font-size:11px;margin:5px 0; }
     .receiving-reminders { background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px;font-size:11px;white-space:pre-wrap;margin-top:6px; }
     .scan-row { font-size:10px;margin:5px 0; } .scan-row input { max-width:100%;font-size:10px; }
+    .allocation-balance-zero {
+      background: #15803D;
+      color: #FFFFFF;
+      border: 2px solid #14532D;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -166,13 +174,22 @@
     <div style="background-color:#5C2D91; padding:4px; border-radius:4px;">⚡</div>
     <div>
       <h3>OrderCheck Companion</h3>
-      <p>Clinical Dispatch Audit Extension v1.4.1</p>
+      <p>Clinical Dispatch Audit Extension v1.5.14</p>
     </div>
     <button id="btnKeepOpen" class="btn-keep-open" title="📌 Open in a standalone stay-open window, so it won't auto-close when clicking outside!">📌 Keep Open</button>
   </div>
 
+  <button id="openSidePanel" type="button" class="btn-secondary">Open OrderCheck side panel</button>
+  <section aria-label="Live FS allocation" style="margin:10px 0;padding:10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;">
+    <strong>Current FS order · Allocation advice</strong>
+    <div id="fsLiveContext" role="status" aria-live="polite"></div>
+    <select id="fsManualFacility" aria-label="Resolve ambiguous FS facility" hidden style="width:100%"></select>
+    <button id="fsRefresh" type="button">Refresh balances</button>
+    <button id="fsCheckConnection" type="button">Connect to FS</button>
+    <div id="fsConnectionStatus" role="status" style="margin-top:6px"></div>
+  </section>
   <div class="section-title">
-    <span>WhatsApp Message Log</span>
+    <span>Portal account</span>
     <span style="font-size:8px; color:#888; font-weight:normal;">Paste or auto-extract</span>
   </div>
   <form id="signInForm" style="margin-bottom:10px;">
@@ -211,15 +228,29 @@
     <p id="catalogStatus" role="status" style="font-size:11px;"></p>
     <p style="font-size:10px;">Keep strengths, formulations, and vaccine companions separate. Receiving reminders do not change quantities.</p>
   </section>
+  <label for="auditMode">Audit mode</label>
+  <select id="auditMode" style="width:100%;margin:8px 0;padding:7px;">
+    <option value="general">General Auditor · customer versus fulfilment</option>
+    <option value="whatsapp_and_fulfillment">Vaccine Checker · WhatsApp + Fulfilment + allocation</option>
+    <option value="fulfillment_only">Fulfilment Only · confirmation + allocation</option>
+  </select>
+  <section id="vaccineControls" hidden>
+    <label for="vaccineFacility">Facility and allocation cycle</label>
+    <select id="vaccineFacility" style="width:100%;padding:7px;"></select>
+    <button id="reloadFacilities" type="button" class="btn-secondary">Reload facilities and balances</button>
+  </section>
+  <section id="customerInputs">
+  <div class="section-title">Customer request</div>
   <textarea id="whatsappText" placeholder="Pasted or extracted WhatsApp message goes here..."></textarea>
 
   <div class="scan-row"><label>Customer screenshot <input id="whatsappImage" type="file" accept="image/png,image/jpeg,image/webp" /></label><button id="whatsappScan" type="button" disabled>Scan screenshot</button><p id="whatsappScanStatus" role="status"></p></div>
   <aside id="whatsappHints" class="receiving-reminders" role="status" hidden></aside>
+  </section>
   <div class="section-title">
-    <span>Fulfillment system log</span>
-    <span style="font-size:8px; color:#888; font-weight:normal;">Will pull highlighted text</span>
+    <span>Fulfilment Confirmation → Customer Scripts</span>
+    <span style="font-size:8px; color:#888; font-weight:normal;">Synced from FS Package &amp; Script</span>
   </div>
-  <textarea id="fulfillmentText" placeholder="Highlight text on the fulfillment page and click button below..."></textarea>
+  <textarea id="fulfillmentText" aria-label="Customer Scripts" placeholder="The customer script appears here when FS Package &amp; Script is available. You can also paste confirmation text."></textarea>
 
   <div class="scan-row"><label>Fulfillment screenshot <input id="fulfillmentImage" type="file" accept="image/png,image/jpeg,image/webp" /></label><button id="fulfillmentScan" type="button" disabled>Scan screenshot</button><p id="fulfillmentScanStatus" role="status"></p></div>
   <aside id="fulfillmentHints" class="receiving-reminders" role="status" hidden></aside>
@@ -229,6 +260,9 @@
   </div>
 
   <button id="btnVerify" class="btn-primary">Analyze For Discrepancies</button>
+  <p style="font-size:11px;">Audit: <span id="auditStatus" role="status">Awaiting audit</span><br/>Allocation: <span id="allocationStatus" role="status">Not applicable</span></p>
+  <button id="confirmAllocation" type="button" class="btn-primary" hidden>Check allocation status</button>
+  <p id="deductionReceipt" role="status" hidden></p>
 
   <div class="section-title">Audit Cross-Examination</div>
   <div id="results" class="result-box">

@@ -1,0 +1,254 @@
+--- a/server.ts
++++ b/server.ts
+@@ -1,4 +1,4 @@
+-import { lookupFsAllocation } from './server/fsAllocation';
++import { fsContextHandlers, fsReadBudget, startFsReadBudget, isFsCompanionRead } from './server/fsContext';
+ import { orderLimitAcknowledgementHandler } from './server/orderLimitAcknowledgement';
+ import { catalogAliasAssistant } from './server/catalogAliasAssistant';
+ import { defaultProducts, applyCatalog, saveCatalogProduct, productCatalogHandlers } from './server/productCatalog';
+@@ -110,6 +110,7 @@
+   next();
+ });
+ 
++app.use('/api', startFsReadBudget);
+ app.use('/api', createAuthentication(
+   token => adminAuth.verifyIdToken(token, true),
+   async email => {
+@@ -127,6 +128,7 @@
+     }
+     return null;
+   },
++  fsReadBudget,
+ ));
+ // One versioned catalog document: transactional updates prevent lost edits.
+ const catalogReference = adminDb.collection('product_catalog').doc('current');
+@@ -154,6 +156,7 @@
+ app.post('/api/products/suggest-aliases', catalogAliasAssistant({ read: readProductCatalog, getClient: getGeminiClient }));
+ // Refresh the same persisted vocabulary before text matching and allocation parsing.
+ app.use('/api', async (req, res, next) => {
++  if (req.method === 'GET' && isFsCompanionRead(req.path)) { next(); return; }
+   if (req.path !== '/verify' && !req.path.startsWith('/vaccine/')) { next(); return; }
+   try {
+     const catalog = await readProductCatalog();
+@@ -770,7 +773,7 @@
+ 
+ // Health-check endpoint for client/extension pings
+ app.get('/api/health', (req, res) => {
+-  res.json({ status: 'ok', time: new Date() });
++  res.json({ status: 'ok' });
+ });
+ 
+ // Last known state only. Diagnostics must never consume Gemini quota.
+@@ -2847,24 +2850,19 @@
+ });
+ app.post('/api/vaccine/allocations/commit', companionVaccine.commit);
+ app.get('/api/vaccine/allocations/commit/:orderId', companionVaccine.status);
+-app.get('/api/vaccine/companion/facilities', async (_req, res) => {
+-  try { await loadDistrictsFromFirestore(); syncAllBlueprintDistrictsToService(); res.json(vaccineService.getAllFacilities()); }
+-  catch { res.status(503).json({ error: 'Could not read the current Allocation Blueprint. Please retry.' }); }
+-});
+-
+-// Advisory lookup only: no audits, order writes or allocation deductions.
+-app.get('/api/vaccine/companion/context', async (req, res) => {
+-  try {
+-    const raw = String(req.query.selection || '');
+-    if (raw.length > 24000) return res.status(400).json({ error: 'Selection is too large.' });
+-    let selection;
+-    try { selection = JSON.parse(raw); } catch { return res.status(400).json({ error: 'Invalid FS selection.' }); }
+-    if (!selection || typeof selection !== 'object') return res.status(400).json({ error: 'Invalid FS selection.' });
+-    await loadDistrictsFromFirestore();
+-    res.setHeader('Cache-Control', 'no-store');
+-    return res.json(lookupFsAllocation(Object.values(blueprintDistricts), selection));
+-  } catch { return res.status(503).json({ error: 'Could not read the current Allocation Blueprint. Please retry.' }); }
+-});
++// These advisory reads bypass catalog seeding and unrelated history/service syncs.
++const fsContext = fsContextHandlers({
++  readSheets: async () => (await getDocs(collection(getFirestoreDb(), 'vaccine_districts'))).docs.map(snapshot => ({ ...snapshot.data(), id: snapshot.id })),
++  readCatalog: async () => { const snapshot = await catalogReference.get(); return snapshot.exists ? snapshot.data() : catalogSeed; },
++  applyCatalog,
++  listFacilities: sheets => {
++    blueprintDistricts = Object.fromEntries(sheets.map(sheet => [sheet.id, sheet]));
++    syncAllBlueprintDistrictsToService();
++    return vaccineService.getAllFacilities();
++  },
++});
++app.get('/api/vaccine/companion/facilities', fsContext.facilities);
++app.get('/api/vaccine/companion/context', fsContext.context);
+ 
+ // GET all blueprint district sheets
+ app.get('/api/vaccine/blueprint-districts', async (req, res) => {
+diff --git a/server/auth.ts b/server/auth.ts
+index 7b57050..4e09fe2 100644
+--- a/server/auth.ts
++++ b/server/auth.ts
+@@ -30,14 +30,15 @@ export function canAccess(role: string | readonly string[], method: string, path
+ export function createAuthentication(
+   verify: (token: string) => Promise<any>,
+   findProfile: (email: string) => Promise<AuthProfile | null>,
++  budget: <T>(req: any, task: () => Promise<T>) => Promise<T> = (_req, task) => task(),
+ ): RequestHandler {
+   return async (req, res, next) => {
+     if (req.path === '/health' && req.method === 'GET') { next(); return; }
+     const match = /^Bearer (\S+)$/i.exec(req.headers.authorization || '');
+     if (!match) { res.status(401).json({ error: 'Sign in to continue.' }); return; }
+     let identity: any;
+-    try { identity = await verify(match[1]); }
+-    catch { res.status(401).json({ error: 'Your session has expired. Please sign in again.' }); return; }
++    try { identity = await budget(req, () => verify(match[1])); }
++    catch (error: any) { res.status(error?.code === 'FS_CONTEXT_TIMEOUT' ? 503 : 401).json({ error: error?.code === 'FS_CONTEXT_TIMEOUT' ? 'Authentication service timed out. Please retry.' : 'Your session has expired. Please sign in again.' }); return; }
+     const registrationRequest = (req.path === '/auth/register' && req.method === 'POST') || (req.path === '/auth/registration' && req.method === 'GET');
+     if (registrationRequest) {
+       if (!identity.uid || !identity.email || identity.firebase?.sign_in_provider === 'anonymous') {
+@@ -50,7 +51,7 @@ export function createAuthentication(
+       res.status(403).json({ error: 'A verified email account is required.' }); return;
+     }
+     let profile: AuthProfile | null;
+-    try { profile = await findProfile(identity.email.toLowerCase()); }
++    try { profile = await budget(req, () => findProfile(identity.email.toLowerCase())); }
+     catch { res.status(503).json({ error: 'Account access could not be verified. Please retry.' }); return; }
+     if (!profile || !assignedRoles(profile).length) {
+       res.status(403).json({ error: 'Your account has not been granted access. Contact an administrator.' }); return;
+diff --git a/server/fsAllocation.ts b/server/fsAllocation.ts
+new file mode 100644
+index 0000000..19122d4
+--- /dev/null
++++ b/server/fsAllocation.ts
+@@ -0,0 +1,65 @@
++import { blueprintAllocationNumbers } from './blueprintConfirmation';
++import { assertBlueprintActive, normalizeFacilityName } from './blueprintFacility';
++import { matchExactVaccineName, normalizeProductName, CLINICAL_PAIRINGS } from './vaccineService';
++
++const text = (value: unknown) => typeof value === 'string' ? value.trim().slice(0, 160) : '';
++// Formatting tolerance only; strengths, presentations and pack sizes remain distinct.
++export function normalizeFsProduct(value: string) {
++  return value.normalize('NFKC').toLowerCase().replace(/[µμ]g/g, 'mcg')
++    .replace(/\bmillilit(?:er|re)s?\b/g, 'ml').replace(/\bmicrograms?\b/g, 'mcg').replace(/\bmilligrams?\b/g, 'mg')
++    .replace(/(\d)\s*(ml|mcg|mg|g|iu|units?|doses?)\b/g, '$1 $2')
++    .replace(/\d+(?:\.\d+)?/g, value => String(Number(value)))
++    .replace(/[^\p{L}\p{N}.]+/gu, ' ').replace(/\.(?!\d)|(?<!\d)\./g, ' ')
++    .trim().replace(/\s+/g, ' ');
++}
++export function activeFsFacilities(sheets: any[]) {
++  return sheets.flatMap(sheet => (sheet.rows || []).flatMap((row: any) => {
++    try { assertBlueprintActive(sheet, row); } catch { return []; }
++    if (!row.facility || !row.id) return [];
++    return [{ id: `${sheet.id}:${row.id}`, facilityName: row.facility, district: row.district || sheet.district || '',
++      region: row.region || sheet.region || '', cycle: sheet.month || '', fsFacilityId: row.fsFacilityId || row.facilityId || '', sheet, row }];
++  }));
++}
++const publicFacility = ({ sheet, row, ...facility }: any) => facility;
++export function lookupFsAllocation(sheets: any[], input: any) {
++  const all = activeFsFacilities(sheets);
++  const fs = input.facility || {};
++  const name = text(fs.name), id = text(fs.id), manual = text(input.manualFacilityId);
++  if (!name && !id) return { status: 'no_facility', message: 'Select a facility in FS.', products: [] };
++  let candidates = id ? all.filter(f => f.fsFacilityId === id) : [];
++  // Unknown FS IDs are distinct from Blueprint IDs; name matching remains exact.
++  if (!candidates.length) candidates = all.filter(f => name && [f.facilityName, f.row.subDistrict ? `${f.facilityName}, ${f.row.subDistrict}` : ''].some(alias => alias && normalizeFacilityName(alias) === normalizeFacilityName(name)));
++  candidates = candidates.filter(f => (!text(fs.district) || !f.district || normalizeFacilityName(f.district) === normalizeFacilityName(fs.district)) &&
++    (!text(fs.region) || !f.region || normalizeFacilityName(f.region) === normalizeFacilityName(fs.region)));
++  for (const field of ['district', 'region'] as const) {
++    const exact = candidates.filter(f => text(fs[field]) && normalizeFacilityName(f[field]) === normalizeFacilityName(fs[field]));
++    if (exact.length) candidates = exact;
++  }
++  if (manual) candidates = candidates.filter(f => f.id === manual);
++  if (!candidates.length) return { status: 'not_found', message: 'Facility not found in the current Allocation Blueprint.', products: [] };
++  if (candidates.length !== 1) return { status: 'ambiguous', message: 'Multiple matching facilities. Select the facility and allocation cycle manually.', candidates: candidates.map(publicFacility), products: [] };
++  const facility = candidates[0];
++  const lookup = (product: any) => {
++    const name = text(product.name), match = matchExactVaccineName(name);
++    const keys = Object.keys(facility.row.vaccines || {});
++    const exact = keys.filter(key => normalizeFsProduct(key) === normalizeFsProduct(name) || normalizeProductName(key) === normalizeProductName(name));
++    const qualified = /\b(?:\d+\s*(?:ml|mcg|mg|dose|doses|valent)|pcv\s*\d+|rotarix|rotasiil|td|tt)\b/i;
++    const matching = exact.length ? exact : match.confidence === 'high' && !qualified.test(name) ? keys.filter(key => !qualified.test(key) && matchExactVaccineName(key).canonical === match.canonical) : [];
++    const base = { name, id: text(product.id), canonical: match.canonical, quantity: text(product.quantity) };
++    if (!matching.length) return { ...base, allocationKey: '', balance: null, status: 'untracked', message: 'No allocation record for this product or presentation.' };
++    if (matching.length > 1) throw Object.assign(new Error('Multiple allocation records match this product presentation. Manual review required.'), { status: 409 });
++    const data = facility.row.vaccines[matching[0]] || {};
++    const number = (v: any) => (typeof v === 'number' || typeof v === 'string') && String(v).trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null;
++    const allocation = number(data.allocation), carry = number(data.carryOver), distributed = number(data.distributed);
++    const explicit = number(data.balance);
++    const hasKnownValues = [explicit, allocation, carry, distributed].some(value => value !== null);
++    const malformed = ['balance', 'allocation', 'carryOver', 'distributed'].some(key => data[key] !== null && data[key] !== undefined && String(data[key]).trim() !== '' && number(data[key]) === null);
++    const balance = explicit !== null ? explicit : hasKnownValues && !malformed ? blueprintAllocationNumbers({ allocation: allocation ?? 0, carryOver: carry ?? 0, distributed: distributed ?? 0 }).remaining : null;
++    if (balance === null || balance < 0) throw Object.assign(new Error(`Allocation balance unavailable for ${matching[0]}. Correct the Blueprint record before retrying.`), { status: 503 });
++    return { ...base, canonical: match.confidence === 'high' ? match.canonical : matching[0], allocationKey: matching[0], balance, status: 'ok', message: '' };
++  };
++  const products = (Array.isArray(input.products) ? input.products : []).slice(0, 101).map(lookup);
++  const companions = [...new Set(products.map(p => CLINICAL_PAIRINGS[p.canonical]?.accessoryCanonical).filter(Boolean))]
++    .filter(name => !products.some(p => p.canonical === name)).map(name => ({ ...lookup({ name }), accompanying: true }));
++  return { status: 'matched', message: '', facility: publicFacility(facility), products, companions, refreshedAt: new Date().toISOString() };
++}
+diff --git a/server/fsContext.ts b/server/fsContext.ts
+new file mode 100644
+index 0000000..3c99900
+--- /dev/null
++++ b/server/fsContext.ts
+@@ -0,0 +1,67 @@
++import type { Request, RequestHandler } from 'express';
++import { lookupFsAllocation, activeFsFacilities } from './fsAllocation';
++
++const deadlines = new WeakMap<object, number>();
++export const isFsCompanionRead = (path: string) => ['/vaccine/companion/context', '/vaccine/companion/facilities'].includes(path);
++export const startFsReadBudget: RequestHandler = (req, res, next) => {
++  if (req.method === 'GET' && isFsCompanionRead(req.path)) {
++    deadlines.set(req, Date.now() + 7500);
++    res.once?.('finish', () => {
++      if (![401, 403].includes(res.statusCode)) return;
++      let facility: any;
++      try { const input = JSON.parse(String(req.query.selection || '')); facility = Object.fromEntries(['name', 'district', 'region'].map(key => [key, String(input.facility?.[key] || '').slice(0, 160)])); } catch {}
++      console.info({ event: 'fs_context', facility, status: res.statusCode === 401 ? 'unauthenticated' : 'forbidden', products: [] });
++    });
++  }
++  next();
++};
++export async function fsReadBudget<T>(req: Request, task: () => Promise<T>): Promise<T> {
++  const deadline = deadlines.get(req);
++  if (!deadline) return task();
++  let timer: ReturnType<typeof setTimeout>;
++  const milliseconds = Math.max(0, deadline - Date.now());
++  try {
++    return await Promise.race([Promise.resolve().then(task), new Promise<never>((_, reject) => {
++      timer = setTimeout(() => reject(Object.assign(new Error('FS allocation lookup timed out. Please retry.'), { code: 'FS_CONTEXT_TIMEOUT' })), milliseconds);
++    })]);
++  } finally { clearTimeout(timer!); }
++}
++
++export function fsContextHandlers({ readSheets, readCatalog, applyCatalog, listFacilities = sheets => activeFsFacilities(sheets).map(({ sheet, row, ...facility }) => facility), log = console.info }: {
++  readSheets: () => Promise<any[]>; readCatalog: () => Promise<any>; applyCatalog: (catalog: any) => void; listFacilities?: (sheets: any[]) => any[]; log?: (entry: any) => void;
++}) {
++  const read = async (req: Request) => {
++    const [sheets, catalog] = await fsReadBudget(req, () => Promise.all([readSheets(), readCatalog()]));
++    applyCatalog(catalog);
++    return sheets;
++  };
++  const context: RequestHandler = async (req, res) => {
++    const started = Date.now();
++    let selection: any;
++    let logged = false;
++    const report = (entry: any) => { logged = true; log(entry); };
++    res.setHeader('Cache-Control', 'no-store');
++    try {
++      const raw = req.query.selection;
++      if (typeof raw !== 'string' || raw.length > 24000) return void res.status(400).json({ error: 'Invalid or oversized FS selection.' });
++      try { selection = JSON.parse(raw); } catch { return void res.status(400).json({ error: 'Invalid FS selection.' }); }
++      if (!selection || Array.isArray(selection) || typeof selection !== 'object' || !Array.isArray(selection.products) || selection.products.length > 101 || selection.products.some((p: any) => !p || typeof p.name !== 'string')) {
++        return void res.status(400).json({ error: 'Invalid FS selection. Supply a products array with at most 101 named products.' });
++      }
++      const result = lookupFsAllocation(await read(req), selection);
++      report({ event: 'fs_context', facility: selection.facility, status: result.status, products: result.products.map((p: any) => ({ name: p.name, status: p.status })), durationMs: Date.now() - started });
++      res.json(result);
++    } catch (error: any) {
++      report({ event: 'fs_context', facility: selection?.facility, status: 'error', code: error.code || error.status || 'READ_FAILED', durationMs: Date.now() - started });
++      res.status([409, 503].includes(error.status) ? error.status : 503).json({ error: error.message || 'Could not read the current Allocation Blueprint. Please retry.' });
++    } finally {
++      if (!logged) log({ event: 'fs_context', facility: selection?.facility, status: 'invalid_selection', products: [], durationMs: Date.now() - started });
++    }
++  };
++  const facilities: RequestHandler = async (req, res) => {
++    res.setHeader('Cache-Control', 'no-store');
++    try { res.json(listFacilities(await read(req))); }
++    catch (error: any) { res.status(503).json({ error: error.message || 'Could not read the current Allocation Blueprint. Please retry.' }); }
++  };
++  return { context, facilities };
++}

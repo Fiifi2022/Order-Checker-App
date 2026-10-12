@@ -1,3 +1,5 @@
+import { setupFsPanel } from './fs-panel.js';
+import { createFsScriptSync } from './fs-script.js';
 import { acknowledgeOrderLimit } from './order-limits.js';
 import { setupCatalog } from './catalog.js';
 import { setupScreenshots } from './screenshots.js';
@@ -5,6 +7,7 @@ import { auditBody, profileRoles } from './audit.js';
 import { extensionConfig } from './config.js';
 import { normalizeBackendUrl, fetchJson } from './backend.js';
 import { signIn, signOut, backendRequest } from './auth.js';
+import { setupVaccines } from './vaccine.js';
 
 const SERVER_URL = extensionConfig.backendUrl;
 
@@ -25,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let savedBackendUrl = SERVER_URL;
   let connectionAttempt = 0;
   let contextRevision = 0, inputRevision = 0, hintRevision = 0, hintTimer;
-  const inputKey = () => JSON.stringify([whatsappText.value, fulfillmentText.value]);
+  const inputKey = () => JSON.stringify([whatsappText.value, fulfillmentText.value, document.getElementById('auditMode').value, document.getElementById('vaccineFacility').value]);
   const request = async (endpoint, options = {}) => {
     const context = contextRevision;
     const data = await backendRequest(normalizeBackendUrl(savedBackendUrl), endpoint, options);
@@ -54,16 +57,22 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const invalidate = () => {
     inputRevision++; activeResult = null; limitDecisions = {}; declinedLimitItems = [];
+    vaccines.invalidate();
     results.textContent = 'Inputs changed. Run Analyze to verify the current order.';
     screenshots.invalidate(); clearHints();
     hintTimer = setTimeout(refreshHints, 400);
   };
   const catalogUI = setupCatalog({ request, onUpdated: invalidate });
+  const vaccines = setupVaccines({ request, results, onChanged: invalidate,
+    inputs: () => ({ whatsappMessage: whatsappText.value, fulfillmentConfirmation: fulfillmentText.value }) });
+  const scriptSync = createFsScriptSync({ field: fulfillmentText, onChanged: invalidate,
+    persist: text => { void chrome.storage.local.set({ fulfillmentText: text, fsScriptText: text }).catch(error => console.warn('FS script storage failed:', error.message)); } });
+  setupFsPanel({ onFacility: facility => vaccines.setFsFacility(facility), onScript: script => scriptSync.apply(script) });
   const screenshots = setupScreenshots({ request, inputs: inputKey, onText: (source, text) => {
     const input = source === 'whatsapp' ? whatsappText : fulfillmentText; input.value = text;
     chrome.storage.local.set({ [source === 'whatsapp' ? 'whatsappText' : 'fulfillmentText']: text }); invalidate();
   } });
-  const resetContext = () => { contextRevision++; inputRevision++; activeResult = null; limitDecisions = {}; catalogUI.reset(); screenshots.reset(); clearHints(); };
+  const resetContext = () => { contextRevision++; inputRevision++; activeResult = null; limitDecisions = {}; catalogUI.reset(); screenshots.reset(); vaccines.reset(); clearHints(); };
   document.getElementById('openPortal').addEventListener('click', () => {
     try { chrome.tabs.create({ url: normalizeBackendUrl(savedBackendUrl) }); } catch (error) { showError(error); }
   });
@@ -73,6 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const showError = (error) => {
     results.textContent = error.message || 'Unable to contact the backend.';
+    document.getElementById('auditStatus').textContent = 'Audit requires review';
 
   };
   const updateAuth = async () => {
@@ -87,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const profile = await request('/api/auth/me');
     agentNameInput.value = profile.name;
     authStatus.textContent = `Signed in as ${profile.name} (${profileRoles(profile)})`;
+    if (vaccines.vaccineMode()) void vaccines.loadFacilities();
     void refreshHints();
   };
   signInForm.addEventListener('submit', async (event) => {
@@ -159,6 +170,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const escape = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     let html = '';
+    document.getElementById('auditStatus').textContent = activeResult.allMatch ? 'Audit passed' : 'Audit failed';
+    document.getElementById('allocationStatus').textContent = 'Not applicable';
     if (activeResult.allMatch) {
        html += '<div class="badge badge-success">CLEARED FOR LAUNCH</div>';
        html += '<p style="color:#065F46; font-weight:bold; margin:4px 0 0 0; font-size:11px;">' + escape(activeResult.verdict) + '</p>';
@@ -262,11 +275,11 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // Load saved state and custom backend URL
-  chrome.storage.local.get(['whatsappText', 'fulfillmentText', 'customBackendUrl'], async (saved) => {
+  chrome.storage.local.get(['whatsappText', 'fulfillmentText', 'fsScriptText', 'customBackendUrl'], async (saved) => {
     if (saved.whatsappText !== undefined && saved.whatsappText !== null) {
       whatsappText.value = saved.whatsappText;
     }
-    if (saved.fulfillmentText !== undefined && saved.fulfillmentText !== null) {
+    if (!scriptSync.owned && (!scriptSync.observed || saved.fsScriptText !== saved.fulfillmentText) && saved.fulfillmentText !== undefined && saved.fulfillmentText !== null) {
       fulfillmentText.value = saved.fulfillmentText;
     }
     // Migrate the obsolete development default; preserve explicitly configured services.
@@ -324,6 +337,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  document.getElementById('openSidePanel').addEventListener('click', async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id !== undefined) await chrome.sidePanel.open({ tabId: tab.id });
+  });
+  if (new URLSearchParams(window.location.search).get('sidepanel') === 'true') {
+    document.body.style.width = '100%';
+    document.getElementById('openSidePanel').hidden = true;
+  }
   // Standalone Window / Keep Open Behavior
   const urlParams = new URLSearchParams(window.location.search);
   const isStandalone = urlParams.get('standalone') === 'true';
@@ -405,10 +426,21 @@ document.addEventListener('DOMContentLoaded', () => {
   btnCapture.addEventListener('click', captureSelection);
 
   const verify = async () => {
+    if (btnVerify.disabled || vaccines.isBusy()) return;
+    if (vaccines.vaccineMode()) {
+      activeResult = null; btnVerify.disabled = true;
+      try {
+        if (normalizeBackendUrl(backendUrlInput.value) !== normalizeBackendUrl(savedBackendUrl)) throw new Error('Click Save to apply the changed backend URL.');
+        await vaccines.verify();
+      } catch (error) { showError(error); }
+      finally { btnVerify.disabled = false; }
+      return;
+    }
     const wa = whatsappText.value.trim();
     const ff = fulfillmentText.value.trim();
 
     if (!wa || !ff) {
+      document.getElementById('auditStatus').textContent = 'Audit requires review';
       results.innerHTML = '<span style="color:red; font-size:11px;">Error: Paste or load both the WhatsApp client order and the systems fulfillment log.</span>';
       return;
     }
@@ -417,6 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const version = inputRevision, context = contextRevision;
     activeResult = null;
     btnVerify.disabled = true;
+    document.getElementById('auditStatus').textContent = 'Audit in progress';
     results.innerHTML = '<span style="color:#5C2D91; font-weight:bold; animation:pulse 1s infinite;">Checking clinical compliance portal...</span>';
 
     try {

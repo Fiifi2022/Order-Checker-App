@@ -5543,7 +5543,14 @@ export default function VaccineAllocationBlueprint({
                         const dist = vData.distributed !== undefined ? vData.distributed : '';
                         const bal = computeBalance(vData.carryOver, vData.allocation, vData.distributed);
                         const vaccineStatus = allocationWorksheet ? getAllocationStatus(vData) : undefined;
-                        const cellStyle = (colIdx: number) => getAllocationCellStyle(row.baseFormatting?.[blueprintColumnKey(colIdx, products)], vaccineStatus, isGridCellInRange(row.id, colIdx) || (focusedCell?.rowId === row.id && focusedCell.colIdx === colIdx) || allCellsHighlighted || selectedColumnNames.has(pName) || isSelected);
+                        const cellStyle = (colIdx: number) => ({
+                          ...getAllocationCellStyle(row.baseFormatting?.[blueprintColumnKey(colIdx, products)], vaccineStatus, isGridCellInRange(row.id, colIdx) || (focusedCell?.rowId === row.id && focusedCell.colIdx === colIdx) || allCellsHighlighted || selectedColumnNames.has(pName) || isSelected),
+                          ...(bal === 0 ? { backgroundColor: '#15803D' } : {})
+                        });
+                        const inputStyle = {
+                          backgroundColor: 'transparent',
+                          ...(bal === 0 ? { color: '#FFFFFF', fontWeight: 700 } : {})
+                        };
 
                         const isNegativeBalance = typeof bal === 'number' && bal < 0;
                         const vaccineComment =
@@ -5576,7 +5583,7 @@ export default function VaccineAllocationBlueprint({
                               ref={registerGridCell(row.id, 5 + pIdx * 4 + 0)}
                                   onMouseDown={e => handleGridCellMouseDown(e, row.id, 5 + pIdx * 4 + 0)}
                                   onMouseEnter={() => handleGridCellMouseEnter(row.id, 5 + pIdx * 4 + 0)}
-                                  style={{ backgroundColor: 'transparent' }}
+                                  style={inputStyle}
                               onKeyDown={e => handleGridCellKeyDown(e, row.id, 5 + pIdx * 4 + 0)}
                                 onPaste={e => handleDirectCellPaste(e, row.id, 5 + pIdx * 4 + 0)}
                                 placeholder=""
@@ -5611,7 +5618,7 @@ export default function VaccineAllocationBlueprint({
                               ref={registerGridCell(row.id, 5 + pIdx * 4 + 1)}
                                   onMouseDown={e => handleGridCellMouseDown(e, row.id, 5 + pIdx * 4 + 1)}
                                   onMouseEnter={() => handleGridCellMouseEnter(row.id, 5 + pIdx * 4 + 1)}
-                                  style={{ backgroundColor: 'transparent' }}
+                                  style={inputStyle}
                               onKeyDown={e => handleGridCellKeyDown(e, row.id, 5 + pIdx * 4 + 1)}
                                   onPaste={e => handleDirectCellPaste(e, row.id, 5 + pIdx * 4 + 1)}
                                   placeholder=""
@@ -5651,7 +5658,7 @@ export default function VaccineAllocationBlueprint({
                               ref={registerGridCell(row.id, 5 + pIdx * 4 + 2)}
                                   onMouseDown={e => handleGridCellMouseDown(e, row.id, 5 + pIdx * 4 + 2)}
                                   onMouseEnter={() => handleGridCellMouseEnter(row.id, 5 + pIdx * 4 + 2)}
-                                  style={{ backgroundColor: 'transparent' }}
+                                  style={inputStyle}
                               onKeyDown={e => handleGridCellKeyDown(e, row.id, 5 + pIdx * 4 + 2)}
                                 onPaste={e => handleDirectCellPaste(e, row.id, 5 + pIdx * 4 + 2)}
                                 placeholder=""
@@ -5674,6 +5681,8 @@ export default function VaccineAllocationBlueprint({
                                 className={`w-full text-right text-xs px-2 py-1.5 font-black ${
                                   isNegativeBalance
                                     ? 'text-red-700 font-black'
+                                    : bal === 0
+                                    ? 'text-white'
                                     : bal !== ''
                                     ? 'text-emerald-800'
                                     : 'text-slate-300'
