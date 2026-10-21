@@ -31,13 +31,13 @@ for (const footer of [delivery, contact, delivery + '\n' + contact, delivery + '
   });
 }
 
-test('service contacts are neither products nor the orderer phone; genuine phone mismatches remain', async () => {
+test('service contacts are neither products nor the orderer phone; contact differences are excluded from order comparisons', async () => {
   const result = await check(h + 'Phone: 0241234567\n' + p, h + p + '\nCustomer service: 0800719102');
   assert.equal(result.items.length, 2); assert.equal(result.allMatch, true);
   assert.equal(result.generalAudit.phone.fulfillmentValue, 'N/A');
   const conflict = await check(h + 'Phone: 0241234567\n' + p, h + 'Phone: 0247654321\n' + p + '\n' + contact);
-  assert.equal(conflict.generalAudit.phone.status, 'mismatch'); assert.equal(conflict.issueCount, 1);
-  assert.equal(classifyGeneralText('0800719102').category, 'unresolved_order');
+  assert.equal(conflict.generalAudit.phone.status, 'optional not provided'); assert.equal(conflict.issueCount, 0);
+  assert.equal(classifyGeneralText('0800719102').category, 'administrative');
 });
 
 for (const [label, a, b] of [

@@ -76,7 +76,7 @@ test('known facility records and product rules complete without any AI calls', a
 test('unresolved input gets one bounded AI fallback and retains explicit discrepancies', async () => {
   let calls = 0;
   let signal: AbortSignal | undefined;
-  const result = await runGeneralSemanticAudit(headers + 'Paracetmol - 5', headers + 'Paracetamol [5/5]', {}, { semanticTimeoutMs: 20 }, () => ({ models: {
+  const result = await runGeneralSemanticAudit(headers + 'Paracextmol - 5', headers + 'Paracetamol [5/5]', {}, { semanticTimeoutMs: 20 }, () => ({ models: {
     generateContent(options: any) { calls++; signal = options.config.abortSignal; return never(); }
   } }));
   assert.equal(calls, 1);

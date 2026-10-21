@@ -71,13 +71,13 @@ test('valid stock and confirmed limits pass without changing the original reques
   assert.equal(informational.confidence, 100);
 });
 
-test('missing requested identities fail, and available optional phone checks are scored', () => {
+test('missing requested identities need review, and contact numbers do not change confidence', () => {
   const missing = score(request, 'Paracetamol [5/5]\nORS [5/5]');
   assert.deepEqual(missing.auditSummary, { totalChecks: 6, passedChecks: 4, failedChecks: 2, discrepancyCount: 0, confidence: 67, missingRequiredCount: 2, reviewRequiredCount: 2 });
   const phone = score(request + '\nPhone: 0241234567', fulfillment + '\nPhone: 0247654321');
-  assert.equal(phone.auditSummary.totalChecks, 7);
+  assert.equal(phone.auditSummary.totalChecks, 6);
   assert.equal(phone.auditSummary.passedChecks, 6);
-  assert.equal(phone.confidence, 86);
+  assert.equal(phone.confidence, 100);
   const absent = score('PCM - 5', 'PCM [5/5]');
   assert.equal(absent.auditSummary.totalChecks, 4); // Missing mandatory identities are failed checks, not discrepancies.
 });

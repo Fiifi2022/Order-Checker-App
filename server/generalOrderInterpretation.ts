@@ -123,7 +123,7 @@ export function generalInterpretationGaps(customer: string, fulfilment: string, 
   const gaps: GeneralSemanticReview[] = [];
   for (const [text, source, input] of [[customer, 'customer_request', inputs.customer], [fulfilment, 'fulfillment_confirmation', inputs.fulfillment]] as const) {
     const parsed = new Map(input.products.map(product => [product.line, product]));
-    for (const [index, raw] of text.split(/\r?\n/).entries()) {
+    for (const [index, raw] of generalOrderRelevantText(text).split(/\r?\n/).entries()) {
       const line = stripGeneralListPrefix(generalOrderRelevantText(raw)), product = parsed.get(index + 1);
       const classification = classifyGeneralText(raw);
       if (classification.category === 'administrative') continue;

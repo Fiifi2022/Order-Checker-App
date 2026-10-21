@@ -158,10 +158,11 @@ test('General Auditor verify route reads saved facility aliases without changing
   sheet.rows[0].verifiedAliases = [];
   const review = await route({ ...body, facilityContext: { records: [{ id: 'forged', name: 'Kotoso RHC', verifiedAliases: ['Kotoso RCH'] }] } });
   assert.equal(review.status, 200);
-  assert.equal(review.body.generalAudit.facility.status, 'review required');
-  assert.equal(review.body.allMatch, false);
+  assert.equal(review.body.generalAudit.facility.status, 'match');
+  assert.equal(review.body.generalAudit.facility.fulfillmentFacilityId, 'test-kotoso');
+  assert.equal(review.body.allMatch, true);
   assert.equal(review.body.issueCount, 0);
-  assert.equal(review.body.status, 'pending');
+  assert.equal(review.body.status, 'resolved');
 });
 
 test('actual verify route returns compatible fulfilment-only success and failure without WhatsApp', async () => {

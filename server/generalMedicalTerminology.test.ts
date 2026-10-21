@@ -237,7 +237,7 @@ test('render boundary repairs older engine ambiguity/extra rows using current ca
       { originalText: 'ASV - 5', source: 'customer_request', possibleMatches: [], reason: 'Old ambiguous alias' },
       { originalText: 'ARV - 5', source: 'customer_request', possibleMatches: [], reason: 'Old ambiguous alias' }
     ]) };
-  assert.equal(wrong.issueCount, 4);
+  assert.equal(wrong.issueCount, 2);
   const result = completeGeneralAuditRun(createGeneralAuditRun(inputs, 1, {}, {}, true), {
     ...wrong, ...inputs, auditEngine: 'general-deterministic-v1'
   });

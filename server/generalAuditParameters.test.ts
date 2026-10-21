@@ -133,9 +133,10 @@ test('unavailable placeholders cannot become verified mandatory names or optiona
   }
 });
 
-test('unrelated unresolved text leaves the verified Products and Quantities parameter intact', async () => {
+test('an unclear additional product keeps verified items while the product field needs confirmation', async () => {
   const result = await runGeneralSemanticAudit(headers + products + '\nInclude something unusual.', headers + products, {}, support, () => { throw Error('Unavailable'); });
   assert.equal(result.allMatch, false);
   const markup = html(result);
-  assert.match(markup, /Products and Quantities \(mandatory\)<\/span><span class="text-green-700">VERIFIED MATCH/);
+  assert.match(markup, /Products and Quantities \(mandatory\)<\/span><span class="text-amber-800">MANUAL REVIEW REQUIRED/);
+  assert.ok(result.items.every(item => item.status === 'match'));
 });

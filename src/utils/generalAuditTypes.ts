@@ -16,12 +16,14 @@ export interface GeneralAuditCheckSummary {
 }
 export interface GeneralSemanticReview {
   kind?: 'product' | 'unparsed_text';
+  field?: import('./generalAuditReviews').GeneralEssentialField;
   originalText: string;
   source: 'customer_request' | 'fulfillment_confirmation';
   possibleMatches: string[];
   reason: string;
 }
 export interface GeneralAuditDetails {
+  dispatchReadiness?: { canDispatchAutomatically: boolean; requiresFacilityConfirmation: boolean };
   semanticReviews?: GeneralSemanticReview[];
   auditSummary?: GeneralAuditCheckSummary;
   facility: import('./generalFacility').GeneralFacilityResult;

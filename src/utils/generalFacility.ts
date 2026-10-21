@@ -26,6 +26,9 @@ export interface GeneralFacilityResult extends GeneralFieldResult {
   fulfillmentFacilityId?: string;
   evidence?: GeneralFacilityRecord[];
   aiSuggestion?: GeneralFacilityContext['aiSuggestion'];
+  /** Name comparison is separate from choosing an authoritative dispatch identity. */
+  identityStatus?: 'resolved' | 'unresolved';
+  requiresDispatchConfirmation?: boolean;
 }
 
 const clean = (value: string) => value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
@@ -41,10 +44,11 @@ export function normalizeGeneralFacilityName(value: string): string {
     .replace(/\bd h d\b/g, 'dhd').replace(/\bh c\b/g, 'hc').replace(/\bh s p\b/g, 'hsp')
     .replace(/\bd h\b/g, 'dh').replace(/\bp c\b/g, 'pc')
     .replace(/\bcommunity based health planning (?:and )?services\b/g, 'chps')
-    .replace(/\bchps compound\b/g, 'chps').replace(/\brhc\b/g, 'rural health centre')
+    .replace(/\bchps compound\b/g, 'chps').replace(/\brch\b/g, 'rhc').replace(/\brhc\b/g, 'rural health centre')
     .replace(/\bhc\b/g, 'health centre').replace(/\b(?:hsp|hosp)\b/g, 'hospital')
     .replace(/\bdh\b/g, 'district hospital').replace(/\bpc\b/g, 'polyclinic')
-    .replace(/\bdhd\b/g, 'district health directorate').replace(/\bcenter\b/g, 'centre');
+    .replace(/\bdhd\b/g, 'district health directorate').replace(/\b(?:center|centere|cetre)\b/g, 'centre')
+    .replace(/\bheath centre\b/g, 'health centre');
 }
 const typePattern = /\b(rural health centre|district health directorate|district hospital|health centre|medical centre|health post|hospital|polyclinic|clinic|chps)$/;
 function parts(value: string) {
@@ -52,7 +56,7 @@ function parts(value: string) {
   return { name, type, locality: type ? name.slice(0, -type.length).trim() : name };
 }
 export const hasGeneralFacilityType = (value: string) => !!parts(value).type;
-const rawType = '(?:community[- ]based health planning and services|rural health cent(?:re|er)|district health directorate|district hospital|health cent(?:re|er)|medical cent(?:re|er)|health post|c[. ]*h[. ]*p[. ]*s(?: compound)?|r[. ]*h[. ]*c|r[. ]*c[. ]*h|h[. ]*c|hsp|hosp(?:ital)?|dhd|dh|pc|polyclinic|clinic)';
+const rawType = '(?:community[- ]based health planning and services|rural health cent(?:re|er)|district health directorate|district hospital|health cent(?:re|er)|medical cent(?:re|er)|health post|c[. ]*h[. ]*p[. ]*s(?: compound)?|r[. ]*h[. ]*c|r[. ]*c[. ]*h|h[. /]*c|hsp|hosp(?:ital)?|dhd|dh|pc|polyclinic|clinic)';
 const typedName = new RegExp(`^([\\p{L}][\\p{L}\\p{N}'’.-]*(?:[ \\t]+[\\p{L}\\p{N}][\\p{L}\\p{N}'’.-]*){0,7}?[ \\t-]+${rawType})(?=$|[^\\p{L}\\p{N}])`, 'iu');
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -110,6 +114,23 @@ function similar(a: string, b: string) {
   if (!a || !b || a.length > 256 || b.length > 256) return false;
   return distance(a, b) <= (Math.max(a.length, b.length) >= 8 ? 2 : 1);
 }
+/** Conservative typo tolerance for the name only. Distinct reference IDs,
+ * geography, facility types and numeric site suffixes remain authoritative. */
+export function generalFacilityNamesMatch(customer: string, fulfillment: string): boolean {
+  if (customer === 'N/A' || fulfillment === 'N/A') return false;
+  const a = parts(customer), b = parts(fulfillment);
+  if (!a.locality || !b.locality || a.type !== b.type) return false;
+  if (a.name === b.name) return true;
+  if (!a.type || Math.min(a.locality.length, b.locality.length) < 5) return false;
+  if ((a.locality.match(/\d+/g) || []).join('|') !== (b.locality.match(/\d+/g) || []).join('|')) return false;
+  return distance(a.locality, b.locality) <= (Math.min(a.locality.length, b.locality.length) >= 10 ? 2 : 1);
+}
+
+/** Display names without exposing directory-selection ambiguity. */
+export function generalFacilityDisplayStatus(facility: GeneralFacilityResult): GeneralFieldResult['status'] {
+  return facility.status === 'review required' && generalFacilityNamesMatch(facility.whatsappValue, facility.fulfillmentValue) ? 'match' : facility.status;
+}
+
 function metadata(text: string, label: string) {
   return text.match(new RegExp(`^\\s*${label}\\s*[:=]\\s*([^\\n\\r]+)`, 'im'))?.[1].trim() || '';
 }
@@ -145,7 +166,15 @@ export function compareGeneralFacilities(customer: string, fulfillment: string, 
   const systemNames = namesFor(fulfillment, fulfillmentText);
   const left = customerNames[0] || 'N/A', right = systemNames[0] || 'N/A';
   const base = { whatsappValue: customerNames.length > 1 ? customerNames.join(' / ') : left, fulfillmentValue: systemNames.length > 1 ? systemNames.join(' / ') : right };
-  const result = (status: GeneralFacilityResult['status'], reason: string, extra: Partial<GeneralFacilityResult> = {}): GeneralFacilityResult => ({ ...base, status, reason, ...extra });
+  const result = (status: GeneralFacilityResult['status'], reason: string, extra: Partial<GeneralFacilityResult> = {}): GeneralFacilityResult => {
+    const nameMatch = status === 'match' || status === 'review required' && customerNames.length === 1 && systemNames.length === 1 && generalFacilityNamesMatch(left, right);
+    const identityResolved = status === 'match' && extra.verification === 'records';
+    return { ...base, status: nameMatch ? 'match' : status, reason,
+      ...extra, ...(nameMatch && !extra.verification ? { verification: 'normalized' as const } : {}),
+      identityStatus: identityResolved ? 'resolved' : 'unresolved',
+      requiresDispatchConfirmation: !identityResolved || !extra.fulfillmentFacilityId,
+    };
+  };
   if (customerNames.length > 1 || systemNames.length > 1) return result('review required', 'Multiple facilities appear in the source message. Verify the intended facility before dispatch.');
   if (left === 'N/A') return result('missing from customer request', 'No facility could be identified in the original customer order.');
   if (right === 'N/A') return result('not available in system entry', 'No facility could be identified in the Fulfilment Confirmation.');
@@ -182,6 +211,21 @@ export function compareGeneralFacilities(customer: string, fulfillment: string, 
   const unique = (list: GeneralFacilityRecord[]) => new Map(list.map(r => [identity(r), r]));
   const au = unique(ac), bu = unique(bc);
   const evidence = [...unique([...ac, ...bc]).values()];
+  // A unique intersection resolves duplicates using the explicit source context.
+  // Never select the first entry merely because its display name matches.
+  const shared = [...au.keys()].filter(key => bu.has(key));
+  if ((au.size > 1 || bu.size > 1) && shared.length === 1 && (au.size === 1 || bu.size === 1)) {
+    const selected = bu.get(shared[0])!;
+    return result('match', 'The Fulfilment System context identifies the matching facility.', {
+      ...extra, ...(selected.id ? { customerFacilityId: selected.id, fulfillmentFacilityId: selected.id } : {}),
+      verification: 'records', evidence: [selected],
+    });
+  }
+  if ((au.size > 1 || bu.size > 1) && !shared.length &&
+      (a.type && b.type && a.type !== b.type ||
+       !generalFacilityNamesMatch(left, right) && !similar(a.locality, b.locality) && !similar(a.name, b.name))) {
+    return result('mismatch', 'The facility names identify different locations or facility types.', { ...extra, evidence });
+  }
   if (au.size > 1 || bu.size > 1) return result('review required', 'The name resolves to multiple facility records. Verify the facility ID, district and region.', { ...extra, evidence });
   if (au.size === 1 && bu.size === 1) {
     const ar = ac[0], br = bc[0];
@@ -201,6 +245,10 @@ export function compareGeneralFacilities(customer: string, fulfillment: string, 
     if (id && ids.has(id) && !byName(name).some(r => r.id === id)) {
       return result('review required', 'A supplied facility ID does not agree with the name or verified aliases in its record. Verify before dispatch.', { ...extra, evidence });
     }
+  }
+  const siteNumbers = (value: string) => (value.match(/\d+/g) || []).join('|');
+  if (a.type && a.type === b.type && siteNumbers(a.locality) !== siteNumbers(b.locality) && a.locality.replace(/\d+/g, '#') === b.locality.replace(/\d+/g, '#')) {
+    return result('mismatch', 'The facility names identify different numbered sites.', { ...extra, evidence });
   }
   if (a.type && b.type && a.type !== b.type) return result('mismatch', 'The names specify different facility types; they cannot be assumed to be the same facility.', { ...extra, evidence });
   const geographyConflict = ['district', 'region'].some(label => {

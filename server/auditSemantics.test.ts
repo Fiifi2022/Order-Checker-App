@@ -215,8 +215,8 @@ test('valid interpreted vaccine pairs pass and exceeding allocation remains bloc
 test('quota failure makes one semantic request and falls back without any background retry', async () => {
   const { geminiUsage } = await import('./geminiUsage');
   let calls = 0;
-  const customer = headers.replace('Kade', 'Quota Fixture') + 'Paracetmol - 5';
-  const fulfilment = customer.replace('Isaac Awuyem', 'Evelyn Awuyem').replace('Paracetmol', 'Paracetamol');
+  const customer = headers.replace('Kade', 'Quota Fixture') + 'Paracextmol - 5';
+  const fulfilment = customer.replace('Isaac Awuyem', 'Evelyn Awuyem').replace('Paracextmol', 'Paracetamol');
   const getClient = () => ({ models: { async generateContent(options: any) {
     calls++; assert.equal(geminiUsage.getStatus().status, 'processing');
     assert.equal(options.config.httpOptions.retryOptions.attempts, 1);

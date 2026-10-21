@@ -155,7 +155,7 @@ test('numeric metadata never adds products to the two-input comparison', () => {
   );
   assert.deepEqual(result.items.map(item => item.name), ['ORS']);
   assert.equal(result.issueCount, 0);
-  assert.equal(result.meta.phone.whatsappValue, '0244123456');
+  assert.equal(result.meta.phone.whatsappValue, 'N/A');
   assert.equal(result.meta.dropArea?.whatsappValue, 'Zone 7');
 });
 

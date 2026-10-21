@@ -98,7 +98,7 @@ test('General Auditor verdicts show operational statuses and missing-name warnin
   const html = renderToStaticMarkup(createElement(Summary, { details: result.generalAudit }));
   assert.match(html, /Order matches, with 2 products currently out of stock/);
   assert.doesNotMatch(html, /Missing Products|Extra Products|Quantity Discrepancies/);
-  assert.equal(audit('ORS - 5', 'ORS - 5').generalAudit.message, 'All audit checks passed — ready for dispatch.');
+  assert.equal(audit('ORS - 5', 'ORS - 5').generalAudit.message, 'All order details match.');
   assert.equal(audit('ORS - 5', 'ORT - 3').generalAudit.message, '1 discrepancy found — review before dispatch.');
   const absentNames = runGeneralAuditor('ORS - 5', 'ORS - 5');
   assert.equal(absentNames.issueCount, 0);

@@ -1,3 +1,5 @@
+import { generalFacilityDisplayStatus } from '../utils/generalFacility';
+import { generalEssentialReviewNotices } from '../utils/generalAuditReviews';
 import type { GeneralAuditDetails, GeneralProductResult } from '../utils/generalAuditTypes';
 import { generalProductDisplayName } from '../utils/generalAuditor';
 import GeneralProductCategoryBadge from './GeneralProductCategoryBadge';
@@ -30,6 +32,13 @@ export function GeneralOrderLimitPrompt({ product, onDecision, disabled = false 
 }
 
 export default function GeneralFulfillmentSummary({ details }: { details: GeneralAuditDetails }) {
+  const notices = generalEssentialReviewNotices(details.semanticReviews);
+  const fieldWarnings = new Set(notices.map(notice => notice.message));
+  const obsoleteWarning = /UNRESOLVED TEXT|Product or quantity remains unresolved|Some text could not be verified automatically|FACILITY REVIEW REQUIRED|multiple facility records|Verify the facility ID|Manually verify the facility|Possible facility match|Facility: Confirm/i;
+  const facilityNameMatched = generalFacilityDisplayStatus(details.facility) === 'match';
+  const reviewCount = Math.max(0, (details.auditSummary?.reviewRequiredCount || 0) - Number(details.facility.status === 'review required' && facilityNameMatched));
+  const status = /POSSIBLE FACILITY MATCH/i.test(details.finalStatus) ? 'ORDER CHECKS' : /UNRESOLVED TEXT/i.test(details.finalStatus) ? notices.length ? 'ORDER DETAILS REQUIRED' : 'ORDER CHECKS' : details.finalStatus;
+  const warnings = (details.warnings || []).filter(warning => !fieldWarnings.has(warning) && !obsoleteWarning.test(warning));
   const groups = [
     { status: 'discrepancy', kind: 'missing', title: 'Missing Products' },
     { status: 'discrepancy', kind: 'extra', title: 'Extra Products' },
@@ -39,17 +48,11 @@ export default function GeneralFulfillmentSummary({ details }: { details: Genera
     { status: 'order limit applied', title: 'Order Limit Applied' },
     { status: 'out of stock', title: 'Out of Stock' }
   ];
-  const metadata = [details.dropArea?.status === 'mismatch' && 'Location Mismatch — Delivery/Drop Area', details.district?.status === 'mismatch' && 'District Mismatch', details.facility.status === 'mismatch' && 'Facility Mismatch', details.orderer.status === 'mismatch' && 'Orderer Name Mismatch', details.phone.status === 'mismatch' && 'Phone Number Mismatch'].filter(Boolean);
+  const metadata = [details.dropArea?.status === 'mismatch' && 'Location Mismatch — Delivery/Drop Area', details.district?.status === 'mismatch' && 'District Mismatch', details.facility.status === 'mismatch' && 'Facility Mismatch', details.orderer.status === 'mismatch' && 'Orderer Name Mismatch'].filter(Boolean);
   return <section className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm space-y-4" aria-label="Fulfillment summary">
-    <h4 className="font-bold text-[#3B1A5E]">{details.finalStatus}</h4>
-    {details.message && <p className="text-sm">{details.message}</p>}
-    {!!details.warnings?.length && <div className="text-xs text-amber-800"><h5 className="font-semibold">Warnings</h5><ul>{details.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></div>}
-    {details.facility.status === 'review required' && <div className="text-xs text-amber-800" role="status">
-      <h5 className="font-semibold">REVIEW REQUIRED – Possible Facility Match</h5>
-      <p>{details.facility.whatsappValue} / {details.facility.fulfillmentValue}</p>
-      <p>{details.facility.reason}</p>
-      <p>Manually verify the facility before dispatch.</p>
-    </div>}
+    <h4 className="font-bold text-[#3B1A5E]">{status}</h4>
+    {details.message && !obsoleteWarning.test(details.message) && <p className="text-sm">{details.message}</p>}
+    {!!warnings.length && <div className="text-xs text-amber-800"><h5 className="font-semibold">Warnings</h5><ul>{warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></div>}
     {metadata.length > 0 && <div className="text-xs text-red-800"><h5 className="font-semibold">Metadata Discrepancies</h5><ul>{metadata.map(issue => <li key={String(issue)}>{issue}</li>)}</ul></div>}
     {groups.map(group => {
       const products = details.products.filter(product => product.fulfillmentStatus === group.status && (!group.kind || product.discrepancyKind === group.kind));
@@ -66,6 +69,6 @@ export default function GeneralFulfillmentSummary({ details }: { details: Genera
         </li>)}</ul>
       </div> : null;
     })}
-    <p className="text-xs font-semibold">Audit Result: {details.discrepancies.length ? 'Discrepancy Detected' : details.auditSummary?.missingRequiredCount ? 'Missing Required Information' : details.auditSummary?.reviewRequiredCount ? 'Manual Review Required' : details.pendingOrderLimitCount ? 'Awaiting Order Limit Validation' : 'VERIFIED MATCH'}</p>
+    <p className="text-xs font-semibold">Audit Result: {details.discrepancies.length ? 'Discrepancy Detected' : details.auditSummary?.missingRequiredCount ? 'Missing Required Information' : reviewCount ? 'Manual Review Required' : details.pendingOrderLimitCount ? 'Awaiting Order Limit Validation' : 'VERIFIED MATCH'}</p>
   </section>;
 }

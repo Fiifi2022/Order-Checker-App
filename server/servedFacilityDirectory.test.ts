@@ -40,13 +40,13 @@ test('served names and standard abbreviations resolve to the imported reference 
   assert.equal(available.records.length, 1509);
 });
 
-test('the CSV verifies Kotoso RCH, and does not silently approve RHC or change its supplied facility group', () => {
+test('the CSV supports normalized Kotoso RHC/RCH names without changing its supplied facility group', () => {
   const kotoso = servedFacilityRecords.find(record => record.name === 'Kotoso RCH')!;
   assert.equal(kotoso.district, 'Kwahu East');
   assert.equal(kotoso.region, 'Eastern');
   assert.equal(kotoso.facilityType, 'CHPS');
   assert.equal(compare('Kotoso RCH', 'KOTOSO RCH').verification, 'records');
-  assert.equal(compare('KOTOSO RHC', 'Kotoso RCH').status, 'review required');
+  assert.equal(compare('KOTOSO RHC', 'Kotoso RCH').status, 'match');
   assert.equal(kotoso.verifiedAliases, undefined);
 });
 
@@ -54,7 +54,10 @@ test('same-name facilities in different districts remain distinct and cannot be 
   const records = servedFacilityRecords.filter(record => record.name === 'Akutuase CHPS');
   assert.equal(records.length, 2);
   assert.notEqual(records[0].district, records[1].district);
-  assert.equal(compare('Akutuase CHPS', 'AKUTUASE CHPS').status, 'review required');
+  const unscoped = compare('Akutuase CHPS', 'AKUTUASE CHPS');
+  assert.equal(unscoped.status, 'match');
+  assert.equal(unscoped.identityStatus, 'unresolved');
+  assert.equal(unscoped.requiresDispatchConfirmation, true);
   assert.equal(compare('Akutuase CHPS', 'AKUTUASE CHPS', 'District: Atiwa East', 'Region: Eastern').status, 'match');
   assert.equal(compare('Akutuase CHPS', 'AKUTUASE CHPS', 'District: Atiwa East', 'District: Asante Akim North').status, 'mismatch');
 });
@@ -84,7 +87,10 @@ test('matching saved records enrich the served directory without introducing dup
   assert.equal(result.fulfillmentFacilityId, 'test-official-asaam');
   const conflicting = mergeGeneralFacilityRecords([primary], [linked, { ...linked, id: 'test-different-id', source: 'test/other' }]);
   assert.equal(conflicting.length, 3);
-  assert.equal(compareGeneralFacilities('Asaam HC', 'Asaam Health Centre', '', '', { records: conflicting }).status, 'review required');
+  const unresolved = compareGeneralFacilities('Asaam HC', 'Asaam Health Centre', '', '', { records: conflicting });
+  assert.equal(unresolved.status, 'match');
+  assert.equal(unresolved.identityStatus, 'unresolved');
+  assert.equal(unresolved.fulfillmentFacilityId, undefined);
   const otherDistrict = mergeGeneralFacilityRecords([primary], [{ ...linked, district: 'Other District' }]);
   assert.equal(otherDistrict.length, 2);
 });

@@ -34,14 +34,19 @@ test('requested case, space, punctuation and Ghana facility abbreviation scenari
   assert.equal(compare('Kotoso RHC', 'Another facility').status, 'mismatch');
 });
 
-test('transposed abbreviations and minor typos require verified aliases, never fuzzy or Gemini alone', () => {
-  for (const other of ['Kotoso RCH', 'Kotos RHC', 'Kotsoo RHC']) assert.equal(compare('Kotoso RHC', other).status, 'review required');
+test('transposed abbreviations and minor typos match names while identity still needs evidence', () => {
+  for (const other of ['Kotoso RCH', 'Kotos RHC', 'Kotsoo RHC']) {
+    const result = compare('Kotoso RHC', other);
+    assert.equal(result.status, 'match');
+    assert.equal(result.identityStatus, 'unresolved');
+    assert.equal(result.requiresDispatchConfirmation, true);
+  }
   const verified = compare('Kotoso RHC', 'Kotoso RCH', records);
   assert.equal(verified.status, 'match');
   assert.equal(verified.verification, 'records');
   assert.equal(verified.customerFacilityId, 'test-kotoso');
   assert.equal(verified.fulfillmentFacilityId, 'test-kotoso');
-  assert.equal(compare('Kotoso RHC', 'Kotoso RCH', [{ ...records[0], verifiedAliases: [] }]).status, 'review required');
+  assert.equal(compare('Kotoso RHC', 'Kotoso RCH', [{ ...records[0], verifiedAliases: [] }]).status, 'match');
 });
 
 test('explicit different identifiers override identical or similar names and AI suggestions', () => {
@@ -57,12 +62,15 @@ test('explicit different identifiers override identical or similar names and AI 
 
 test('district, region and official IDs distinguish duplicated facility names', () => {
   const duplicates = [records[0], { ...records[0], id: 'test-kotoso-2', district: 'Other District', region: 'Other Region', source: 'test/kotoso-2' }];
-  assert.equal(compare('Kotoso RHC', 'Kotoso RHC', duplicates).status, 'review required');
+  const unscoped = compare('Kotoso RHC', 'Kotoso RHC', duplicates);
+  assert.equal(unscoped.status, 'match');
+  assert.equal(unscoped.identityStatus, 'unresolved');
+  assert.equal(unscoped.requiresDispatchConfirmation, true);
   const scoped = compareGeneralFacilities('Kotoso RHC', 'Kotoso RCH', 'District: Kwahu East', 'Region: Eastern', { records: duplicates });
   assert.equal(scoped.status, 'match');
   const different = compareGeneralFacilities('Kotoso RHC', 'Kotoso RHC', 'District: Kwahu East', 'District: Other District', { records: duplicates });
   assert.equal(different.status, 'mismatch');
-  assert.equal(compareGeneralFacilities('Kotoso RHC', 'Kotoso RHC', 'District: A', 'District: B').status, 'review required');
+  assert.equal(compareGeneralFacilities('Kotoso RHC', 'Kotoso RHC', 'District: A', 'District: B').status, 'match');
 });
 
 test('extracts independent facilities from WhatsApp prose and standalone names without replacing explicit destinations', () => {
@@ -83,25 +91,26 @@ test('multiple unstructured facilities are reviewable rather than silently choos
   assert.equal(result.status, 'review required');
 });
 
-test('unverified similarity blocks confirmation without reporting a genuine mismatch or changing product decisions', () => {
+test('matching names pass the audit without exposing identity warnings or changing product decisions', () => {
   const result = audit();
-  assert.equal(result.allMatch, false);
+  assert.equal(result.allMatch, true);
   assert.equal(result.issueCount, 0);
-  assert.equal(result.verdict, 'REVIEW REQUIRED');
-  assert.equal(result.auditSummary.reviewRequiredCount, 1);
-  assert.ok(result.confidence < 100);
+  assert.equal(result.verdict, 'NO DISCREPANCY');
+  assert.equal(result.auditSummary.reviewRequiredCount || 0, 0);
+  assert.equal(result.confidence, 100);
+  assert.equal(result.canDispatchAutomatically, false);
+  assert.equal(result.requiresFacilityConfirmation, true);
   assert.equal(result.items[0].status, 'match');
   const html = renderToStaticMarkup(createElement(Details, { details: result.generalAudit })) +
     renderToStaticMarkup(createElement(Summary, { details: result.generalAudit })) +
     renderToStaticMarkup(createElement(Confidence, { summary: result.auditSummary }));
-  assert.match(html, /REVIEW REQUIRED/);
   assert.match(html, /KOTOSO RHC/);
   assert.match(html, /Kotoso RCH/);
-  assert.match(html, /before dispatch/);
-  assert.doesNotMatch(html, /FACILITY NAME MISMATCH|DISCREPANCY FOUND|SYSTEM MATCH/);
+  assert.match(html, /SYSTEM MATCH/);
+  assert.doesNotMatch(html, /REVIEW REQUIRED|before dispatch|FACILITY NAME MISMATCH|DISCREPANCY FOUND|multiple facility records/);
   const verified = audit(records);
   assert.equal(verified.allMatch, true);
-  assert.match(renderToStaticMarkup(createElement(Details, { details: verified.generalAudit })), /MATCH – Verified Facility/);
+  assert.match(renderToStaticMarkup(createElement(Details, { details: verified.generalAudit })), /MATCH/);
 });
 
 test('verified identity survives API completion and order-limit acknowledgements; new inputs discard stale identity', () => {
@@ -112,8 +121,10 @@ test('verified identity survives API completion and order-limit acknowledgements
   const changed = completeGeneralAuditRun(createGeneralAuditRun({ whatsappMessage: request, fulfillmentConfirmation: supplied.replace('Kotoso RCH', 'Another Facility') }, 2), server);
   assert.equal(changed.generalAudit.facility.status, 'mismatch');
   const short = runGeneralAuditor(request, supplied.replace('[5/5]', '[3/5]'));
-  assert.equal(applyGeneralOrderLimitDecision(short, short.items[0].fulfillment.key, true).generalAudit.facility.status, 'review required');
-  assert.equal(applyGeneralOrderLimitDecision(short, short.items[0].fulfillment.key, true).allMatch, false);
+  const confirmed = applyGeneralOrderLimitDecision(short, short.items[0].fulfillment.key, true);
+  assert.equal(confirmed.generalAudit.facility.status, 'match');
+  assert.equal(confirmed.allMatch, true);
+  assert.equal(confirmed.canDispatchAutomatically, false);
   const person = runGeneralAuditor(request, supplied.replace('Mary Mensah', 'Jane Mensah'), {}, { facilityContext: { records } });
   assert.equal(person.generalAudit.orderer.status, 'mismatch');
   assert.equal(person.issueCount, 1);
@@ -131,14 +142,15 @@ test('server records use real saved identifiers and explicitly verified aliases;
   assert.deepEqual(await readGeneralFacilityContext(() => new Promise(() => {}), 5, []), { records: [], lookupUnavailable: true });
 });
 
-test('Gemini suggestions remain possible matches and cannot override authoritative record IDs', async () => {
+test('Gemini suggestions cannot resolve identity or override authoritative record IDs', async () => {
   const pair = { customerRequest: { value: 'KOTOSO RHC', sourceText: 'Facility: KOTOSO RHC', confidence: 0.99 },
     fulfilmentConfirmation: { value: 'Kotoso RCH', sourceText: 'Facility: Kotoso RCH', confidence: 0.99 }, equivalent: true, confidence: 0.99 };
   const data = { facility: pair, orderer: { customerRequest: null, fulfilmentConfirmation: null, equivalent: false, confidence: 0 }, customerProducts: [], fulfilmentProducts: [], possibleMissingProducts: [], possibleExtraProducts: [], semanticWarnings: [] };
   const getClient = () => ({ models: { generateContent: async () => ({ text: JSON.stringify(data) }) } });
   const result = await runGeneralSemanticAudit(request, supplied, {}, {}, getClient);
-  assert.equal(result.generalAudit.facility.status, 'review required');
-  assert.equal(result.allMatch, false);
+  assert.equal(result.generalAudit.facility.status, 'match');
+  assert.equal(result.allMatch, true);
+  assert.equal(result.canDispatchAutomatically, false);
   const mismatch = await runGeneralSemanticAudit(request + '\nFacility ID: one', supplied + '\nFacility ID: two', {}, { facilityContext: { records } }, getClient);
   assert.equal(mismatch.generalAudit.facility.status, 'mismatch');
 });
@@ -146,7 +158,9 @@ test('Gemini suggestions remain possible matches and cannot override authoritati
 
 test('contradictory directory geography and names cannot pass because their normalized spelling agrees', () => {
   const wrongDistrict = compareGeneralFacilities('Kotoso RHC', 'Kotoso RHC', '', 'District: Wrong District', { records });
-  assert.equal(wrongDistrict.status, 'review required');
+  assert.equal(wrongDistrict.status, 'match');
+  assert.equal(wrongDistrict.identityStatus, 'unresolved');
+  assert.equal(wrongDistrict.requiresDispatchConfirmation, true);
   const wrongIdentity = compareGeneralFacilities('Kotoso RHC', 'Another Facility', 'Facility ID: test-kotoso', 'Facility ID: test-kotoso', { records });
   assert.equal(wrongIdentity.status, 'mismatch');
   assert.equal(compare('RHC', 'RHC').status, 'review required');

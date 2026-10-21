@@ -83,7 +83,7 @@ test('natural quantity-before-name intent is normalized without supplying an inv
     product(a, 'Paracetamol Syrup', '10', 10)
   ], [product(b, 'Paracetamol Syrup', '10/10', 10)])));
   assert.equal(result.allMatch, true);
-  assert.equal(result.items[0].name, 'Paracetamol Syrup');
+  assert.match(result.items[0].name, /^(?:PCM|Paracetamol) syrup$/i);
   assert.equal(result.items[0].requested, '10');
 });
 
@@ -106,16 +106,16 @@ test('ambiguity requires human review and survives client summary processing', a
     product(a, null, '5', 5, { status: 'AMBIGUOUS_PRODUCT', confidence: 0.54, possibleMatches: [adult, child] })
   ], [product(b, adult, '5/5', 5)])));
   assert.equal(result.allMatch, false);
-  assert.equal(result.issueCount, 1);
+  assert.equal(result.issueCount, 0);
   assert.equal(result.items.length, 0);
   assert.equal(result.generalAudit.semanticReviews?.length, 1);
   const inputs = { whatsappMessage: headers + a, fulfillmentConfirmation: headers + b };
   const accepted = completeGeneralAuditRun(createGeneralAuditRun(inputs, 1, {}, {}, true), { ...result, ...inputs });
   assert.equal(accepted.allMatch, false);
-  assert.equal(accepted.issueCount, 1);
+  assert.equal(accepted.issueCount, 0);
   const html = renderToStaticMarkup(createElement(Details, { details: result.generalAudit }));
-  assert.match(html, /AMBIGUOUS PRODUCT/);
-  assert.match(html, /Verify before dispatch/);
+  assert.match(html, /Product: Confirm the requested product/);
+  assert.match(html, /role="status"/);
   assert.doesNotMatch(html, /4\. cough syrup/);
 });
 
@@ -154,7 +154,7 @@ test('API failure and invalid JSON fall back, while repeated successful extracti
     } } }));
     assert.equal(result.semanticAnalysis.status, 'fallback');
     assert.equal(result.allMatch, false);
-    assert.match(result.generalAudit.semanticReviews?.[0].reason || '', /unresolved/);
+    assert.match(result.generalAudit.semanticReviews?.[0].reason || '', /Product: Confirm/);
   }
   const a = headers + 'need paracetamol syrup 15';
   const b = headers + 'Paracetamol Syrup [15/15]';

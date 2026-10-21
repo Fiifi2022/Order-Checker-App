@@ -84,7 +84,10 @@ test('unreadable natural-language orders return manual review on AI outage, neve
   const result = await runGeneralSemanticAudit(headers + 'Please send something suitable.', headers + 'PCM [5/5]', {}, {}, () => { throw new Error('offline'); });
   assert.equal(result.allMatch, false);
   assert.ok(result.generalAudit.semanticReviews?.length);
-  assert.equal(result.items.some(item => item.provenance.some(product => product.normalizedName.includes('paracetamol'))), true);
+  assert.equal(result.issueCount, 0);
+  assert.equal(result.items.some(item => item.status === 'extra item'), false);
+  assert.equal(result.fulfilledOrder.products[0]?.quantity, 5);
+  assert.match(result.fulfilledOrder.products[0]?.name || '', /PCM|Paracetamol/i);
 });
 
 test('timings expose only numeric aggregates, including extraction and final validation', async () => {

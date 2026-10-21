@@ -1173,7 +1173,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                             Confirm & Clear
                           </button>
                         ) : generalReviewRequired && !generalDetails?.pendingOrderLimitCount ? (
-                          <span className="text-xs font-semibold text-amber-800">{facilityReviewRequired ? 'Verify the facility before dispatch' : 'Review the highlighted fields before dispatch'}</span>
+                          <span className="text-xs font-semibold text-amber-800">{facilityReviewRequired ? 'Order checks incomplete' : 'Review the highlighted fields before dispatch'}</span>
                         ) : generalDetails?.pendingOrderLimitCount ? (
                           <span className="text-xs font-semibold text-amber-800">Order Limit answers required</span>
                         ) : (

@@ -30,12 +30,12 @@ test('converted shortages are discrepancies until a limit is confirmed', () => {
   const excess = runGeneralAuditor('ORS - 1 box', 'ORS - 30 units', { [normalizeGeneralProductName('ORS')]: true });
   assert.equal(excess.issueCount, 1); assert.equal(excess.generalAudit.pendingOrderLimitCount, 0);
 });
-test('Ghana phone formatting matches, missing is optional, different numbers fail', () => {
+test('Contact numbers are optional and differences do not fail an order', () => {
   const customer = 'Phone: 0241234567\nORS - 5';
   for (const phone of ['+233241234567', '00233 24 123 4567', '024-123-4567']) assert.equal(runGeneralAuditor(customer, `Phone: ${phone}\nORS - 5`).allMatch, true, phone);
   assert.equal(runGeneralAuditor(customer, 'ORS - 5').allMatch, true);
   const different = runGeneralAuditor(customer, 'Phone: 0241234568\nORS - 5');
-  assert.equal(different.generalAudit.phone.status, 'mismatch'); assert.equal(different.issueCount, 1);
+  assert.equal(different.generalAudit.phone.status, 'optional not provided'); assert.equal(different.issueCount, 0);
 });
 test('aliases preserve clinical strengths and forms', () => {
   for (const [left, right] of [['PCM', 'Paracetamol'], ['Amox', 'Amoxicillin'], ['ORS', 'Oral Rehydration Salts'], ['ACT/AL', 'Coartem'], ['Coartem 20/120mg Tablet', 'Artemether/Lumefantrine 20/120mg Tablet']]) assert.equal(runGeneralAuditor(`${left} - 5`, `${right} - 5`).allMatch, true);

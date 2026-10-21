@@ -1,16 +1,19 @@
+import { generalEssentialReviewNotices } from '../src/utils/generalAuditReviews';
+import { extractGeneralOrderDeterministically, type StructuredGeneralOrder } from './generalOrderExtraction';
+import { resolveGeneralOrderExtraction } from './generalHybridExtraction';
 import { canAuditGeneralWithoutAi, generalInterpretationGaps, interpretGeneralOrder, type GeneralInterpretedAudit } from './generalOrderInterpretation';
 import { runGeneralAuditor, extractGeneralInput, enforceGeneralIdentityMatches, preserveGeneralOutOfStockEvidence, preserveGeneralRequestedStockProducts, summarizeGeneralProducts, normalizeGeneralProductName, type GeneralAuditSupport } from './generalAuditor';
 
-export async function runGeneralSemanticAudit(customer: string, fulfilment: string, decisions: Record<string, boolean>, support: GeneralAuditSupport, getClient: () => any) {
+async function auditGeneralExtractedText(customer: string, fulfilment: string, decisions: Record<string, boolean>, support: GeneralAuditSupport, getClient: () => any, override?: GeneralInterpretedAudit) {
   // Always run reference/rule validation before considering optional interpretation.
   let first: ReturnType<typeof runGeneralAuditor> | undefined;
   let extracted: Parameters<typeof canAuditGeneralWithoutAi>[2];
   const requestSupport = { ...support, onExtraction: (customer: any, fulfillment: any) => { extracted = { customer, fulfillment }; } };
   try { first = support.timing ? support.timing.measure('deterministic', () => runGeneralAuditor(customer, fulfilment, decisions, requestSupport)) : runGeneralAuditor(customer, fulfilment, decisions, requestSupport); } catch { /* Unreadable intent may need the bounded fallback. */ }
-  if (first && canAuditGeneralWithoutAi(customer, fulfilment, extracted)) return { ...first, auditEngine: 'general-deterministic-v1',
+  if (!override && first && canAuditGeneralWithoutAi(customer, fulfilment, extracted)) return { ...first, auditEngine: 'general-deterministic-v1',
     semanticAnalysis: { status: 'skipped' as const, reason: 'Deterministic reference checks completed; AI unnecessary' } };
   const interpret = () => interpretGeneralOrder(customer, fulfilment, getClient, support.semanticTimeoutMs, { signal: support.signal, cacheScope: support.semanticCacheScope, needsInterpretation: true });
-  let interpreted: GeneralInterpretedAudit = await (support.timing ? support.timing.measureAsync('gemini', interpret) : interpret());
+  let interpreted: GeneralInterpretedAudit = override || await (support.timing ? support.timing.measureAsync('gemini', interpret) : interpret());
   if (interpreted.semanticAnalysis.status === 'used') {
     interpreted.fulfilmentConfirmation = preserveGeneralOutOfStockEvidence(fulfilment, interpreted.fulfilmentConfirmation);
     interpreted.customerRequest = preserveGeneralRequestedStockProducts(customer, fulfilment, interpreted.customerRequest);
@@ -43,7 +46,7 @@ export async function runGeneralSemanticAudit(customer: string, fulfilment: stri
       if (field === 'orderer') result.meta.customerName = detail; else result.meta.facility = detail;
     }
   }
-  if (interpreted.semanticAnalysis.status === 'fallback') {
+  if (interpreted.semanticAnalysis.status === 'fallback' && !override) {
     // AI availability cannot turn verified products or an entire order into an
     // ambiguous product. Only unresolved source lines receive review entries.
     const existingReviews = result.generalAudit.semanticReviews || [];
@@ -74,4 +77,58 @@ export async function runGeneralSemanticAudit(customer: string, fulfilment: stri
       details.productCount.requested, details.productCount.found, reviews, details) };
   }
   return { ...result, auditEngine: 'general-deterministic-v1', semanticAnalysis: interpreted.semanticAnalysis };
+}
+
+function deferUncertainProducts<T extends ReturnType<typeof runGeneralAuditor>>(result: T, customerUncertain: boolean, fulfillmentUncertain: boolean): T {
+  const reviews = result.generalAudit.semanticReviews || [];
+  const unresolved = new Set(reviews.map(review => JSON.stringify([review.source, review.originalText.trim()])));
+  const clinicalStem = (name: string) => normalizeGeneralProductName(name.replace(/\b\d+(?:\.\d+)?\s*(?:mcg|mg|g|ml|l|iu)\b/gi, '').replace(/[\d/.,]+/g, ' '));
+  const clinicalCounterpart = (item: typeof result.items[number]) => ['missing item', 'extra item'].includes(item.status) && result.items.some(other =>
+    other.status === (item.status === 'missing item' ? 'extra item' : 'missing item') && clinicalStem(item.name) === clinicalStem(other.name));
+  const items = result.items.filter(item => !(!clinicalCounterpart(item) && (customerUncertain && item.status === 'extra item' || fulfillmentUncertain && item.status === 'missing item')) &&
+    !item.provenance.some(product => unresolved.has(JSON.stringify([product.source, product.originalText.trim()]))));
+  if (items.length === result.items.length) return result;
+  const detail = result.generalAudit;
+  return { ...result, ...summarizeGeneralProducts(items, detail.facility, detail.orderer, detail.phone,
+    detail.productCount.requested, detail.productCount.found, detail.semanticReviews, detail) };
+}
+function finalStructuredOrder(order: StructuredGeneralOrder, source: 'customer_request' | 'fulfillment_confirmation', result: ReturnType<typeof runGeneralAuditor>): StructuredGeneralOrder {
+  const details = result.generalAudit;
+  const field = source === 'customer_request' ? 'whatsappValue' : 'fulfillmentValue';
+  const products = result.items.flatMap(item => item.provenance.filter(product => product.source === source)
+    .map(product => ({ name: item.name, quantity: product.quantity, unit: product.unit })));
+  const facilityName = details.facility[field] === 'N/A' ? null : details.facility[field];
+  const ordererName = details.orderer[field] === 'N/A' ? null : details.orderer[field];
+  const unresolvedFields = [!facilityName ? 'facilityName' : '', !ordererName ? 'ordererName' : '',
+    !products.length || generalEssentialReviewNotices(details.semanticReviews?.filter(review => review.source === source)).some(notice => notice.field === 'products' || notice.field === 'quantity') ? 'products' : ''].filter(Boolean);
+  return { ...order, facilityName, ordererName, products, unresolvedFields, extractionConfidence: unresolvedFields.length ? 0 : 1 };
+}
+
+/** General-only preprocessing. Vaccine audits and spreadsheets never enter this path. */
+export async function runGeneralSemanticAudit(customer: string, fulfilment: string, decisions: Record<string, boolean>, support: GeneralAuditSupport, getClient: () => any) {
+  const a = extractGeneralOrderDeterministically(customer, 'customer_request', support.facilityContext);
+  const b = extractGeneralOrderDeterministically(fulfilment, 'fulfillment_confirmation', support.facilityContext, a.order);
+  // Retain the established evidence-rich interpreter for existing complex catalogue
+  // requests. Newly recognized conversational structures use the field-scoped schema.
+  const hybrid = a.changed || b.changed || Boolean(a.missingQuantityProducts?.length || b.missingQuantityProducts?.length) || /^(?:quantity|qty|amount)\s*[:=]/im.test(`${customer}\n${fulfilment}`) ||
+    [...a.unresolvedText, ...b.unresolvedText].some(line => /^[A-Z]{2,6}\s*[-:=]\s*\d/.test(line)) || !a.order.facilityName || !a.order.ordererName || !b.order.facilityName || !b.order.ordererName;
+  if (!hybrid) {
+    const audited = await auditGeneralExtractedText(customer, fulfilment, decisions, support, getClient);
+    const reviews = audited.generalAudit.semanticReviews || [];
+    const result = deferUncertainProducts(audited, reviews.some(review => review.source === 'customer_request'), reviews.some(review => review.source === 'fulfillment_confirmation'));
+    return { ...result, extractedOrder: finalStructuredOrder(a.order, 'customer_request', audited), fulfilledOrder: finalStructuredOrder(b.order, 'fulfillment_confirmation', audited) };
+  }
+  const extraction = await resolveGeneralOrderExtraction(a, b, getClient, support);
+  // Unreadable text is review evidence, never a fabricated product comparison.
+  const auditable = (input: typeof a) => input.text.split('\n').map(line => input.unresolvedText.includes(line) ? '' : line).join('\n');
+  const customerText = auditable(extraction.customer), fulfillmentText = auditable(extraction.fulfillment);
+  let result = await auditGeneralExtractedText(customerText, fulfillmentText, decisions, { ...support, allowEmptyProductsForReview: true }, getClient, {
+    customerRequest: customerText, fulfilmentConfirmation: fulfillmentText, reviews: extraction.reviews, semanticAnalysis: extraction.semanticAnalysis,
+  });
+  // An uncertain opposite side cannot prove that a product was omitted or added.
+  // Independently established quantity conflicts continue to be discrepancies.
+  const customerUncertain = extraction.customer.order.unresolvedFields.includes('products');
+  const fulfillmentUncertain = extraction.fulfillment.order.unresolvedFields.includes('products');
+  result = deferUncertainProducts(result, customerUncertain, fulfillmentUncertain);
+  return { ...result, extractedOrder: extraction.customer.order, fulfilledOrder: extraction.fulfillment.order };
 }

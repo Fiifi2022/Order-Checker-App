@@ -69,12 +69,13 @@ test('an unrelated unresolved line cannot mark any exact product as ambiguous on
     assert.equal(result.items[0].status, 'match', name);
     assert.equal(result.allMatch, false, 'unresolved text still prevents whole-order approval');
     assert.equal(result.issueCount, 0, 'an unresolved line is not a confirmed product discrepancy');
-    assert.match(result.generalAudit.finalStatus, /MANUAL REVIEW REQUIRED/);
+    assert.match(result.generalAudit.finalStatus, /ORDER DETAILS REQUIRED/);
     assert.deepEqual(result.generalAudit.semanticReviews?.map(review => [review.kind, review.originalText]), [['unparsed_text', extra]]);
     assert.ok(result.generalAudit.discrepancies.every(issue => !issue.includes(name)));
     const html = renderToStaticMarkup(createElement(Details, { details: result.generalAudit }));
     assert.doesNotMatch(html, /AMBIGUOUS PRODUCT/);
-    assert.match(html, /MANUAL REVIEW REQUIRED — UNRESOLVED TEXT/);
+    assert.match(html, /Product: Confirm the requested product/);
+    assert.doesNotMatch(html, /UNRESOLVED TEXT|bg-red-50/);
   }
 });
 
