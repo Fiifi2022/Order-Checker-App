@@ -96,6 +96,7 @@ export interface FacilityBlueprintRow {
   };
   boldCells?: string[];
   baseFormatting?: Record<string, React.CSSProperties>;
+  cellColors?: Record<string, { backgroundColor?: string; color?: string }>;
   vaccines: {
     [vaccineKey: string]: VaccineSectionData;
   };
@@ -273,6 +274,8 @@ export default function VaccineAllocationBlueprint({
   const [freezeMenu, setFreezeMenu] = useState<{ x: number; y: number; kind: 'main' | 'row' | 'column'; index?: number; rowId?: string; rowIds?: string[]; columnIndexes?: number[]; clickedColumn?: number } | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [allCellsHighlighted, setAllCellsHighlighted] = useState(false);
+  const [fillColor, setFillColor] = useState('#FFF2CC');
+  const [textColor, setTextColor] = useState('#1E293B');
   const [lastSelectedRowId, setLastSelectedRowId] = useState<string | null>(null);
 
   // Column highlighting and multi-selection state
@@ -2917,11 +2920,15 @@ export default function VaccineAllocationBlueprint({
     const rowNumber = headerRow ?? rows.findIndex(row => row.id === rowKey) + 5;
     const bodyCell = !!rowKey && !headerRow;
     const cellReference = `${getSheetColumnLetter(col)}${rowNumber}`;
+    const colors = bodyCell ? rows.find(row => row.id === rowKey)?.cellColors?.[columnKey] : undefined;
     const columnHandle = (headerRow === 4 || bodyCell) && columns.length === 1 ? <span key="resize-column" role="separator" aria-orientation="vertical" aria-label={bodyCell ? `Resize cell ${cellReference} width` : `Resize column ${getSheetColumnLetter(col)}`} aria-valuenow={width} aria-valuemin={36} aria-valuemax={1200} tabIndex={0} title="Drag to change column width" className="absolute -right-[3px] top-0 z-[60] h-full w-1.5 cursor-col-resize touch-none hover:bg-orange-500/60 focus:bg-orange-500/60" onClick={event => event.stopPropagation()}
       onPointerDown={event => beginSheetResize(event, 'column', columnKey, width)} onKeyDown={event => keyboardResize(event, 'column', columnKey, width)} {...common} /> : null;
     const rowHandle = rowKey && (first || bodyCell) && (cell.props.rowSpan || 1) === 1 ? <span key="resize-row" role="separator" aria-orientation="horizontal" aria-label={bodyCell && !first ? `Resize cell ${cellReference} height` : `Resize row ${rowNumber}`} aria-valuenow={height || 32} aria-valuemin={24} aria-valuemax={600} tabIndex={0} title="Drag to change row height" className="absolute -bottom-[3px] left-0 z-[55] h-1.5 w-full cursor-row-resize touch-none hover:bg-orange-500/60 focus:bg-orange-500/60" onClick={event => event.stopPropagation()}
       onPointerDown={event => beginSheetResize(event, 'row', rowKey, height ?? event.currentTarget.closest('tr')!.getBoundingClientRect().height / (zoomLevel / 100))} onKeyDown={event => keyboardResize(event, 'row', rowKey, height || 32)} {...common} /> : null;
-    return React.cloneElement(cell, { style: { ...cell.props.style, width, minWidth: width, maxWidth: width,
+    return React.cloneElement(cell, { 'data-cell-fill': colors?.backgroundColor ? 'true' : undefined, 'data-cell-text': colors?.color ? 'true' : undefined,
+      style: { ...cell.props.style, ...colors,
+      ...(colors?.color ? { '--blueprint-text-color': colors.color } : {}),
+      width, minWidth: width, maxWidth: width,
       ...(height ? { height, maxHeight: height, paddingTop: 0, paddingBottom: 0, '--blueprint-row-height': `${height}px` } : {}),
       position: !cell.props.style?.position || cell.props.style.position === 'static' ? 'relative' : cell.props.style.position },
       className: `${cell.props.className || ''}${height ? ' blueprint-sized-cell' : ''}`,
@@ -3596,7 +3603,7 @@ export default function VaccineAllocationBlueprint({
     setSelectedRowIds(new Set());
     setSelectedColumnNames(new Set());
   };
-  const getSelectedBoldTargets = () => {
+  const getSelectedFormattingTargets = () => {
     const targets = new Map<string, Set<number>>();
     const add = (rowId: string, colIdx: number) => {
       if (isColumnDeleted(colIdx)) return;
@@ -3621,7 +3628,7 @@ export default function VaccineAllocationBlueprint({
     }
     return Array.from(targets, ([rowId, columns]) => ({ rowId, columns: Array.from(columns) }));
   };
-  const selectedBoldTargets = getSelectedBoldTargets();
+  const selectedBoldTargets = getSelectedFormattingTargets();
   const isSelectedBold = selectedBoldTargets.length > 0 && selectedBoldTargets.every(({ rowId, columns }) => {
     const row = rows.find(item => item.id === rowId);
     return Boolean(row && columns.every(col => row.boldCells?.includes(gridStyleKey(col))));
@@ -3640,6 +3647,37 @@ export default function VaccineAllocationBlueprint({
     setRows(updatedRows);
     saveBlueprintToServer(updatedRows, products, district, month);
     setSaveStatus(makeBold ? 'Bold formatting applied.' : 'Bold formatting removed.');
+  };
+
+  const applySelectedCellColor = (property: 'backgroundColor' | 'color', value?: string) => {
+    if (selectedBoldTargets.length === 0) return;
+    const targets = new Map(selectedBoldTargets.map(target => [target.rowId, target.columns]));
+    const updatedRows = rows.map(row => {
+      const columns = targets.get(row.id);
+      if (!columns) return row;
+      const cellColors = { ...row.cellColors };
+      const baseFormatting = { ...row.baseFormatting };
+      columns.forEach(col => {
+        const key = blueprintColumnKey(col, products);
+        const colors = { ...cellColors[key] };
+        if (value) colors[property] = value;
+        else {
+          delete colors[property];
+          if (baseFormatting[key]) {
+            const base = { ...baseFormatting[key] };
+            delete base[property];
+            baseFormatting[key] = base;
+          }
+        }
+        if (Object.keys(colors).length) cellColors[key] = colors;
+        else delete cellColors[key];
+      });
+      return { ...row, cellColors, baseFormatting };
+    });
+    historyCellGroupRef.current = null;
+    setRows(updatedRows);
+    saveBlueprintToServer(updatedRows, products, district, month);
+    setSaveStatus(`${property === 'backgroundColor' ? 'Fill' : 'Text'} colour ${value ? 'applied' : 'cleared'}.`);
   };
 
   const getMergeRender = (rowIdx: number, colIdx: number) => {
@@ -4221,6 +4259,21 @@ export default function VaccineAllocationBlueprint({
             {[50, 75, 90, 100, 125, 150, 200].map(level => <option key={level} value={level}>{level}%</option>)}
           </select>
           <button type="button" onClick={toggleSelectedCellsBold} disabled={selectedBoldTargets.length === 0} aria-pressed={isSelectedBold} title="Toggle bold on the selected cells" className={`min-h-10 min-w-10 rounded-md border px-3 py-2 text-sm font-black disabled:opacity-45 ${isSelectedBold ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 text-slate-700 hover:bg-slate-100'}`}>B</button>
+          {([
+            { label: 'Fill colour', property: 'backgroundColor' as const, value: fillColor, setValue: setFillColor, clear: 'Clear fill' },
+            { label: 'Text colour', property: 'color' as const, value: textColor, setValue: setTextColor, clear: 'Clear text colour' },
+          ]).map(control => (
+            <div key={control.property} className="flex shrink-0 items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1">
+              <label className="flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-slate-700">
+                {control.label}
+                <input type="color" aria-label={control.label} value={control.value} disabled={selectedBoldTargets.length === 0}
+                  onChange={event => { control.setValue(event.target.value); applySelectedCellColor(control.property, event.target.value); }}
+                  className="h-8 w-8 cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-45" />
+              </label>
+              <button type="button" onClick={() => applySelectedCellColor(control.property, control.value)} disabled={selectedBoldTargets.length === 0} aria-label={`Apply ${control.label.toLowerCase()}`} className="rounded px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-45">Apply</button>
+              <button type="button" onClick={() => applySelectedCellColor(control.property)} disabled={selectedBoldTargets.length === 0} aria-label={control.clear} title={control.clear} className="rounded px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-45">Clear</button>
+            </div>
+          ))}
           <button type="button" onClick={handleMergeSelectedCells} disabled={!getCellRangeBounds() || (getCellRangeBounds()?.lastCol ?? 99) > 3} title="Merge selected cells in columns A–D" className="min-h-10 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-45">Merge</button>
           <button type="button" onClick={handleUnmergeSelectedCells} disabled={cellMerges.length === 0} title="Unmerge selected cells" className="min-h-10 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-45">Unmerge</button>
           <button type="button" onClick={() => searchInputRef.current?.focus()} title="Find in sheet" className="min-h-10 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100">Find</button>
@@ -4901,7 +4954,7 @@ export default function VaccineAllocationBlueprint({
             onScroll={syncGridScrollMetrics}
             className={`allocation-blueprint-scroll min-w-0 flex-1 overflow-auto ${isSheetFullscreen ? 'h-full min-h-0 max-h-none' : 'max-h-[680px]'}`}
           >
-            <style>{`[data-blueprint-bold="true"], [data-blueprint-bold="true"] input { font-weight: 700 !important; } .blueprint-sized-cell > div { height: var(--blueprint-row-height); max-height: var(--blueprint-row-height); min-height: 0; overflow: hidden; } .blueprint-sized-cell input { max-height: calc(var(--blueprint-row-height) - 2px); }`}</style>
+            <style>{`[data-cell-text="true"], [data-cell-text="true"] input { color: var(--blueprint-text-color) !important; } [data-cell-fill="true"] input { background-color: transparent !important; } [data-blueprint-bold="true"], [data-blueprint-bold="true"] input { font-weight: 700 !important; } .blueprint-sized-cell > div { height: var(--blueprint-row-height); max-height: var(--blueprint-row-height); min-height: 0; overflow: hidden; } .blueprint-sized-cell input { max-height: calc(var(--blueprint-row-height) - 2px); }`}</style>
             <table ref={blueprintTableRef} onContextMenu={event => openFreezeMenu(event, 'row')} style={{ zoom: zoomLevel / 100, tableLayout: 'fixed', width: visibleColumns.reduce((sum, col) => sum + getSheetColumnWidth(col), 0) }} className="text-left border-collapse select-text text-xs">
             <colgroup>{visibleColumns.map(col => <col key={blueprintColumnKey(col, products)} style={{ width: getSheetColumnWidth(col) }} />)}</colgroup>
             {/* Table Header Section */}
