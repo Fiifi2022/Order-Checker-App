@@ -1,0 +1,57 @@
+{
+  "date": "2026-10-19",
+  "method": "Sequential runs against a saved pre-change workspace snapshot and the modified workspace; one warm-up excluded; six fixed deterministic cases repeated four times; six unique AI cases; mocked Gemini delay of 900 ms; standard median and nearest-rank p95. Timings are local engine measurements, not deployment latency.",
+  "benchmarkSha256": "3aa89a19f7907b644c7b1a20ae3b7304702937436f2be33d3f21cfcc1db1d4d7",
+  "before": {
+    "node": "v18.20.4",
+    "environment": "Local in-process engine, 1509 static facility records; mocked 900ms Gemini; excludes network, auth, Firestore, rendering",
+    "deterministic": {
+      "samples": 24,
+      "averageMs": 54.346909958364755,
+      "medianMs": 42.97878049965948,
+      "p95Ms": 117.7245780006051,
+      "geminiRequestsPerAudit": 0,
+      "timeoutRate": 0,
+      "verifiedMatchRate": 0.5,
+      "manualReviewRate": 0,
+      "errorRate": 0
+    },
+    "aiAssisted": {
+      "samples": 6,
+      "averageMs": 749.3401193333169,
+      "medianMs": 748.6334515004419,
+      "p95Ms": 768.7240810003132,
+      "geminiRequestsPerAudit": 1,
+      "timeoutRate": 1,
+      "verifiedMatchRate": 0,
+      "manualReviewRate": 0,
+      "errorRate": 1
+    }
+  },
+  "after": {
+    "node": "v18.20.4",
+    "environment": "Local in-process engine, 1509 static facility records; mocked 900ms Gemini; excludes network, auth, Firestore, rendering",
+    "deterministic": {
+      "samples": 24,
+      "averageMs": 5.464249083423056,
+      "medianMs": 5.024073000065982,
+      "p95Ms": 7.033389000222087,
+      "geminiRequestsPerAudit": 0,
+      "timeoutRate": 0,
+      "verifiedMatchRate": 0.5,
+      "manualReviewRate": 0,
+      "errorRate": 0
+    },
+    "aiAssisted": {
+      "samples": 6,
+      "averageMs": 993.1056698332541,
+      "medianMs": 990.6896220003255,
+      "p95Ms": 1008.4990609996021,
+      "geminiRequestsPerAudit": 1,
+      "timeoutRate": 0,
+      "verifiedMatchRate": 1,
+      "manualReviewRate": 0,
+      "errorRate": 0
+    }
+  }
+}

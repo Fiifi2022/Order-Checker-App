@@ -1,0 +1,1512 @@
+COUNTRY,Locality/District,HEALTH_FACILITY_NAME,Region/County,Facility Group
+GHANA,Abuakwa South,Abuakwa South,Eastern,Other
+GHANA,Asikuma Odoben Brakwa,Fosuansa CHPS (CR),Central,CHPS
+GHANA,Abuakwa North,Tontro CHPS,Eastern,CHPS
+GHANA,Asante Mampong,Asaam HC,Ashanti,Health Center
+GHANA,Talensi,Yindure CHPS,Upper East,CHPS
+GHANA,Upper Manya Krobo,Dzamam CHPS,Eastern,CHPS
+GHANA,Yunyoo Nasuan,Yunyoo HC,North East,Health Center
+GHANA,West Mamprusi,Janga HSP,North East,Hospital
+GHANA,Atiwa West,Kwabeng HC,Eastern,Health Center
+GHANA,Nabdam,Pitanga CHPS,Upper East,CHPS
+GHANA,Asikuma Odoben Brakwa,Brakwa HC(CR),Central,Health Center
+GHANA,Kwahu East,Sempoa CHPS,Eastern,CHPS
+GHANA,Sekyere East,St. Luke's (Sekyere East) HC,Ashanti,Health Center
+GHANA,Bosome Freho,KORCHI-KROM CHPS,Ashanti,CHPS
+GHANA,Asante Mampong,Nkwanta (Asante Mampong)HC,Ashanti,Health Center
+GHANA,Bosome Freho,Nancy Powell's CHPS,Ashanti,CHPS
+GHANA,Asante Mampong,Yonso HC,Ashanti,Health Center
+GHANA,Asikuma Odoben Brakwa,Kuntanase CHPS(CR),Central,CHPS
+GHANA,Awutu Senya West,Mangoase CHPS(CR),Central,CHPS
+GHANA,Cape Coast,Onomase Nkwanta CHPS,Central,CHPS
+GHANA,Bunkpurugu-Nankpanduri,Binde (Bunkpurugu-Nankpanduri) HSP,North East,Hospital
+GHANA,Afigya Kwabre South,Afrancho PC,Ashanti,Health Center
+GHANA,Akyemansa,Otwereso CHPS,Eastern,CHPS
+GHANA,Afigya Kwabre South,Mpobi HC,Ashanti,Health Center
+GHANA,Kwahu West,Aweregya HC,Eastern,Health Center
+GHANA,East Mamprusi,Baptist Medical Center District HSP,North East,Hospital
+GHANA,Kwahu West,Jamasi No.2  CHPS,Eastern,CHPS
+GHANA,Nabdam,Nangodi HC,Upper East,Health Center
+GHANA,Mamprugu Moagduri,Kunkua (Mamprugu Moaduri) HC,North East,Health Center
+GHANA,Gomoa West,Ankamu CHPS(CR),Central,CHPS
+GHANA,Fanteakwa South,Kia Greenlight HC,Eastern,Health Center
+GHANA,Atwima Nwabiagya North,Barekuma CHPS,Ashanti,CHPS
+GHANA,Bolgatanga,Aguusi CHPS,Upper East,CHPS
+GHANA,Fanteakwa North,Dedeso Wireko HC,Eastern,Health Center
+GHANA,Offinso North,Kobreso HC,Ashanti,Health Center
+GHANA,Bosomtwe,Piase CHPS,Ashanti,CHPS
+GHANA,Nkoranza North,Dromankese HC,Bono East,Health Center
+GHANA,Builsa South,Kanjarga HC,Upper East,Health Center
+GHANA,Karaga,Pishigu HC,Northern,Health Center
+GHANA,West Mamprusi,Duu HC,North East,Health Center
+GHANA,Talensi,Awaradone CHPS,Upper East,CHPS
+GHANA,East Mamprusi,Buzulungu CHPS,North East,CHPS
+GHANA,Kwahu East,Pepease HC,Eastern,Health Center
+GHANA,Akyemansa,Adubiase CHPS,Eastern,CHPS
+GHANA,Kwahu West,Nkawkaw HC,Eastern,Health Center
+GHANA,Abuakwa South,Akokoo (Abuakwa South) CHPS,Eastern,CHPS
+GHANA,Sekyere South,Salvation Army HC,Ashanti,Health Center
+GHANA,Upper Manya Krobo,Asesewa HSP,Eastern,Hospital
+GHANA,Abuakwa North,Obodanase CHPS,Eastern,CHPS
+GHANA,Nkoranza South,Salamkrom CHPS,Bono East,CHPS
+GHANA,Atwima Kwanwoma,Twedie CHPS,Ashanti,CHPS
+GHANA,Sekyere Central,Aframso HC (Sekyere Central),Ashanti,Health Center
+GHANA,Gomoa West,Abonko (Gomoa West) CHPS (CR),Central,CHPS
+GHANA,Lower Manya Krobo,Okwenya CHPS,Eastern,CHPS
+GHANA,Mamprugu Moagduri,Katigri CHPS,North East,CHPS
+GHANA,Kwaebibirem,Kade Daakye CHPS,Eastern,CHPS
+GHANA,Asante Akim South,Adomfe CHPS,Ashanti,CHPS
+GHANA,Talensi,Sheaga CHPS,Upper East,CHPS
+GHANA,Awutu Senya East,Krispol CHPS (CR),Central,CHPS
+GHANA,Nkoranza North,Bomini CHPS,Bono East,CHPS
+GHANA,Bongo,Namoo (Bongo) HC,Upper East,Health Center
+GHANA,New Juaben South,Jumia Koforidua Hub,Eastern,Other
+GHANA,Asikuma Odoben Brakwa,Bosomase CHPS(CR),Central,CHPS
+GHANA,Asene Manso Akroso,Onomabo CHPS-AMA,Eastern,CHPS
+GHANA,Gomoa East,St Gregory Catholic HSP(CR),Central,Hospital
+GHANA,Tano South,Techimantia PC,Ahafo,Health Center
+GHANA,Kwahu West,Asuboni Rails HC,Eastern,Health Center
+GHANA,Bawku West,Azuwera CHPS,Upper East,CHPS
+GHANA,Bawku West,Zebilla District HSP,Upper East,Hospital
+GHANA,Gomoa West,Appiahkrom Debiso CHPS (CR),Central,CHPS
+GHANA,Nabdam,Ziemboug CHPS,Upper East,CHPS
+GHANA,Denkyembour,Apraku (Denkyembour) CHPS,Eastern,CHPS
+GHANA,Gushegu,Galiwei CHPS,Northern,CHPS
+GHANA,Awutu Senya East,Mother and Child Hospital (CR),Central,Hospital
+GHANA,Bunkpurugu-Nankpanduri,Kinkango CHPS,North East,CHPS
+GHANA,Kwahu South,Kwahu Government HSP,Eastern,Hospital
+GHANA,Okere,Amanfrom (Okere) Clinic,Eastern,Health Center
+GHANA,West Mamprusi,Walewale RCH,North East,CHPS
+GHANA,Sekyere Afram Plains,Anyinofi HC,Ashanti,Health Center
+GHANA,Offinso North,Nkenkaasu Government HSP,Ashanti,Hospital
+GHANA,Agona West,Abodom (Agona West)HC(CR),Central,Health Center
+GHANA,Asante Akim North,Amantenaman HC,Ashanti,Health Center
+GHANA,Binduri,Kukparigu  CHPS,Upper East,CHPS
+GHANA,Gomoa East,Gomoa Dominase CHPS(CR),Central,CHPS
+GHANA,Upper West Akim,Afabeng CHPS,Eastern,CHPS
+GHANA,Kwahu East,Aguadzekope CHPS,Eastern,CHPS
+GHANA,Offinso North,Church of God CL (Offinso North),Ashanti,Health Center
+GHANA,Atiwa East,Anyinam ( Atiwa East) HC,Eastern,Health Center
+GHANA,Bunkpurugu-Nankpanduri,Kunkwadan CHPS,North East,CHPS
+GHANA,Mamprugu Moagduri,Yikpabongo CHPS,North East,CHPS
+GHANA,Offinso North,Darso HC,Ashanti,Health Center
+GHANA,Asene Manso Akroso,Mofram CHPS-AMA,Eastern,CHPS
+GHANA,Okere,Akuni CHPS-OKERE,Eastern,CHPS
+GHANA,Bolgatanga,Coronation HC,Upper East,Health Center
+GHANA,Kwahu Afram Plains North,Donkokrom Presby HSP,Eastern,Hospital
+GHANA,Ejisu Municipal,Apromase HC,Ashanti,Health Center
+GHANA,West Akim,Asamankese HC,Eastern,Health Center
+GHANA,Nabdam,Kotintabig CHPS,Upper East,CHPS
+GHANA,Fanteakwa South,Nkankama CHPS,Eastern,CHPS
+GHANA,Garu,Songo HC,Upper East,Health Center
+GHANA,Talensi,Winkogo HC,Upper East,Health Center
+GHANA,Asante Mampong,Apaa SDA HC,Ashanti,Health Center
+GHANA,West Akim,Ammarko CHPS,Eastern,CHPS
+GHANA,Bawku West,Tarikom CHPS,Upper East,CHPS
+GHANA,Okere,Baware CHPS-OKERE,Eastern,CHPS
+GHANA,Kassena Nankana East,St. Martins HC,Upper East,Health Center
+GHANA,Ayensuano,Amanase (Ayensuano) HC,Eastern,Health Center
+GHANA,Sekyere East,Ahensan CHPS,Ashanti,CHPS
+GHANA,Bawku West,Timonde HC,Upper East,Health Center
+GHANA,Talensi,"Presbyterian CL, Tolla",Upper East,Health Center
+GHANA,Kwaebibirem,Bomsu CHPS,Eastern,CHPS
+GHANA,Akuapim North,Mangoase HC,Eastern,Health Center
+GHANA,Kumbungu,Kings Medical Centre,Northern,Other
+GHANA,Builsa South,Wiesi CHPS,Upper East,CHPS
+GHANA,Kassena Nankana East,Doba CHPS,Upper East,CHPS
+GHANA,Agona West,Nsuansa (Agona West) CHPS (CR),Central,CHPS
+GHANA,Atwima Nwabiagya North,Wurapong CHPS Compound,Ashanti,CHPS
+GHANA,New Juaben North,New Juaben Effiduase RCH,Eastern,CHPS
+GHANA,Agona East,Kwesitwikwa CHPS (CR),Central,CHPS
+GHANA,Kwahu South,Bepong HC,Eastern,Health Center
+GHANA,Atebubu Amantin,Jato Zongo HC,Bono East,Health Center
+GHANA,Gushegu,Kpatinga HC,Northern,Health Center
+GHANA,Bolgatanga,Nyariga (Bolgatanga) HC,Upper East,Health Center
+GHANA,Kwaebibirem,Abaam HC,Eastern,Health Center
+GHANA,Offinso North,Amponsahkrom CHPS,Ashanti,CHPS
+GHANA,Bawku West,Kansoogo CHPS,Upper East,CHPS
+GHANA,Kwahu South,Besease CHPS,Eastern,CHPS
+GHANA,Akuapim South,Obodan CHPS,Eastern,CHPS
+GHANA,Ayensuano,Teacher Mante CHPS,Eastern,CHPS
+GHANA,Ahafo Ano South East,Pokukrom (Ahafo Ano South East) HC,Ashanti,Health Center
+GHANA,Agona East,Ninta CHPS(CR),Central,CHPS
+GHANA,Bawku West,Kubougo (Bawku West) CHPS,Upper East,CHPS
+GHANA,Atiwa East,Mosease CHPS,Eastern,CHPS
+GHANA,Atwima Nwabiagya Municipal,Hiawu-Besease (Atwima Nwabiagya Mun.) CHPS,Ashanti,CHPS
+GHANA,Sekyere Central,AMOAMANG ( Sekyere Central) CHPS,Ashanti,CHPS
+GHANA,Talensi,Wakii CHPS,Upper East,CHPS
+GHANA,Agona West,Armah CHPS(CR),Central,CHPS
+GHANA,Gomoa East,Gomoa Odumase CHPS(CR),Central,CHPS
+GHANA,Akyemansa,Asabidie CHPS,Eastern,CHPS
+GHANA,Kassena Nankana West,Kalvio-Gugoro CHPS,Upper East,CHPS
+GHANA,Birim North,Nkwateng HC,Eastern,Health Center
+GHANA,Akyemansa,Abenase HC,Eastern,Health Center
+GHANA,Kwahu West,Nkawanda No 2 CHPS,Eastern,CHPS
+GHANA,Abuakwa North,Old Tafo CHPS,Eastern,CHPS
+GHANA,North Gonja,Mempeasem CHPS,Savannah,CHPS
+GHANA,Kwaebibirem,Jamestown CHPS,Eastern,CHPS
+GHANA,Akuapim South,Adamorobe HC -B1,Eastern,Health Center
+GHANA,Nsawam Adoagyiri,Dzankrom HC,Eastern,Health Center
+GHANA,Nkoranza South,Dandwa CHPS,Bono East,CHPS
+GHANA,Bosomtwe,Oyoko CHPS (Bosomtwe),Ashanti,CHPS
+GHANA,Akuapim North,Mampong U-CHPS,Eastern,Other
+GHANA,Tano North,Susuanso CHPS,Ahafo,CHPS
+GHANA,Techiman Municipal,Advent Solutions,Bono East,Other
+GHANA,Effutu,Ansaful CHPS (CR),Central,CHPS
+GHANA,Bolgatanga,Madina CHPS,Upper East,CHPS
+GHANA,Denkyembour,Kusi CHPS,Eastern,CHPS
+GHANA,New Juaben North,St. Joseph HSP,Eastern,Hospital
+GHANA,Upper Manya Krobo,Ponponya CHPS,Eastern,CHPS
+GHANA,North Gonja,Bugsah CHPS,Savannah,CHPS
+GHANA,Kwahu South,Kwahu South,Eastern,Other
+GHANA,Denkyembour,Okumaning CHPS,Eastern,CHPS
+GHANA,Builsa South,Wupiensa CHPS,Upper East,CHPS
+GHANA,Birim South,Swedru Catholic CL,Eastern,Health Center
+GHANA,Bolgatanga,Bolga HC,Upper East,Health Center
+GHANA,Savelugu,Pong Tamale HC,Northern,Health Center
+GHANA,West Akim,Ekoso HC,Eastern,Health Center
+GHANA,Asene Manso Akroso,Teacher Atta CHPS-AMA,Eastern,CHPS
+GHANA,Asikuma Odoben Brakwa,Amoanda CHPS (CR),Central,CHPS
+GHANA,Akyemansa,Akokoaso (Akyemansa) HC,Eastern,Health Center
+GHANA,Suhum,Nmgbestsonya CHPS,Eastern,CHPS
+GHANA,Fanteakwa North,Obohoo CHPS,Eastern,CHPS
+GHANA,Kwahu East,Abene (Kwahu East)CHPS,Eastern,Other
+GHANA,Asuogyaman,Senchi Ferry HC,Eastern,Health Center
+GHANA,Birim Central,Herald Foundation HC,Eastern,Health Center
+GHANA,Kwahu South,Christian Quarters CHPS,Eastern,CHPS
+GHANA,Tano South,Bechem Govt HSP,Ahafo,Hospital
+GHANA,Awutu Senya West,Castle CHPS (CR),Central,CHPS
+GHANA,Achiase,Yarewa CHPS,Eastern,CHPS
+GHANA,Atiwa East,Akropong (Atiwa West) HC (Daakye Aboasah),Eastern,Health Center
+GHANA,Nkoranza North,Tankor Domeabra CHPS,Bono East,CHPS
+GHANA,Ayensuano,Dome (Ayensuano) CHPS,Eastern,CHPS
+GHANA,Gomoa Central,Oguaakrom CHPS (CR),Central,CHPS
+GHANA,Gomoa West,Gomoa Kumasi CHPS (CR),Central,CHPS
+GHANA,Ayensuano,Aboabo (Ayensuano) CHPS,Eastern,CHPS
+GHANA,Asante Akim Central,Graham Memorial HC,Ashanti,Health Center
+GHANA,Kassena Nankana East,Nyangua CHPS,Upper East,CHPS
+GHANA,Gomoa Central,Descado CHPS (CR),Central,CHPS
+GHANA,Kumbungu,Gupanerigu CHPS,Northern,CHPS
+GHANA,Lower Manya Krobo,Yokwenor CHPS,Eastern,CHPS
+GHANA,Asante Mampong,Conodia Veterinary,Ashanti,Other
+GHANA,Asikuma Odoben Brakwa,Supunso CHPS (CR),Central,CHPS
+GHANA,Asene Manso Akroso,Mante CHPS - AMA,Eastern,CHPS
+GHANA,Ayensuano,Ntowkrom CHPS,Eastern,CHPS
+GHANA,Akyemansa,Adwafo CHPS,Eastern,CHPS
+GHANA,Asikuma Odoben Brakwa,Eduosia CHPS(CR),Central,CHPS
+GHANA,Suhum,Kwabina Kumi HC,Eastern,Health Center
+GHANA,Ahafo Ano North,Ahafo Ano North Municipal HSP,Ashanti,Hospital
+GHANA,Achiase,Takyi CHPS,Eastern,CHPS
+GHANA,Gomoa West,St. Luke Catholic Hospital,Central,Hospital
+GHANA,Bongo,Kadare CHPS,Upper East,CHPS
+GHANA,Upper Manya Krobo,Akatawia CHPS,Eastern,CHPS
+GHANA,Upper Manya Krobo,Akontaa CHPS,Eastern,CHPS
+GHANA,Krachi West,Zipline Krachi,Oti,Other
+GHANA,Kwahu East,Kwahu Tafo,Eastern,Other
+GHANA,Upper Manya Krobo,Sawa CHPS,Eastern,CHPS
+GHANA,Effutu,New Winneba CHPS(CR),Central,CHPS
+GHANA,Akyemansa,Asuboa North CHPS,Eastern,CHPS
+GHANA,Ayensuano,Otoase CHPS,Eastern,CHPS
+GHANA,Fanteakwa South,Ehiamankyene CHPS,Eastern,CHPS
+GHANA,East Mamprusi,Jawani CHPS,North East,CHPS
+GHANA,Gomoa West,Mankoadze CHPS (CR),Central,CHPS
+GHANA,Kwaebibirem,Larbikrom Zonal (Kwaebibirem) CHPS,Eastern,CHPS
+GHANA,Techiman Municipal,Tanoanafo (Techiman Municipal) CHPS,Bono East,CHPS
+GHANA,Tempane,Kpikpira HC,Upper East,Health Center
+GHANA,Upper Manya Krobo,Nyankomase CHPS (UMK),Eastern,CHPS
+GHANA,Builsa South,Uwasi HC,Upper East,Health Center
+GHANA,Fanteakwa South,Hemang CHPS,Eastern,CHPS
+GHANA,Sekyere Kumawu,Akrokyere (Sekyere Kumawu) CHPS,Ashanti,CHPS
+GHANA,Kwaebibirem,Asuom HC,Eastern,Health Center
+GHANA,East Mamprusi,Dagbiriboari CHPS,North East,CHPS
+GHANA,Upper West Akim,Odumkyere Darmang HC,Eastern,Health Center
+GHANA,Upper Manya Krobo,Akokoma Sisi (Upper Manya Krobo) CHPS,Eastern,CHPS
+GHANA,Nkoranza North,Bonte CHPS,Bono East,CHPS
+GHANA,Achiase,Kokobeng CHPS,Eastern,CHPS
+GHANA,Nsawam Adoagyiri,Obregyima HC,Eastern,Health Center
+GHANA,West Mamprusi,Yama CHPS,North East,CHPS
+GHANA,Asikuma Odoben Brakwa,Jamra PC (CR),Central,Health Center
+GHANA,Atebubu Amantin,Amanten HC (Atebubu Amantin),Bono East,Health Center
+GHANA,Sekyere Kumawu,Asekyerewa  (Sekyere Kumawu) CHPS,Ashanti,CHPS
+GHANA,Sekyere East,Okaikrom HC,Ashanti,Health Center
+GHANA,Kassena Nankana East,Vunania HC,Upper East,Health Center
+GHANA,Upper West Akim,Asuaba CHPS,Eastern,CHPS
+GHANA,Nabdam,Sakote HC,Upper East,Health Center
+GHANA,Talensi,Tongo-Beo CHPS,Upper East,CHPS
+GHANA,Asante Mampong,Ninting CHPS,Ashanti,CHPS
+GHANA,Garu,Senebaga CHPS,Upper East,CHPS
+GHANA,West Mamprusi,Bugya CHPS,North East,CHPS
+GHANA,Talensi,Gaare CHPS,Upper East,CHPS
+GHANA,Bosome Freho,Duase CHPS,Ashanti,CHPS
+GHANA,Bosome Freho,Anumso CHPS,Ashanti,CHPS
+GHANA,Abuakwa South,Asafo (Abuakwa South) HC,Eastern,Health Center
+GHANA,West Mamprusi,Wungu HC,North East,Health Center
+GHANA,Gomoa East,Hope Christian HSP(CR),Central,Hospital
+GHANA,Builsa North,Kadema HC,Upper East,Health Center
+GHANA,East Mamprusi,Jerigitinga CHPS,North East,CHPS
+GHANA,Karaga,Binkonalori CHPS,Northern,CHPS
+GHANA,Juaben Municipal,Domakwai (Juaben Municipal) CHPS,Ashanti,CHPS
+GHANA,Agona East,Mankrong PC(CR),Central,Health Center
+GHANA,Bawku West,Widnaba CHPS,Upper East,CHPS
+GHANA,Sekyere South,Agona Government HSP,Ashanti,Hospital
+GHANA,Ayensuano,Apau Wawase CHPS,Eastern,CHPS
+GHANA,Amansie West,Antoakrom HC,Ashanti,Health Center
+GHANA,Abuakwa North,Anweabeng (Abuakwa North) CHPS,Eastern,CHPS
+GHANA,Techiman Municipal,Nkwaeso (Techiman Municipal) HC,Bono East,Health Center
+GHANA,Asante Mampong,Krobo Dadease HC,Ashanti,Health Center
+GHANA,Kwahu East,Hyewohoden CHPS,Eastern,CHPS
+GHANA,Bekwai Municipal,Savior Community HC,Ashanti,Health Center
+GHANA,Kwahu West,Holy Family HSP,Eastern,Hospital
+GHANA,Kwaebibirem,Tweapease (Kwaebibirem) CHPS,Eastern,CHPS
+GHANA,Kassena Nankana East,Naaga HC,Upper East,Health Center
+GHANA,Awutu Senya East,Vat CHPS,Central,CHPS
+GHANA,Kwahu West,Oframase HC,Eastern,Health Center
+GHANA,Kassena Nankana East,War Memorial HSP,Upper East,Hospital
+GHANA,Asante Akim Central,Patriensa Ahenbronum HC,Ashanti,Health Center
+GHANA,Kwahu West,Atibie Nkwanta CHPS,Eastern,CHPS
+GHANA,Akyemansa,Brenase PC,Eastern,Health Center
+GHANA,Bongo,Dua HC,Upper East,Health Center
+GHANA,Kwahu West,Kwahu Daa CHPS,Eastern,CHPS
+GHANA,Kwahu East,Aduamoa (Kwahu East) CHPS,Eastern,CHPS
+GHANA,Talensi,Pusu-Namongo CHPS,Upper East,CHPS
+GHANA,Abuakwa South,Asiakwa HC,Eastern,Health Center
+GHANA,Gomoa West,Eshiem (Gomoa West) CHPS,Central,CHPS
+GHANA,Abuakwa North,Hawa Memorial Saviour HSP,Eastern,Hospital
+GHANA,Bongo,Bongo-Soe HC,Upper East,Health Center
+GHANA,Asante Akim South,Ofoase HC,Ashanti,Health Center
+GHANA,Asene Manso Akroso,Nyame Nti CHPS-AMA,Eastern,CHPS
+GHANA,Sekyere Kumawu,Oyoko HC (Sekyere Kumawu),Ashanti,Health Center
+GHANA,Mamprugu Moagduri,Kubugu CHPS,North East,CHPS
+GHANA,Fanteakwa North,Fanteakwa North,Eastern,Other
+GHANA,Fanteakwa North,Abourso CHPS,Eastern,CHPS
+GHANA,Talensi,Baare CHPS,Upper East,CHPS
+GHANA,Kassena Nankana West,Chiana HC,Upper East,Health Center
+GHANA,Akuapim South,Oboadaka HC - B1,Eastern,Health Center
+GHANA,Kassena Nankana East,Manyoro CHPS,Upper East,CHPS
+GHANA,Abuakwa North,Nobi CHPS,Eastern,CHPS
+GHANA,Asante Akim Central,Praaso HC,Ashanti,Health Center
+GHANA,Ejura Sekyedumase,Aframso CHPS (Ejura Sekyedumase),Ashanti,CHPS
+GHANA,Asene Manso Akroso,Akroso HC,Eastern,Health Center
+GHANA,Kwabre East,Mamponteng (Kwabre East) Hospital,Ashanti,Hospital
+GHANA,Awutu Senya West,Ofadaa CHPS(CR),Central,CHPS
+GHANA,Builsa South,Kunkwak CHPS,Upper East,CHPS
+GHANA,Talensi,Tengzuk CHPS,Upper East,CHPS
+GHANA,Kwabre East,Aboaso (Kwabre East) HC,Ashanti,Health Center
+GHANA,West Akim,Oworam CHPS,Eastern,CHPS
+GHANA,West Akim,Akanteng (West Akim) Health Center,Eastern,Health Center
+GHANA,Afigya Kwabre North,Kyekyewere HC (Afigya Kwabre North),Ashanti,Health Center
+GHANA,Atiwa East,Tiawia CHPS,Eastern,CHPS
+GHANA,Offinso Municipal,Asuboi (Offinso Municipal) CHPS,Ashanti,CHPS
+GHANA,Yilo Krobo,Nkurakan HC,Eastern,Health Center
+GHANA,Awutu Senya West,Chochoe CHPS(CR),Central,CHPS
+GHANA,Atiwa West,Akyem Asunafo (Atiwa West)CHPS,Eastern,Other
+GHANA,Kwahu South,Methodist M/C Osubeng,Eastern,Other
+GHANA,Kwahu West,Ampekrom CHPS,Eastern,CHPS
+GHANA,Birim South,Ningo CHPS,Eastern,CHPS
+GHANA,Awutu Senya West,Papaase CHPS(CR),Central,CHPS
+GHANA,Abuakwa South,Asikam CHPS,Eastern,CHPS
+GHANA,Kwabre East,Kasaam CHPS ,Ashanti,CHPS
+GHANA,Ahafo Ano South West,Wioso (Ahafo Ano South West) HC,Ashanti,Health Center
+GHANA,Nkoranza South,Ayerede HC,Bono East,Health Center
+GHANA,Bosome Freho,Nsutem (Bosome Freho) CHPS,Ashanti,CHPS
+GHANA,Achiase,Achiase Junction CHPS,Eastern,CHPS
+GHANA,Bekwai Municipal,Sarfokrom HC,Ashanti,Health Center
+GHANA,Awutu Senya West,Simpapeibiso CHPS (CR),Central,CHPS
+GHANA,Atiwa West,Akropong (Atiwa West) CHPS,Eastern,CHPS
+GHANA,Gomoa West,Abrekum (Gomoa West)CHPS (CR),Central,Other
+GHANA,West Akim,Brekumanso HC,Eastern,Health Center
+GHANA,Upper Manya Krobo,Fefe CHPS,Eastern,CHPS
+GHANA,Upper Manya Krobo,Konkoney Chps,Eastern,CHPS
+GHANA,Yilo Krobo,Bukunor HC,Eastern,Health Center
+GHANA,Denkyembour,Aboabo CHPS (Denkyembour),Eastern,CHPS
+GHANA,Bongo,Apaatanga CHPS,Upper East,CHPS
+GHANA,Awutu Senya West,Mayenda CHPS(CR),Central,CHPS
+GHANA,Awutu Senya West,Ahentia CHPS (CR),Central,CHPS
+GHANA,Atiwa West,Sankubenase CHPS,Eastern,CHPS
+GHANA,North Gonja,Daboya (North Gonja) PC,Savannah,Health Center
+GHANA,Atiwa East,Adasawase CHPS,Eastern,CHPS
+GHANA,Upper Manya Krobo,Akateng (Upper Manya Krobo) HC,Eastern,Health Center
+GHANA,Asante Akim North,Agogo Zongo CHPS,Ashanti,CHPS
+GHANA,Lower Manya Krobo,Djikiti CHPS,Eastern,CHPS
+GHANA,Bolgatanga,Anateem CHPS,Upper East,CHPS
+GHANA,Upper Manya Krobo,Sekesua HC,Eastern,Health Center
+GHANA,Tano North,Sukuumu CHPS,Ahafo,CHPS
+GHANA,Akuapim South,Asuafum HC,Eastern,Health Center
+GHANA,Birim North,Pankese CHPS,Eastern,CHPS
+GHANA,,Korania CHPS,Upper East,CHPS
+GHANA,Gomoa West,Apam RCH Clinic (CR),Central,Health Center
+GHANA,Bawku West,Soogo CHPS,Upper East,CHPS
+GHANA,Atwima Nwabiagya North,Brikwat Ventures,Ashanti,Other
+GHANA,Upper Manya Krobo,Ahabaso CHPS,Eastern,CHPS
+GHANA,Upper West Akim,Kwasi Nyarko CHPS,Eastern,CHPS
+GHANA,New Juaben North,Koforidua SDA HSP,Eastern,Hospital
+GHANA,Bongo,Kunkua (Bongo) CHPS,Upper East,CHPS
+GHANA,Akyemansa,Nyamebekyere CHPS,Eastern,CHPS
+GHANA,Atiwa East,Asamang Tamfoe (Atiwa East)CHPS,Eastern,Other
+GHANA,Yilo Krobo,Boti HC,Eastern,Health Center
+GHANA,Upper West Akim,Asikasu (Upper West Akim) CHPS,Eastern,CHPS
+GHANA,Kwahu East,Onyemso CHPS,Eastern,CHPS
+GHANA,Akuapim South,Nkumkrom CHPS,Eastern,CHPS
+GHANA,Akuapim South,Obosono CHPS,Eastern,CHPS
+GHANA,Kwaebibirem,Kubease Mega CHPS,Eastern,CHPS
+GHANA,Kassena Nankana West,Kuliya CHPS,Upper East,CHPS
+GHANA,Kassena Nankana West,Nyangania (KNW) CHPS,Upper East,CHPS
+GHANA,Gomoa West,Gomoa Oguaa HC(CR),Central,Health Center
+GHANA,Lower Manya Krobo,Asitey HC,Eastern,Health Center
+GHANA,Atwima Kwanwoma,Methodist Clinic Bebu (Atwima Kwanwoma),Ashanti,Health Center
+GHANA,Builsa North,"Presbyterian HC, Siniensi",Upper East,Health Center
+GHANA,Agona West,Otabilkrom HC(CR),Central,Health Center
+GHANA,Agona West,Nana Khadijah HC(CR),Central,Health Center
+GHANA,Nkoranza South,Akropong (Nkoranza South) CHPS,Bono East,CHPS
+GHANA,Bongo,Nyariga (Bongo) CHPS,Upper East,CHPS
+GHANA,Kassena Nankana East,Biu CHPS,Upper East,CHPS
+GHANA,Akuapim South,Mentukwa CHPS,Eastern,CHPS
+GHANA,Bongo,Ayopia CHPS,Upper East,CHPS
+GHANA,Kwahu East,Dwerebease CHPS,Eastern,CHPS
+GHANA,Savelugu,Kuldanali CHPS,Northern,CHPS
+GHANA,Birim North,Amuana Praso HC,Eastern,Health Center
+GHANA,Ahafo Ano South West,Kunsu Dotiem CHPS,Ashanti,CHPS
+GHANA,Atwima Nwabiagya North,Abira CHPS,Ashanti,CHPS
+GHANA,Effutu,University Clinic (CR),Central,Health Center
+GHANA,Akyemansa,Ofoase  Urban CHPS,Eastern,CHPS
+GHANA,Kassena Nankana East,Gongnia CHPS,Upper East,CHPS
+GHANA,Upper Manya Krobo,Takorase CHPS-UMK,Eastern,CHPS
+GHANA,Agona West,Abigyakrom CHPS(CR),Central,CHPS
+GHANA,Ledzokuku Krowor,Cowtribe Cold Room-Accra,Greater Accra,Other
+GHANA,Gomoa Central,Mpota CHPS (CR),Central,CHPS
+GHANA,Bosomtwe,Yaw Saim Farms,Ashanti,Other
+GHANA,Asuogyaman,Abume (Asuogyaman) CHPS,Eastern,CHPS
+GHANA,Asuogyaman,New Senchi HC,Eastern,Health Center
+GHANA,Effutu,Papa-Kow Demptse CHPS,Central,CHPS
+GHANA,Yilo Krobo,Yilo Krobo,Eastern,Other
+GHANA,Asante Akim North,Dukusen CHPS,Ashanti,CHPS
+GHANA,Birim North,Old Abirem CHPS,Eastern,CHPS
+GHANA,Birim North,Mamanso CHPS,Eastern,CHPS
+GHANA,East Mamprusi,East Mamprusi DHD,North East,Other
+GHANA,Ayensuano,Krabokese CHPS,Eastern,CHPS
+GHANA,Fanteakwa North,Upper Bosomtwe CHPS,Eastern,CHPS
+GHANA,Kassena Nankana East,Navrongo Health  Research Center (NHRC),Upper East,Other
+GHANA,Effutu,Ansaful CHPS,Central,CHPS
+GHANA,Lower Manya Krobo,Yonguase CHPS,Eastern,CHPS
+GHANA,Upper Manya Krobo,Sutapong CHPS,Eastern,CHPS
+GHANA,Asuogyaman,Anyansu Asuogyaman) CHPS,Eastern,CHPS
+GHANA,West Mamprusi,GH3 VOBSI TEST,North East,Other
+GHANA,West Mamprusi,Gbimsi CHPS,North East,CHPS
+GHANA,Bawku West,Binaba HC,Upper East,Health Center
+GHANA,Kwahu East,Akwasiho (Kwahu East) HC,Eastern,Health Center
+GHANA,Yunyoo Nasuan,Dobinyanto CHPS,North East,CHPS
+GHANA,Atwima Nwabiagya Municipal,Kobeng HC,Ashanti,Health Center
+GHANA,Asikuma Odoben Brakwa,Odoben HC(CR),Central,Health Center
+GHANA,Talensi,Yagzore CHPS,Upper East,CHPS
+GHANA,Sekyere Afram Plains,Auntie Riek HC,Ashanti,Health Center
+GHANA,Sekyere South,Domeabra HC (Sekyere South),Ashanti,Health Center
+GHANA,Yilo Krobo,Somanya Polyclinic,Eastern,Health Center
+GHANA,Nkoranza South,Nsunensa CHPS,Bono East,CHPS
+GHANA,Nabdam,Mihiboug CHPS,Upper East,CHPS
+GHANA,Bawku West,Gbantongo HC,Upper East,Health Center
+GHANA,Upper West Akim,Abamkrom HC,Eastern,Health Center
+GHANA,Sekyere Central,Jeduako HC,Ashanti,Health Center
+GHANA,Gomoa East,Gomoa Potsin PC(CR),Central,Health Center
+GHANA,Asante Akim South,Obogu HC,Ashanti,Health Center
+GHANA,West Mamprusi,Kparigu PPAG CL,North East,Health Center
+GHANA,Talensi,Balungu (Talensi) CHPS,Upper East,CHPS
+GHANA,Builsa South,Jagsa CHPS,Upper East,CHPS
+GHANA,Builsa North,St. Lucas HSP,Upper East,Hospital
+GHANA,Sekyere Central,Kwamang (Sekyere Central) HC,Ashanti,Health Center
+GHANA,Karaga,Sung CHPS,Northern,CHPS
+GHANA,Talensi,"Presbyterian HC, Namolgo",Upper East,Health Center
+GHANA,Sekyere South,Asamang SDA HSP,Ashanti,Hospital
+GHANA,Sekyere South,Boanim (Sekyere South) HC,Ashanti,Health Center
+GHANA,Gomoa East,Gomoa Fetteh CHPS,Central,CHPS
+GHANA,New Juaben North,Akwadum (New Juaben North) RCH,Eastern,CHPS
+GHANA,New Juaben North,Asikasu (New Juaben) CHPS,Eastern,CHPS
+GHANA,Karaga,Nakundugu CHPS,Northern,CHPS
+GHANA,Kwahu West,Kwahu West,Eastern,Other
+GHANA,Sekyere Central,Beposo HC,Ashanti,Health Center
+GHANA,Denkyembour,St Dominic HSP,Eastern,Hospital
+GHANA,Awutu Senya West,Obrakyire CHPS(CR),Central,CHPS
+GHANA,Kwabre East,Sakora Wonoo HC,Ashanti,Health Center
+GHANA,Bunkpurugu-Nankpanduri,Bunkpurugu HC,North East,Health Center
+GHANA,Gomoa East,Dabanyi CHPS (CR),Central,CHPS
+GHANA,Sekyere South,Jamasi PC,Ashanti,Health Center
+GHANA,Agona West,Odom CHPS-CR,Central,CHPS
+GHANA,Achiase,Osoroase CHPS,Eastern,CHPS
+GHANA,Gomoa East,Gomoa Ojobi HC(CR),Central,Health Center
+GHANA,Gomoa Central,Gomoa Abasa CHPS(CR),Central,CHPS
+GHANA,Mamprugu Moagduri,Namoo (MMD) CHPS,North East,CHPS
+GHANA,Bawku West,Tanga HC,Upper East,Health Center
+GHANA,Ejura Sekyedumase,St. Anthony MAT (Ejura Sekyedumase) HC,Ashanti,Health Center
+GHANA,Bawku West,Teshie CHPS,Upper East,CHPS
+GHANA,Asante Akim Central,Kramokrom CHPS,Ashanti,CHPS
+GHANA,Offinso Municipal,Offinso HC,Ashanti,Health Center
+GHANA,Ayensuano,Obuoho CHPS,Eastern,CHPS
+GHANA,Ahafo Ano South West,Mankranso Government HSP,Ashanti,Hospital
+GHANA,Afigya Kwabre South,Aboabogya ( Afigya Kwabre South) HC,Ashanti,Health Center
+GHANA,Bosomtwe,Jachie HC,Ashanti,Health Center
+GHANA,East Mamprusi,Namangu (East Mamprusi) CHPS,North East,CHPS
+GHANA,Ejura Sekyedumase,Kyenkyenkura CHPS,Ashanti,CHPS
+GHANA,Yunyoo Nasuan,Temaa CHPS,North East,CHPS
+GHANA,Atiwa West,Abomosu (Atiwa West)HC,Eastern,Health Center
+GHANA,West Mamprusi,Daboya (WMM) CHPS,North East,CHPS
+GHANA,Sekyere Afram Plains,Hamidu HC,Ashanti,Health Center
+GHANA,Bawku West,Googo HC,Upper East,Health Center
+GHANA,Fanteakwa South,Fanteakwa South,Eastern,Other
+GHANA,Kwabre East,Kasaam CHPS,Ashanti,CHPS
+GHANA,Sekyere South,Kona HC,Ashanti,Health Center
+GHANA,Ejisu Municipal,Onwe Government hospital,Ashanti,Hospital
+GHANA,Suhum,Suhum HC,Eastern,Health Center
+GHANA,Gomoa East,Gomoa Dasum CHPS(CR),Central,CHPS
+GHANA,Kwahu West,Kofi Dede CHPS,Eastern,CHPS
+GHANA,Bosomtwe,Kuntanase Government HSP,Ashanti,Hospital
+GHANA,Offinso Municipal,St. Patrick's Catholic (Offinso Municipal) HSP,Ashanti,Hospital
+GHANA,Nkoranza North,Fiema CHPS,Bono East,CHPS
+GHANA,Kwaebibirem,Kwamang CHPS,Eastern,CHPS
+GHANA,Okere,Nanabanin CHPS-OKERE,Eastern,CHPS
+GHANA,Nkoranza South,Hwediem CHPS,Bono East,CHPS
+GHANA,Asante Akim South,Komeso HC,Ashanti,Health Center
+GHANA,Sekyere Central,Oku Catholic HC,Ashanti,Health Center
+GHANA,Ejura Sekyedumase,Nkrampo CHPS,Ashanti,CHPS
+GHANA,Bunkpurugu-Nankpanduri,Tusuk CHPS,North East,CHPS
+GHANA,Karaga,Karaga District HSP,Northern,Hospital
+GHANA,Builsa South,Gbedema CHPS,Upper East,CHPS
+GHANA,Juaben Municipal,Nkyerepoaso CHPS,Ashanti,CHPS
+GHANA,Juaben Municipal,Bomfa HC,Ashanti,Health Center
+GHANA,Sekyere Central,Abordease Atonsu (Sekyere Central) HC,Ashanti,Health Center
+GHANA,Karaga,Tamalgu CHPS,Northern,CHPS
+GHANA,Kwaebibirem,Anweam (Kwaebibirem) CHPS,Eastern,CHPS
+GHANA,Bunkpurugu-Nankpanduri,Gbankurugu CHPS,North East,CHPS
+GHANA,Asene Manso Akroso,Appeadem CHPS,Eastern,CHPS
+GHANA,Offinso North,Tanokweam (Offinso North) CHPS,Ashanti,CHPS
+GHANA,Awutu Senya East,Kasoa Polyclinic,Central,Health Center
+GHANA,Achiase,Teshieman CHPS,Eastern,CHPS
+GHANA,Asante Akim Central,Boatengkrom CHPS,Ashanti,CHPS
+GHANA,Savelugu,Pigu CHPS,Northern,CHPS
+GHANA,Ayensuano,Ayekokooso CHPS,Eastern,CHPS
+GHANA,Kassena Nankana West,Kayoro  HC,Upper East,Health Center
+GHANA,Talensi,Gorogo HC,Upper East,Health Center
+GHANA,Gushegu,Katani CHPS,Northern,CHPS
+GHANA,Asante Akim South,Kyempo Epi Centre,Ashanti,Other
+GHANA,Yilo Krobo,Akpo CHPS,Eastern,CHPS
+GHANA,Offinso Municipal,Kwapanin CHPS,Ashanti,CHPS
+GHANA,Atiwa East,Abakoase CHPS,Eastern,CHPS
+GHANA,Bongo,Bongo District HSP,Upper East,Hospital
+GHANA,Sekyere Central,Jetiase CHPS,Ashanti,CHPS
+GHANA,Kwaebibirem,Abompe (Kwaebibirem)CHPS,Eastern,Other
+GHANA,Offinso North,Janie Speaks A.M.E Zion Hospital,Ashanti,Hospital
+GHANA,Suhum,Jumia Suhum Hub,Eastern,Other
+GHANA,Okere,Twum Guaso CHPS-OKERE,Eastern,CHPS
+GHANA,Upper West Akim,Krodua CHPS,Eastern,CHPS
+GHANA,Talensi,Kulpelga CHPS,Upper East,CHPS
+GHANA,Kwahu West,Wisiwisi CHPS,Eastern,CHPS
+GHANA,Bawku West,Yelwoko CL,Upper East,Health Center
+GHANA,Asante Akim South,Morso Community HC,Ashanti,Health Center
+GHANA,Ejura Sekyedumase,Babaso CHPS,Ashanti,CHPS
+GHANA,Awutu Senya West,Bontrase HC(CR),Central,Health Center
+GHANA,Tano North,Duayaw Nkwanta HC,Ahafo,Health Center
+GHANA,Builsa South,Jiningsa CHPS,Upper East,CHPS
+GHANA,Kwaebibirem,Takyiman HC,Eastern,Health Center
+GHANA,Atwima Kwanwoma,Foase HC,Ashanti,Health Center
+GHANA,Fanteakwa North,Akwanserem (Fanteakwa North) CHPS,Eastern,CHPS
+GHANA,Gomoa East,Potsin CHPS (CR),Central,CHPS
+GHANA,Bongo,Gambrongo HC,Upper East,Health Center
+GHANA,Asene Manso Akroso,Asene Manso Akroso,Eastern,Other
+GHANA,Abuakwa North,Osiem CHPS,Eastern,CHPS
+GHANA,Afigya Kwabre South,Methodist Clinic Apagya (Afigya Kwabre South),Ashanti,Health Center
+GHANA,Offinso Municipal,Gambia Nkwanta CHPS,Ashanti,CHPS
+GHANA,Birim South,Awisa (Birim South) HC,Eastern,Health Center
+GHANA,Kassena Nankana West,Amutanga CHPS,Upper East,CHPS
+GHANA,Bekwai Municipal,Gyasikrom HC,Ashanti,Health Center
+GHANA,Lower Manya Krobo,Atua Government HSP,Eastern,Hospital
+GHANA,Asante Akim Central,Asante Akim Central Municipal Hospital,Ashanti,Hospital
+GHANA,Asante Akim North,Domeabra Newtown CHPS (Asante Akim North),Ashanti,CHPS
+GHANA,Fanteakwa North,Asarekwao CHPS,Eastern,CHPS
+GHANA,Nkoranza North,Asekye-Krukese CHPS(Nkoranza North),Bono East,CHPS
+GHANA,New Juaben North,Jumapo HC,Eastern,Health Center
+GHANA,Ayensuano,Mfranta CHPS,Eastern,CHPS
+GHANA,Asante Akim North,Amantena CHPS (Asante Akim North),Ashanti,CHPS
+GHANA,Suhum,Omenako CHPS,Eastern,CHPS
+GHANA,Kassena Nankana West,Avoenia-Gwenia CHPS,Upper East,CHPS
+GHANA,Tamale Metropolitan,Tamale Teaching Hospital,Northern,Hospital
+GHANA,Bongo,Vea HC,Upper East,Health Center
+GHANA,Effutu,Essuekyir CHPS (CR),Central,CHPS
+GHANA,Kassena Nankana West,Wuru (KNW) CHPS,Upper East,CHPS
+GHANA,Akuapim South,Nsabaa CHPS,Eastern,CHPS
+GHANA,Kassena Nankana East,Gumongo CHPS,Upper East,CHPS
+GHANA,Kwahu West,Abepotia HC,Eastern,Health Center
+GHANA,Ayensuano,Achiansah (Ayensuano)CHPS,Eastern,Other
+GHANA,Ayensuano,Anum Apapam (Ayensuano) HC,Eastern,Health Center
+GHANA,Bolgatanga East,Sakarabisi CHPS,Upper East,CHPS
+GHANA,Tano South,Ankaase (Tano South) CHPS,Ahafo,CHPS
+GHANA,Bunkpurugu-Nankpanduri,Kambagu CHPS,North East,CHPS
+GHANA,Asene Manso Akroso,Asuboa CHPS,Eastern,CHPS
+GHANA,Upper Manya Krobo,Sisiamang CHPS,Eastern,CHPS
+GHANA,Abuakwa South,Adukrom (Abuakwa South) CHPS,Eastern,CHPS
+GHANA,Bongo,Sikabiisi CHPS,Upper East,CHPS
+GHANA,Kwaebibirem,Asuom Amanfrom CHPS,Eastern,CHPS
+GHANA,Denkyembour,Akwatia CHPS,Eastern,CHPS
+GHANA,Kwahu East,Nkwantanang,Eastern,Other
+GHANA,Kwahu South,Kwahu Asubone CHPS,Eastern,CHPS
+GHANA,Asuogyaman,Adjena (Asuogyaman)  HC,Eastern,Health Center
+GHANA,Tempane,Basyonde HC,Upper East,Health Center
+GHANA,Atiwa West,Atiwa West,Eastern,Other
+GHANA,Builsa North,Chuchuliga-Yipaala CHPS,Upper East,CHPS
+GHANA,Nkoranza North,Pihini CHPS,Bono East,CHPS
+GHANA,Abuakwa South,Agyapomaa (Abuakwa South) CHPS,Eastern,CHPS
+GHANA,Yilo Krobo,Akpamu CHPS,Eastern,CHPS
+GHANA,,Bunkprugu Cold Room,North East,Other
+GHANA,Kassena Nankana West,Azinzoka CHPS,Upper East,CHPS
+GHANA,Atwima Nwabiagya North,Akropong (Atwima Nwabiagya North)  HC,Ashanti,Health Center
+GHANA,Kwahu East,Abene CHPS,Eastern,CHPS
+GHANA,Techiman Municipal,Veterinary Drug House,Bono East,Other
+GHANA,Agona West,Kwaman CHPS-CR,Central,CHPS
+GHANA,Kumbungu,Kumbungu HC,Northern,Health Center
+GHANA,Upper Manya Krobo,Anyaboni Old Town CHPS,Eastern,CHPS
+GHANA,Sekyere South,Akyaa Memorial Farms,Ashanti,Other
+GHANA,Lower Manya Krobo,Oborpa HC,Eastern,Health Center
+GHANA,Effutu,Gyangyanadze CHPS (CR),Central,CHPS
+GHANA,New Juaben North,New Juaben North,Eastern,Other
+GHANA,Bunkpurugu-Nankpanduri,Gbankoni CHPS,North East,CHPS
+GHANA,Agona West,Amponsah (Agona West) CHPS,Central,CHPS
+GHANA,Yilo Krobo,Agogo PC,Eastern,Health Center
+GHANA,Binduri,Manga CHPS,Upper East,CHPS
+GHANA,Bolgatanga,Presbyterian Regional Eye HSP,Upper East,Hospital
+GHANA,Suhum,Rev Bidi S Memorial HSP,Eastern,Hospital
+GHANA,Gomoa East,Akoti (Gomoa East) CHPS,Central,CHPS
+GHANA,Bosome Freho,Anomawobi (Bosome Freho) CHPS,Ashanti,CHPS
+GHANA,New Juaben South,Desuano HC,Eastern,Health Center
+GHANA,Asante Mampong,ZIpline Mpanya,Eastern,Other
+GHANA,Effutu,Coast for Christ Hospital,Central,Hospital
+GHANA,Asuogyaman,Akwamufie (Asuogyaman) HC,Eastern,Health Center
+GHANA,Upper Manya Krobo,Sekesua Dzaman CHPS,Eastern,CHPS
+GHANA,West Mamprusi,Arigu CHPS,North East,CHPS
+GHANA,Gomoa Central,Gomoa Nsuaem CHPS(CR),Central,CHPS
+GHANA,Kwahu South,Asakakra HC,Eastern,Health Center
+GHANA,West Mamprusi,Walewale Municipal HSP,North East,Hospital
+GHANA,Kwahu East,Oworobong CHPS,Eastern,CHPS
+GHANA,Offinso Municipal,Bonsua (Offinso Municipal) HC,Ashanti,Health Center
+GHANA,Ejura Sekyedumase,Sekyedumase Gov (Ejura Sekyedumase) HSP,Ashanti,Hospital
+GHANA,West Mamprusi,Tinguri HC,North East,Health Center
+GHANA,Sekyere Kumawu,Banko HC (Sekyere Kumawu),Ashanti,Health Center
+GHANA,West Mamprusi,Guabuliga CHPS,North East,CHPS
+GHANA,Agona West,Agona Nyakrom HC(CR),Central,Health Center
+GHANA,Asante Mampong,Adidwan HC,Ashanti,Health Center
+GHANA,Kwaebibirem,Kade HSP,Eastern,Hospital
+GHANA,Nabdam,Dosabligu CHPS,Upper East,CHPS
+GHANA,Afigya Kwabre South,Aduman CHPS,Ashanti,CHPS
+GHANA,Karaga,Bagurugu CHPS,Northern,CHPS
+GHANA,Sekyere Central,Asubuasu HC,Ashanti,Health Center
+GHANA,Bunkprugu,Bunkpurugu Nankpanduri GES,North East,Other
+GHANA,Upper Manya Krobo,Anyaboni (Upper Manya Krobo)HC,Eastern,Health Center
+GHANA,Sekyere Afram Plains,Drobonso RCH,Ashanti,CHPS
+GHANA,Birim South,Beposo CHPS,Eastern,CHPS
+GHANA,Amansie Central,Atobiase HC,Ashanti,Health Center
+GHANA,Asikuma Odoben Brakwa,Nankese  CHPS (CR),Central,CHPS
+GHANA,East Mamprusi,Tuni CHPS,North East,CHPS
+GHANA,Achiase,Achiase HC,Eastern,Health Center
+GHANA,Bosomtwe,Akokofe (Bosomtwe) CHPS,Ashanti,CHPS
+GHANA,Sekyere Afram Plains,St. Vincent's Catholic (Sekyere Afram Plains) HC,Ashanti,Health Center
+GHANA,Afigya Kwabre North,Boamang HC,Ashanti,Health Center
+GHANA,Bawku West,Sapeliga HC,Upper East,Health Center
+GHANA,Abuakwa South,Kibi HSP,Eastern,Hospital
+GHANA,Fanteakwa South,Dwenase (Fanteakwa South) CHPS,Eastern,CHPS
+GHANA,Awutu Senya West,Tawiakwah CHPS(CR),Central,CHPS
+GHANA,Ahafo Ano South West,Kunsu HC,Ashanti,Health Center
+GHANA,Bolgatanga East,Gambibgo HC,Upper East,Health Center
+GHANA,Upper West Akim,Essaso CHPS,Eastern,CHPS
+GHANA,Karaga,Zandua CHPS,Northern,CHPS
+GHANA,Bolgatanga East,Katanga CHPS,Upper East,CHPS
+GHANA,Sekyere South,Wiamoase Sda HSP,Ashanti,Hospital
+GHANA,Atwima Nwabiagya Municipal,Adankwame CHPS,Ashanti,CHPS
+GHANA,Bolgatanga East,Zuarungu-Moshie HC,Upper East,Health Center
+GHANA,Abuakwa North,New Tafo HSP,Eastern,Hospital
+GHANA,Bosomtwe,Apinkra St. Mary's Anglican HC,Ashanti,Health Center
+GHANA,Suhum,Okorase (Suhum) CHPS,Eastern,CHPS
+GHANA,Bawku West,Tilli HC,Upper East,Health Center
+GHANA,West Mamprusi,Wulugu HC,North East,Health Center
+GHANA,Gomoa East,Buduburam RCH(CR),Central,CHPS
+GHANA,Akuapim South,Pokrom HC,Eastern,Health Center
+GHANA,Asante Akim Central,Kyekyebiase CHPS,Ashanti,CHPS
+GHANA,Bekwai Municipal,Dominase SDA Hospital,Ashanti,Hospital
+GHANA,West Akim,Aworasa Epicenter,Eastern,Other
+GHANA,Savelugu,Dipale CHPS,Northern,CHPS
+GHANA,Bawku West,Tonde CHPS,Upper East,CHPS
+GHANA,Nabdam,Zoogabre CHPS,Upper East,CHPS
+GHANA,Builsa South,Gbedembilisi CHPS,Upper East,CHPS
+GHANA,Asante Akim South,Muramura CHPS,Ashanti,CHPS
+GHANA,Atiwa East,New Jejeti HC,Eastern,Health Center
+GHANA,Kwahu East,Nkwatia HSP,Eastern,Hospital
+GHANA,,Trauma and Specialist HSP - Winneba (CR),Central,Hospital
+GHANA,Ejisu Municipal,Welcome Complex Trading and Farm Ent.,Ashanti,Other
+GHANA,Abuakwa North,Abuakwa North,Eastern,Other
+GHANA,Kwaebibirem,Adankrono (Kwaebibirem) CHPS,Eastern,CHPS
+GHANA,Kwahu East,St Joseph Clinic CHAG,Eastern,Health Center
+GHANA,Asikuma Odoben Brakwa,Mante CHPS (CR),Central,CHPS
+GHANA,Bekwai Municipal,Amoamo (Bekwai Municipal) HC,Ashanti,Health Center
+GHANA,Afigya Kwabre South,Methodist Faith Healing HSP (Afigya Kwabre South),Ashanti,Hospital
+GHANA,Upper West Akim,Adeiso HC,Eastern,Health Center
+GHANA,Gomoa West,Fomena CHPS (CR),Central,CHPS
+GHANA,Bolgatanga,Dorongo CHPS,Upper East,CHPS
+GHANA,Gomoa East,Gomoa Akramang CHPS(CR),Central,CHPS
+GHANA,,Akyem Banso (Atiwa West)  CHPS,,CHPS
+GHANA,Ejura Sekyedumase,Homako CHPS,Ashanti,CHPS
+GHANA,Ahafo Ano South East,Biemso No.2 CHPS,Ashanti,CHPS
+GHANA,Kwahu East,Kwahu Nteso CHPS,Eastern,CHPS
+GHANA,Karaga,Nyong CHPS,Northern,CHPS
+GHANA,Kwaebibirem,Abenaso (Kwaebibirem)CHPS,Eastern,Other
+GHANA,Kassena Nankana West,Martyrs of Uganda HC,Upper East,Health Center
+GHANA,Atwima Nwabiagya Municipal,CCBMC Mim CL,Ashanti,Health Center
+GHANA,Gomoa West,Osedze HC(CR),Central,Health Center
+GHANA,Awutu Senya West,Senya Breku PC-CR,Central,Health Center
+GHANA,Chereponi,Naja CHPS,North East,CHPS
+GHANA,Atiwa East,Kadewaso CHPS,Eastern,CHPS
+GHANA,Akuapim South,Obotwere HC,Eastern,Health Center
+GHANA,Kwahu Afram Plains South,Bumpata CHPS,Eastern,CHPS
+GHANA,Achiase,Achiase GES,Eastern,Other
+GHANA,New Juaben North,Gyamfikrom Chps,Eastern,CHPS
+GHANA,Fanteakwa North,Asirebuso CHPS,Eastern,CHPS
+GHANA,Asene Manso Akroso,Tabita CHPS,Eastern,CHPS
+GHANA,Juaben Municipal,Nobewam SDA HC,Ashanti,Health Center
+GHANA,Ahafo Ano South East,Sabronum HSP,Ashanti,Hospital
+GHANA,North Gonja,Yagbum CHPS,Savannah,CHPS
+GHANA,,Yagaba GES,North East,Other
+GHANA,Gomoa West,Tarkwa CHPS(CR),Central,CHPS
+GHANA,Offinso Municipal,Abofour HC,Ashanti,Health Center
+GHANA,Ejura Sekyedumase,Hiawoanwu (Ejura Sekyedumase) CHPS,Ashanti,CHPS
+GHANA,Birim South,Birim South,Eastern,Other
+GHANA,Abuakwa South,Apedwa HC,Eastern,Health Center
+GHANA,West Mamprusi,Fungu CHPS,North East,CHPS
+GHANA,Asante Mampong,Kofiase HC,Ashanti,Health Center
+GHANA,Atiwa West,Wekpeti CHPS,Eastern,CHPS
+GHANA,Tano South,Mawaniso CHPS,Ahafo,CHPS
+GHANA,New Juaben North,Suhyen CHPS,Eastern,CHPS
+GHANA,Gomoa West,Wassa CHPS(CR),Central,CHPS
+GHANA,Mamprugu Moagduri,Nangrumah CHPS,North East,CHPS
+GHANA,Bongo,Nayorigo CHPS,Upper East,CHPS
+GHANA,Ayensuano,Kofi Pare HC,Eastern,Health Center
+GHANA,Sekyere Central,Dome Afram Plains D/A Primary and JHS,Ashanti,Health Center
+GHANA,Techiman Municipal,Blessed Assurance Ent,Bono East,Other
+GHANA,Ayensuano,Coaltar HC,Eastern,Health Center
+GHANA,Binduri,Nafkolga CHPS,Upper East,CHPS
+GHANA,Bongo,Abokobisi CHPS,Upper East,CHPS
+GHANA,Abuakwa South,Maase HC,Eastern,Health Center
+GHANA,Asene Manso Akroso,Bantama CHPS,Eastern,CHPS
+GHANA,Nsawam Adoagyiri,Nsawam Government HSP,Eastern,Hospital
+GHANA,Bosome Freho,Dunkura HC,Ashanti,Health Center
+GHANA,Ayensuano,Kwadwohum-Abeho CHPS,Eastern,CHPS
+GHANA,Akuapim North,Adawso (Akuapim North) HC,Eastern,Health Center
+GHANA,West Akim,West Akim,Eastern,Other
+GHANA,Asante Mampong,Addvet Solution,Ashanti,Other
+GHANA,Abuakwa South,Sagyemase (Abuakwa South) CHPS,Eastern,CHPS
+GHANA,Upper Manya Krobo,Aketebuor CHPS,Eastern,CHPS
+GHANA,Atiwa West,Akyem Pameng CHPS,Eastern,CHPS
+GHANA,Garu,Kugri CHPS,Upper East,CHPS
+GHANA,Ayensuano,Govinakrom CHPS,Eastern,CHPS
+GHANA,Kwahu Afram Plains South,Dome (Kwahu Afram Plains) CHPS,Eastern,Health Center
+GHANA,Agona East,Kwansakrom CHPS (CR),Central,CHPS
+GHANA,Kwaebibirem,Otumi CHPS,Eastern,CHPS
+GHANA,Asante Mampong,Razz Asaana Ent,Ashanti,Other
+GHANA,Akuapim North,Gboloo Kofi CHPS,Eastern,CHPS
+GHANA,Atiwa West,Muorso CHPS,Eastern,CHPS
+GHANA,Asene Manso Akroso,Otaipro CHPS,Eastern,CHPS
+GHANA,Kwahu West,Ekawso CHPS,Eastern,CHPS
+GHANA,Abuakwa South,Bomponso No.2 CHPS,Eastern,CHPS
+GHANA,Asante Akim Central,Vic K Ventures,Ashanti,Other
+GHANA,Kassena Nankana East,Nayagnia (KNE) CHPS,Upper East,CHPS
+GHANA,Nkoranza South,Nkwabeng (Nkoranza South) HC,Bono East,Health Center
+GHANA,Agona West,Agona Swedru RCH-CR,Central,CHPS
+GHANA,Birim North,Noyem CHPS,Eastern,CHPS
+GHANA,Akuapim South,Ankwensu (Akuapim South) CHPS,Eastern,CHPS
+GHANA,Asikuma Odoben Brakwa,Kawanopado CHPS(CR),Central,CHPS
+GHANA,Upper Manya Krobo,Otrokper HC,Eastern,Health Center
+GHANA,Agona East,Fante Bawjuasi CHPS,Central,CHPS
+GHANA,Abuakwa North,Kukurantumi CHPS,Eastern,CHPS
+GHANA,Akyemansa,Kwaboadi No1 CHPS,Eastern,CHPS
+GHANA,Bekwai Municipal,Kokofu Asamang CHPS,Ashanti,CHPS
+GHANA,Kassena Nankana East,Pungu South HC,Upper East,Health Center
+GHANA,Shai Osudoku,Osudoku HC,Greater Accra,Health Center
+GHANA,Upper Manya Krobo,Akohia CHPS,Eastern,CHPS
+GHANA,Yilo Krobo,Huhunya CHPS,Eastern,CHPS
+GHANA,Atwima Nwabiagya Municipal,Nkawie-Toase Government HSP,Ashanti,Hospital
+GHANA,Builsa North,Zaring CHPS,Upper East,CHPS
+GHANA,Akyemansa,Gyewani CHPS,Eastern,CHPS
+GHANA,Sekyere Kumawu,Bomeng CHPS,Ashanti,CHPS
+GHANA,Awutu Senya West,Mantemankabi CHPS (CR),Central,CHPS
+GHANA,Bongo,Gowrie CHPS,Upper East,CHPS
+GHANA,Binduri,Kaadi CHPS,Upper East,CHPS
+GHANA,Awutu Senya East,Amuzukorpe CHPS-CR,Central,CHPS
+GHANA,Agona East,Kenyankor CHPS(CR),Central,CHPS
+GHANA,Builsa North,Yikpieng CHPS,Upper East,CHPS
+GHANA,Bunkpurugu-Nankpanduri,Ngamah CHPS,North East,CHPS
+GHANA,Awutu Senya West,Akrabong CHPS-CR,Central,CHPS
+GHANA,Ayensuano,Dokrokyiwa HC,Eastern,Health Center
+GHANA,Asene Manso Akroso,Apinto (Asene Manso Akroso) CHPS,Eastern,CHPS
+GHANA,Offinso Municipal,Kwagyekrom CHPS,Ashanti,CHPS
+GHANA,Upper West Akim,Nyanoa CHPS,Eastern,CHPS
+GHANA,Akuapim North,Akropong HC (Akuapem North ),Eastern,Health Center
+GHANA,Fanteakwa North,Dominase CHPS,Eastern,CHPS
+GHANA,Ahafo Ano South West,Mpasaso (Ahafo Ano South West) HC,Ashanti,Health Center
+GHANA,Kwahu West,Nkawkaw Domeabra CHPS,Eastern,CHPS
+GHANA,Ejisu Municipal,Church Of God Essienimpong (Ejisu Municipal),Ashanti,Other
+GHANA,Yilo Krobo,Labolabo HC,Eastern,Health Center
+GHANA,Akyemansa,Bontodiase CHPS,Eastern,CHPS
+GHANA,Asikuma Odoben Brakwa,Ohianhyeda CHPS (CR),Central,CHPS
+GHANA,Nsawam Adoagyiri,Nkyenekyene Amanfrom CHPS,Eastern,CHPS
+GHANA,Effutu,Akosua Village CHPS (CR),Central,CHPS
+GHANA,Tamale Metropolitan,Tamale West Hospital,Northern,Hospital
+GHANA,Kassena Nankana East,Bonia CHPS,Upper East,CHPS
+GHANA,Denkyembour,Number 4 CHPS,Eastern,CHPS
+GHANA,Yilo Krobo,Yilo-Krobo District HSP,Eastern,Hospital
+GHANA,Abuakwa North,Bosudumase CHPS,Eastern,CHPS
+GHANA,Birim North,Mpintimpi CHPS,Eastern,CHPS
+GHANA,Asuogyaman,Survey Line CHPS,Eastern,CHPS
+GHANA,Atwima Nwabiagya North,PKK Farms,Ashanti,Other
+GHANA,Yilo Krobo,Gbekomanya chps,Eastern,CHPS
+GHANA,Denkyembour,Awosua CHPS,Eastern,CHPS
+GHANA,Kassena Nankana West,Chania CHPS,Upper East,CHPS
+GHANA,Nkoranza North,Bodom (Nkorana North) CHPS,Bono East,CHPS
+GHANA,Awutu Senya West,Mfadwen CHPS-CR,Central,CHPS
+GHANA,East Mamprusi,Wundua CHPS,North East,CHPS
+GHANA,East Mamprusi,Sakogu HC,North East,Health Center
+GHANA,West Mamprusi,Kpasenkpe PC,North East,Health Center
+GHANA,Kassena Nankana West,Badunu CHPS,Upper East,CHPS
+GHANA,Suhum,Ntunkum CHPS,Eastern,CHPS
+GHANA,Denkyembour,Wenchi HC,Eastern,Health Center
+GHANA,West Mamprusi,Shelinvoya CHPS,North East,CHPS
+GHANA,Suhum,Gojiase CHPS,Eastern,CHPS
+GHANA,Sekyere Afram Plains,Dawia HC,Ashanti,Health Center
+GHANA,Mamprugu Moagduri,Kubori HC,North East,Health Center
+GHANA,Gomoa West,Dawurampong Polyclinic (CR),Central,Health Center
+GHANA,West Mamprusi,St. Patrick CL,North East,Health Center
+GHANA,Upper Manya Krobo,Battorkope (UMK) CHPS,Eastern,CHPS
+GHANA,Sekyere Kumawu,Sekyere ( Sekyere Kumawu) HC,Ashanti,Health Center
+GHANA,Bawku West,Zongoire HC,Upper East,Health Center
+GHANA,Juaben Municipal,Juabeng Government HSP,Ashanti,Hospital
+GHANA,Awutu Senya West,Adawukwao  (Awutu Senya West) CHPS(CR),Central,CHPS
+GHANA,Sekyere Central,Abasua HC,Ashanti,Health Center
+GHANA,Asene Manso Akroso,Manso HC,Eastern,Health Center
+GHANA,Suhum,Koransang CHPS,Eastern,CHPS
+GHANA,Bekwai Municipal,Ahwiaa HC,Ashanti,Health Center
+GHANA,Gomoa East,Gomoa Fetteh Kakraba CHPS(CR),Central,CHPS
+GHANA,Builsa North,Sandema HSP,Upper East,Hospital
+GHANA,Suhum,Aponoapono CHPS,Eastern,CHPS
+GHANA,Mamprugu Moagduri,Yagaba HC,North East,Health Center
+GHANA,Kwahu West,Monsie CHPS,Eastern,CHPS
+GHANA,Yilo Krobo,Obawale HC,Eastern,Health Center
+GHANA,Ayensuano,Asuboi HC,Eastern,Health Center
+GHANA,Kwahu West,Market Square MC,Eastern,Other
+GHANA,Sekyere East,Effiduase Government HSP,Ashanti,Hospital
+GHANA,Upper West Akim,Mepom HC,Eastern,Health Center
+GHANA,Agona East,Salvation Army HSP(CR),Central,Hospital
+GHANA,West Mamprusi,St. Joseph the Worker CL,North East,Health Center
+GHANA,Atiwa East,St. Monicas HC,Eastern,Health Center
+GHANA,Agona East,Agona Kwanyako HC CR,Central,Health Center
+GHANA,Karaga,Sakulo CHPS,Northern,CHPS
+GHANA,Karaga,Karaga HC,Northern,Health Center
+GHANA,Suhum,Dawa CHPS,Eastern,CHPS
+GHANA,Yilo Krobo,Klo- Agogo PC,Eastern,Health Center
+GHANA,Atiwa West,Akwaduusu (Atiwa West) CHPS,Eastern,CHPS
+GHANA,Talensi,Gbani CHPS,Upper East,CHPS
+GHANA,Asante Akim South,Asuboa HC (Asante Akim South),Ashanti,Health Center
+GHANA,Nkoranza South,Asonkwaa (Nkoranza South) CHPS,Bono East,CHPS
+GHANA,Agona East,Otwekwa CHPS (CR),Central,CHPS
+GHANA,Atebubu Amantin,Kumfia CHPS,Bono East,CHPS
+GHANA,Upper Manya Krobo,Akrusu (Upper Manya Krobo) CHPS,Eastern,CHPS
+GHANA,Bawku West,Zongoire CHPS,Upper East,CHPS
+GHANA,Builsa South,Chansa CHPS,Upper East,CHPS
+GHANA,Bosome Freho,Freboye CHPS,Ashanti,CHPS
+GHANA,Upper Manya Krobo,Akotoe (Upper Manya Krobo) CHPS,Eastern,CHPS
+GHANA,Bawku West,Salpiiga CHPS,Upper East,CHPS
+GHANA,Nkoranza South,Ahyiayem HC,Bono East,Health Center
+GHANA,Kwahu East,Presbyterian HC (Abetifi),Eastern,Health Center
+GHANA,Asante Mampong,Bosomkyekye (Asante Mampong) CHPS,Ashanti,CHPS
+GHANA,Kwaebibirem,Subi HC,Eastern,Health Center
+GHANA,Gomoa East,Nkwantanan CHPS (CR),Central,CHPS
+GHANA,Awutu Senya West,Ayiresu CHPS(CR),Central,CHPS
+GHANA,Abuakwa North,Tafo Veterinary Service,Eastern,Other
+GHANA,Sekyere Central,Ankamadoa (Sekyere Central) CHPS,Ashanti,CHPS
+GHANA,Sekyere Kumawu,Abotanso CHPS,Ashanti,CHPS
+GHANA,Kassena Nankana West,Katiu CHPS,Upper East,CHPS
+GHANA,Asante Akim North,Juansa Polyclinic,Ashanti,Health Center
+GHANA,Atwima Kwanwoma,Kwanwoma HC,Ashanti,Health Center
+GHANA,Asante Mampong,Benim HC,Ashanti,Health Center
+GHANA,Sekyere Kumawu,Dadease CHPS,Ashanti,CHPS
+GHANA,Awutu Senya East,Opeikuma CHPS (CR),Central,CHPS
+GHANA,Ahafo Ano South West,Barniekrom CHPS,Ashanti,CHPS
+GHANA,Agona West,Nkum HC (CR),Central,Health Center
+GHANA,West Akim,Osenase HC,Eastern,Health Center
+GHANA,Akuapim South,Konkonuru Health Center,Eastern,Health Center
+GHANA,Gomoa West,Gomoa Enyeme CHPS(CR),Central,CHPS
+GHANA,Nkoranza South,Ntanaaso CHPS,Bono East,CHPS
+GHANA,North Gonja,Mankarigu HC,Savannah,Health Center
+GHANA,Talensi,Talensi District HSP,Upper East,Hospital
+GHANA,Sekyere South,Ebeye Yie CHPS,Ashanti,CHPS
+GHANA,Atiwa West,Akrofufu (Atiwa West) CHPS,Eastern,CHPS
+GHANA,Awutu Senya West,Awutu HC (CR),Central,Health Center
+GHANA,Techiman Municipal,Forikrom HC,Bono East,Health Center
+GHANA,Upper Manya Krobo,Osonson CHPs,Eastern,CHPS
+GHANA,Akyemansa,Ayirebi HC,Eastern,Health Center
+GHANA,Awutu Senya West,Fianko CHPS(CR),Central,CHPS
+GHANA,Sekyere Central,Adutwam CHPS,Ashanti,CHPS
+GHANA,Amansie West,Essuowin HC,Ashanti,Health Center
+GHANA,Sekyere East,Ahmadiya (Sekyere East) HSP,Ashanti,Hospital
+GHANA,Akuapim South,Dago CHPS,Eastern,CHPS
+GHANA,Asene Manso Akroso,Badukrom CHPS- AMA,Eastern,CHPS
+GHANA,Kwahu East,Aduhema CHPS,Eastern,CHPS
+GHANA,Garu,Wadugu CHPS,Upper East,CHPS
+GHANA,Upper Manya Krobo,Bisa CHPS,Eastern,CHPS
+GHANA,Techiman Municipal,Joshkay Veterinary,Bono East,Other
+GHANA,Agona East,Namanwura CHPS (CR),Central,CHPS
+GHANA,Afigya Kwabre North,Tetrem (Afigya Kwabre North) HC,Ashanti,Health Center
+GHANA,Upper Manya Krobo,Terguanya CHPS,Eastern,CHPS
+GHANA,Abuakwa South,Bunso HC,Eastern,Health Center
+GHANA,Upper West Akim,Breman CHPS,Eastern,CHPS
+GHANA,Agona East,Tawora CHPS(CR),Central,CHPS
+GHANA,Atwima Kwanwoma,Trede HC,Ashanti,Health Center
+GHANA,Awutu Senya West,Ayensuaku CHPS(CR),Central,CHPS
+GHANA,Akuapim South,Asheresu CHPS,Eastern,CHPS
+GHANA,Bongo,Anafobiisi HC,Upper East,Health Center
+GHANA,Savelugu,Savelugu District HSP,Northern,Hospital
+GHANA,Ayensuano,Marfokrom HC,Eastern,Health Center
+GHANA,Atiwa East,Akutuase CHPS,Eastern,CHPS
+GHANA,Nkoranza South,Akuma (Nkoranza South) HC,Bono East,Health Center
+GHANA,Asikuma Odoben Brakwa,Amanfopong (AOB) CHPS(CR),Central,CHPS
+GHANA,Karaga,Kumoayilli CHPS,Northern,CHPS
+GHANA,Bolgatanga East,Kumbosco CHPS,Upper East,CHPS
+GHANA,Abuakwa South,KwasiKomfo CHPS,Eastern,CHPS
+GHANA,Denkyembour,Apinamang (Denkyembour) CHPS,Eastern,CHPS
+GHANA,Agona East,Agona Mansofo CHPS(CR),Central,CHPS
+GHANA,Atwima Nwabiagya Municipal,Bankyease CHPS,Ashanti,CHPS
+GHANA,Atwima Kwanwoma,Nweneso No.2 HC,Ashanti,Health Center
+GHANA,Upper West Akim,Okurase (Upper West Akim) CHPS,Eastern,CHPS
+GHANA,Tano North,Subriso No.1 (Tano South) CHPS,Ahafo,CHPS
+GHANA,Ahafo Ano South West,St. Johns ( Ahafo Ano South West) HC,Ashanti,Health Center
+GHANA,Abuakwa North,Sokode Juaso CHPS,Eastern,CHPS
+GHANA,Atwima Kwanwoma,Trabuom HC,Ashanti,Health Center
+GHANA,Tempane,Bugri HC,Upper East,Health Center
+GHANA,Atiwa West,Ekorso CHPS,Eastern,CHPS
+GHANA,Suhum,SRA HC,Eastern,Health Center
+GHANA,Kwahu West,Nkawanda No.1 CHPS,Eastern,CHPS
+GHANA,Gomoa West,Asempayin CHPS (CR),Central,CHPS
+GHANA,Asene Manso Akroso,Yaw Donkor CHPS- AMA,Eastern,CHPS
+GHANA,Asikuma Odoben Brakwa,JUMIA B.ASIKUMA,Central,Other
+GHANA,Atebubu Amantin,Akokoa HC (Atebubu Amantin),Bono East,Health Center
+GHANA,Atiwa East,Good God Pet Shop,Eastern,Other
+GHANA,Garu,"Presbyterian HC,Garu",Upper East,Health Center
+GHANA,Abuakwa South,Apapam CHPS,Eastern,CHPS
+GHANA,Asante Mampong,Bunoso (Asante Mampong) HC,Ashanti,Health Center
+GHANA,Atiwa West,Akyem Tumfa  (Atiwa West) CHPS,Eastern,CHPS
+GHANA,Nantong,Tampion HC,Northern,Health Center
+GHANA,Gomoa Central,Gomoa Aboso CHPS(CR),Central,CHPS
+GHANA,Kassena Nankana West,Atiyorem CHPS,Upper East,CHPS
+GHANA,Ahafo Ano North,Anyinasuso HC (Ahafo Ano North),Ashanti,Health Center
+GHANA,Kumbungu,Dalun HC,Northern,Health Center
+GHANA,Gomoa Central,Lome CHPS(CR),Central,CHPS
+GHANA,Asante Akim Central,Odumase HC,Ashanti,Health Center
+GHANA,Awutu Senya West,Obodem/Obaakwei CHPS,Central,CHPS
+GHANA,Ayensuano,Duodukrom CHPS,Eastern,CHPS
+GHANA,Gomoa Central,Gomoa Obuasi HC(CR),Central,Health Center
+GHANA,Ejura Sekyedumase,Bemi CHPS,Ashanti,CHPS
+GHANA,Kwahu East,Nkwantanang CHPS (Kwahu East),Eastern,CHPS
+GHANA,New Juaben North,Oyoko Zongo CHPS,Eastern,CHPS
+GHANA,Asikuma Odoben Brakwa,Our Lady Of Grace HSP(CR),Central,Hospital
+GHANA,Tano South,Brosankro HC,Ahafo,Health Center
+GHANA,Upper Manya Krobo,Upper Manya Krobo,Eastern,Other
+GHANA,Tano South,Subriso (Tano South) CHPS,Ahafo,CHPS
+GHANA,Nsawam Adoagyiri,Kwakyekrom CHPS,Eastern,CHPS
+GHANA,Birim North,Amenam CHPS,Eastern,CHPS
+GHANA,Atebubu Amantin,Sanwakyi CHPS,Bono East,CHPS
+GHANA,Akyemansa,Kwaboadi No2 CHPS,Eastern,CHPS
+GHANA,Garu,Aloko CHPS,Upper East,CHPS
+GHANA,New Juaben South,Sempoamiensa CHPS,Eastern,CHPS
+GHANA,Kwahu East,Miaso CHPS,Eastern,CHPS
+GHANA,Ayensuano,Kwaboanta CHPS,Eastern,CHPS
+GHANA,Suhum,Jato CHPS,Eastern,CHPS
+GHANA,Kwahu West,Esaase CHPS,Eastern,CHPS
+GHANA,Achiase,Aperade HC,Eastern,Health Center
+GHANA,Asante Akim North,Pekyerekye CHPS,Ashanti,CHPS
+GHANA,Birim North,Bramkrom CHPS,Eastern,CHPS
+GHANA,Abuakwa South,Potroase CHPS,Eastern,CHPS
+GHANA,Asene Manso Akroso,Akroso CHPS,Eastern,CHPS
+GHANA,Denkyembour,Akim Sakyikrom (Denkyembour) CHPS,Eastern,CHPS
+GHANA,Birim North,Akoase HC,Eastern,Health Center
+GHANA,Fanteakwa North,GH1-HM-007,Eastern,Other
+GHANA,Bosomtwe,Nyameani Methodist HC,Ashanti,Health Center
+GHANA,Nkoranza North,Tom CHPS,Bono East,CHPS
+GHANA,Asuogyaman,Sedorm CHPS,Eastern,CHPS
+GHANA,Techiman Municipal,Barima Bama Vet Shop,Bono East,Other
+GHANA,Atwima Mponua,Mpasatia (Atwima mponua) CHPS,Ashanti,CHPS
+GHANA,Akyemansa,Mukyia CHPS,Eastern,CHPS
+GHANA,Tano South,Kwasu CHPS (Tano South),Ahafo,CHPS
+GHANA,Kwahu East,Onyemso CHPS,Eastern,CHPS
+GHANA,Builsa North,Achanyeri-Jata CHPS,Upper East,CHPS
+GHANA,Cape Coast,Cape Coast Teaching Hospital,Central,Hospital
+GHANA,Fanteakwa North,Abertinso CHPS,Eastern,CHPS
+GHANA,Asikuma Odoben Brakwa,Anhwiam CHPS (CR),Central,CHPS
+GHANA,Ejisu Municipal,Moon Light Farms,Ashanti,Other
+GHANA,Kumbungu,Zoggu CHPS,Northern,CHPS
+GHANA,West Mamprusi,Gingringo CHPS,North East,CHPS
+GHANA,Kassena Nankana West,Batiu CHPS,Upper East,CHPS
+GHANA,Asuogyaman,New Akrade CHPS,Eastern,CHPS
+GHANA,Achiase,Akim Bieni (Achiase) CHPs,Eastern,CHPS
+GHANA,Effutu,Winneba Health Centre,Central,Other
+GHANA,Asikuma Odoben Brakwa,Bedum HC (CR),Central,Health Center
+GHANA,Asene Manso Akroso,Awisa (AMA) CHPS,Eastern,CHPS
+GHANA,Ablekuma South,Korle-Bu Teaching HSP,Greater Accra,Hospital
+GHANA,Birim Central,Old Premier CHPS,Eastern,CHPS
+GHANA,Yilo Krobo,Aplesu Chps,Eastern,CHPS
+GHANA,Suhum,Obomofodensua CHPS,Eastern,CHPS
+GHANA,Denkyembour,Ayawaso CHPS,Eastern,CHPS
+GHANA,Gomoa East,Gomoa Okyereko HC (CR),Central,Health Center
+GHANA,Mamprugu Moagduri,Tantala CHPS,North East,CHPS
+GHANA,Fanteakwa South,Nsutam CHPS,Eastern,CHPS
+GHANA,Atwima Nwabiagya Municipal,Asakraka HC,Ashanti,Health Center
+GHANA,Okere,Okrakwadjo HC-OKERE,Eastern,Health Center
+GHANA,Afigya Kwabre South,Adwumakaase HC,Ashanti,Health Center
+GHANA,East Mamprusi,Kulgona CHPS,North East,CHPS
+GHANA,Bosomtwe,Konkoma SDA HC,Ashanti,Health Center
+GHANA,Bawku West,Peri-Kusanab CHPS,Upper East,CHPS
+GHANA,Kwahu East,Amanfrom Urban (Kwahu East) CHPS,Eastern,CHPS
+GHANA,Asante Akim South,Nnadieso HC,Ashanti,Health Center
+GHANA,Bosome Freho,Asiwa HC,Ashanti,Health Center
+GHANA,Sekyere Central,Nkudjua CHPS,Ashanti,CHPS
+GHANA,Kwahu East,Kotoso RCH,Eastern,CHPS
+GHANA,Atebubu Amantin,Abamba CHPS,Bono East,CHPS
+GHANA,Offinso Municipal,Anyinasuso SDA HC (Offinso Municipal),Ashanti,Health Center
+GHANA,Talensi,Duusi HC,Upper East,Health Center
+GHANA,Bosome Freho,Anyanso CHPS,Ashanti,CHPS
+GHANA,Asante Mampong,Nyinampong CHPS,Ashanti,CHPS
+GHANA,Okere,Adukrom HC-OKERE,Eastern,Health Center
+GHANA,Agona East,Essusu CHPS (CR),Central,CHPS
+GHANA,Agona West,Agona West Municipal HSP (CR),Central,Hospital
+GHANA,Asikuma Odoben Brakwa,Domeabra CHPS (CR),Central,CHPS
+GHANA,Asikuma Odoben Brakwa,Asikuma HC(CR),Central,Health Center
+GHANA,Bunkpurugu-Nankpanduri,Bimbagu CHPS,North East,CHPS
+GHANA,Sekyere Afram Plains,Funsua CHPS,Ashanti,CHPS
+GHANA,Fanteakwa South,Osino HC,Eastern,Health Center
+GHANA,East Mamprusi,Nagbai CHPS,North East,CHPS
+GHANA,West Mamprusi,Kurugu (WMM) CHPS,North East,CHPS
+GHANA,Birim North,Abokyikrom CHPS,Eastern,CHPS
+GHANA,East Mamprusi,Nagbo CHPS,North East,CHPS
+GHANA,Atwima Nwabiagya North,Dabaa Hope HSP,Ashanti,Hospital
+GHANA,Kwabre East,Asonomaso Government HSP (Kwabre East),Ashanti,Hospital
+GHANA,Asante Akim North,Ananekrom HC,Ashanti,Health Center
+GHANA,Sekyere Central,Kyebi CHPS,Ashanti,CHPS
+GHANA,Nkoranza North,Kranka HC,Bono East,Health Center
+GHANA,Bawku West,Boya CHPS,Upper East,CHPS
+GHANA,Bolgatanga,Bolgatanga Regional HSP,Upper East,Hospital
+GHANA,Fanteakwa South,Bosuso HC,Eastern,Health Center
+GHANA,Asante Akim South,Bompata HC,Ashanti,Health Center
+GHANA,Mamprugu Moagduri,Yizeisi HC,North East,Health Center
+GHANA,Awutu Senya West,Bawjiase PC(CR),Central,Health Center
+GHANA,Kwaebibirem,Abodom (Kwaebibirem) CHPS,Eastern,CHPS
+GHANA,Asikuma Odoben Brakwa,Ayipey (AOB) CHPS(CR),Central,CHPS
+GHANA,Sekyere East,Ntumkumso HC,Ashanti,Health Center
+GHANA,Kwahu East,Bonkrase CHPS,Eastern,CHPS
+GHANA,Suhum,Suhum HSP,Eastern,Hospital
+GHANA,Kassena Nankana East,Kologo HC,Upper East,Health Center
+GHANA,West Mamprusi,Nasia CHPS,North East,CHPS
+GHANA,Karaga,Namang (Karaga) CHPS,Northern,CHPS
+GHANA,West Akim,Awaham CHPS,Eastern,CHPS
+GHANA,Asante Mampong,Mampong Govt. Hsp-Maternity Clinic,Ashanti,Health Center
+GHANA,Sekyere East,Nkwankwaanua (Sekyere East) HC,Ashanti,Health Center
+GHANA,Atwima Mponua,Saakrom HC,Ashanti,Health Center
+GHANA,Upper West Akim,Atimatim CHPS,Eastern,CHPS
+GHANA,Gomoa East,Gomoa Buduatta HC(CR),Central,Health Center
+GHANA,Offinso Municipal,SDA (Offinso) HSP,Ashanti,Hospital
+GHANA,Afigya Kwabre South,Brofoyedru HC,Ashanti,Health Center
+GHANA,Mamprugu Moagduri,Soo CHPS,North East,CHPS
+GHANA,Gomoa Central,Gomoa Asiebu CHPS(CR),Central,CHPS
+GHANA,Kwahu West,Nkawkaw Amanfrom CHPS,Eastern,CHPS
+GHANA,Nkoranza South,Africa Libera HC,Bono East,Health Center
+GHANA,Kassena Nankana East,Kassena Nankana East CHPS,Upper East,CHPS
+GHANA,Tano North,Dwenase (Tano North) CHPS,Ahafo,CHPS
+GHANA,Yunyoo Nasuan,Mozio CHPS,North East,CHPS
+GHANA,Bosomtwe,Tetrefu (Bosomtwe) HC,Ashanti,Health Center
+GHANA,Kwahu Afram Plains South,Tease Presby HC,Eastern,Health Center
+GHANA,Nsawam Adoagyiri,Fotobi CHPS,Eastern,CHPS
+GHANA,Bolgatanga,Azoribisi CHPS,Upper East,CHPS
+GHANA,Kwahu East,Ankoma CHPS,Eastern,CHPS
+GHANA,Offinso North,Nkwankwaa (Offinso North) HC,Ashanti,Health Center
+GHANA,Yunyoo Nasuan,Tuna CHPS,North East,CHPS
+GHANA,Bongo,Beo-Tanko CHPS,Upper East,CHPS
+GHANA,Bongo,Kabre CHPS,Upper East,CHPS
+GHANA,New Juaben South,Nyamekrom CHPS,Eastern,CHPS
+GHANA,Achiase,Achiase,Eastern,Other
+GHANA,Bawku West,Biringu CHPS,Upper East,CHPS
+GHANA,Yilo Krobo,Wurapong CHPS,Eastern,CHPS
+GHANA,Bolgatanga,Yikene CHPS,Upper East,CHPS
+GHANA,West Akim,Bunsu (West Akim) CHPS,Eastern,CHPS
+GHANA,Bawku West,Kamega CHPS,Upper East,CHPS
+GHANA,Gomoa West,Gomoa Assin CHPS (CR),Central,CHPS
+GHANA,Builsa South,Doninga HC,Upper East,Health Center
+GHANA,Kwaebibirem,Akim Kwamang (Kwaebibirem) CHPS,Eastern,CHPS
+GHANA,East Mamprusi,Zaari CHPS,North East,CHPS
+GHANA,Nkoranza South,Nkoranza HC,Bono East,Health Center
+GHANA,Talensi,Pwalugu HC,Upper East,Health Center
+GHANA,Tempane,Tempane HC,Upper East,Health Center
+GHANA,Atiwa East,Ehiawanwu CHPS,Eastern,CHPS
+GHANA,Atiwa East,Awuronsua Kwakwadum CHPS,Eastern,CHPS
+GHANA,New Juaben North,Adaniagya (New Juaben North) CHPS,Eastern,CHPS
+GHANA,Atiwa East,Awosoase CHPS,Eastern,CHPS
+GHANA,Nkoranza North,Sikaa CHPS,Bono East,CHPS
+GHANA,Karaga,Langogu CHPS,Northern,CHPS
+GHANA,Birim Central,Akim Oda (Birem Central) HSP,Eastern,Hospital
+GHANA,Kwahu South,Obomeng CHPS,Eastern,CHPS
+GHANA,Kwahu East,Kwahu East,Eastern,Other
+GHANA,Nkoranza South,Dasagua CHPS,Bono East,CHPS
+GHANA,Suhum,Kukua CHPS,Eastern,CHPS
+GHANA,Achiase,Nyankomase (Achiase) CHPS,Eastern,CHPS
+GHANA,Kwahu West,Apradang (Kwahu West) HC,Eastern,Health Center
+GHANA,Gomoa Central,Gomoa Dahom CHPS- CR,Central,CHPS
+GHANA,Nkoranza South,St. Theresa's Catholic HSP (Nkoranza South),Bono East,Hospital
+GHANA,Suhum,Amanhyia CHPS,Eastern,CHPS
+GHANA,Mamprugu Moagduri,Zanwara CHPS,North East,CHPS
+GHANA,Suhum,Akorabo HC,Eastern,Health Center
+GHANA,Abuakwa North,Anyinasin (Abuakwa North)CHPS,Eastern,Other
+GHANA,Karaga,Bagli CHPS,Northern,CHPS
+GHANA,Kwaebibirem,Stadium CHPS,Eastern,CHPS
+GHANA,Gomoa West,Gomoa Ngyiresi CHPS(CR),Central,CHPS
+GHANA,Ahafo Ano South East,Essienkyem CHPS,Ashanti,CHPS
+GHANA,Nkoranza North,Yefri HC,Bono East,Health Center
+GHANA,Talensi,Shia HC,Upper East,Health Center
+GHANA,Kwahu East,Kwahu Bokruwa CHPS,Eastern,CHPS
+GHANA,Agona East,Kokoado CHPS(CR),Central,CHPS
+GHANA,Ejisu Municipal,Global Evangelical HSP,Ashanti,Hospital
+GHANA,Akyemansa,Akyekrom (Akyemansa) CHPS,Eastern,CHPS
+GHANA,Bongo,Atampiisi (Bongo) CHPS,Upper East,CHPS
+GHANA,Kwaebibirem,Kade Guggisburg CHPS,Eastern,CHPS
+GHANA,Abuakwa South,Akyem Odumase (Abuakwa South) CHPS,Eastern,CHPS
+GHANA,Tano South,Dwomo CHPS,Ahafo,CHPS
+GHANA,Kwaebibirem,Twumwusu CHPS,Eastern,CHPS
+GHANA,Atiwa West,Akakom CHPS,Eastern,CHPS
+GHANA,New Juaben South,Densuano HC,Eastern,Health Center
+GHANA,Denkyembour,GCD HSP,Eastern,Hospital
+GHANA,Birim North,St. Michael's Clinic and Maternity,Eastern,Health Center
+GHANA,Bekwai Municipal,Kensere CHPS,Ashanti,CHPS
+GHANA,Upper West Akim,Abesre CHPS,Eastern,CHPS
+GHANA,Atwima Mponua,Kotokuom HC,Ashanti,Health Center
+GHANA,Abuakwa South,Kibi College Of Education Infirmary,Eastern,Other
+GHANA,Atwima Kwanwoma,Krofrom CHPS,Ashanti,CHPS
+GHANA,Kwahu West,Asona CHPS,Eastern,CHPS
+GHANA,Bongo,St. Theresa HC,Upper East,Health Center
+GHANA,Gomoa East,Kweikrom CHPS Compound (CR),Central,CHPS
+GHANA,Okere,Okere,Eastern,Other
+GHANA,Atebubu Amantin,Dobidi Nkwantia CHPS,Bono East,CHPS
+GHANA,Atwima Kwanwoma,Vetshop Ventures,Ashanti,Other
+GHANA,Ejisu Municipal,Shamo Farms & Trading Ent.,Ashanti,Other
+GHANA,Gomoa East,Dampaase CHPS,Central,CHPS
+GHANA,Asikuma Odoben Brakwa,Jamra CHPS (CR),Central,CHPS
+GHANA,Ejura Sekyedumase,Sarakyi Akura CHPS,Ashanti,CHPS
+GHANA,Upper Manya Krobo,Esuom CHPS,Eastern,CHPS
+GHANA,Akuapim South,Kitase CHPS,Eastern,CHPS
+GHANA,Sekyere Afram Plains,Anyinofi JHS,Ashanti,Other
+GHANA,Birim North,Birim North,Eastern,Other
+GHANA,Kwaebibirem,Nkwantanang CHPS (Kwaebibirim),Eastern,CHPS
+GHANA,Kassena Nankana West,Apia-Gumongo CHPS,Upper East,CHPS
+GHANA,Tano South,Adaa CHPS,Ahafo,CHPS
+GHANA,Kassena Nankana West,Nakolo HC,Upper East,Health Center
+GHANA,Upper West Akim,Owurakessim HC,Eastern,Health Center
+GHANA,West Akim,Pabi CHPS,Eastern,CHPS
+GHANA,Kwahu South,Atuobikrom CHPS,Eastern,CHPS
+GHANA,Akuapim North,Okorase (Akuapim North) CHPS,Eastern,CHPS
+GHANA,Denkyembour,Boadua HC,Eastern,Health Center
+GHANA,Akyemansa,Akyem Takyiman (Akyemansa) CHPS,Eastern,CHPS
+GHANA,Bolgatanga,Kalbeo CHPS,Upper East,CHPS
+GHANA,Kwahu South,Mframa CHPS,Eastern,CHPS
+GHANA,Upper West Akim,Asuotwene CHPS,Eastern,CHPS
+GHANA,Akyemansa,Kotokuom CHPS,Eastern,CHPS
+GHANA,Agona East,Jacob CHPS(CR),Central,CHPS
+GHANA,Upper Manya Krobo,Bormase CHPS,Eastern,CHPS
+GHANA,Birim North,Tweapease (Birim North) HC,Eastern,Health Center
+GHANA,Akyemansa,Gyaha CHPS,Eastern,CHPS
+GHANA,Akuapim South,Attakrom CHPS,Eastern,CHPS
+GHANA,Tempane,Gagbiri CHPS,Upper East,CHPS
+GHANA,Tano North,Yamfo HC,Ahafo,Health Center
+GHANA,Atiwa East,Atiwa East,Eastern,Other
+GHANA,Bunkpurugu-Nankpanduri,Bunkpurugu (GES),North East,Other
+GHANA,Asante Mampong,UEW CL,Ashanti,Health Center
+GHANA,Akyemansa,Adjobue CHPS,Eastern,CHPS
+GHANA,Akuapim North,Behenase CHPS,Eastern,CHPS
+GHANA,Agona East,Oboyambo CHPS(CR),Central,CHPS
+GHANA,Talensi,Accra-Site CHPS,Upper East,CHPS
+GHANA,Bolgatanga,Tindonsobligo CHPS,Upper East,CHPS
+GHANA,Effutu,Gyahadze CHPS,Central,CHPS
+GHANA,Kassena Nankana East,Gingabnia CHPS,Upper East,CHPS
+GHANA,Effutu,Hon. Nii Ephraim CHPS,Central,CHPS
+GHANA,Suhum,Trotor CHPS,Eastern,CHPS
+GHANA,Kwahu East,Dwerebease,Eastern,Other
+GHANA,Birim North,Kyenkyenku CHPS,Eastern,CHPS
+GHANA,Sekyere South,Skawrbs Farms,Ashanti,Other
+GHANA,Asene Manso Akroso,O'Right CHPS- AMA,Eastern,CHPS
+GHANA,Asuogyaman,Apeguso HC,Eastern,Health Center
+GHANA,Yilo Krobo,Nsutapong HC,Eastern,Health Center
+GHANA,Agona West,Mansokwaa CHPS(CR),Central,CHPS
+GHANA,Denkyembour,Anweaso (Denkyembour) CHPS,Eastern,CHPS
+GHANA,Ayensuano,Amponsahene (Ayensuano) CHPS,Eastern,CHPS
+GHANA,Denkyembour,Sadams CHPS,Eastern,CHPS
+GHANA,Effutu,Zongo (Effutu) CHPS (CR),Central,CHPS
+GHANA,Techiman Municipal,Finger Of God Ent,Bono East,Other
+GHANA,Kwabre East,Bosore (Kwabre East)CHPS,Ashanti,Other
+GHANA,Builsa South,Bachongsa CHPS,Upper East,CHPS
+GHANA,Accra Metropolitan Assembly,Greater Accra Regional Hospital,Greater Accra,Hospital
+GHANA,Sekyere Central,Birem HC,Ashanti,Health Center
+GHANA,Asante Akim Central,Dwease HC,Ashanti,Health Center
+GHANA,Talensi,Kpatia (Talensi) CHPS,Upper East,CHPS
+GHANA,Kwaebibirem,Abehenease CHPS,Eastern,CHPS
+GHANA,Asante Akim North,Wioso (Asante Akim North) CHPS,Ashanti,CHPS
+GHANA,Bunkpurugu-Nankpanduri,Nakpanduri HC,North East,Health Center
+GHANA,Asante Akim South,Juaso District HSP,Ashanti,Hospital
+GHANA,Bolgatanga East,Dachio CHPS,Upper East,CHPS
+GHANA,Kassena Nankana West,Nakong CHPS,Upper East,CHPS
+GHANA,Sekyere East,Senchi Methodist CL,Ashanti,Health Center
+GHANA,Kwahu West,Fodoa HC,Eastern,Health Center
+GHANA,Sekyere Afram Plains,Seneso CHPS,Ashanti,CHPS
+GHANA,Bosomtwe,St. Michael's Catholic (Bosomtwe) HSP,Ashanti,Hospital
+GHANA,West Mamprusi,Nabari HC,North East,Health Center
+GHANA,Kwaebibirem,Old Ntronang CHPS,Eastern,CHPS
+GHANA,West Mamprusi,Janga RCH,North East,CHPS
+GHANA,Kassena Nankana West,Nabango CHPS,Upper East,CHPS
+GHANA,Bawku West,Town CL,Upper East,Health Center
+GHANA,Bawku West,Zebilla SHS HC,Upper East,Health Center
+GHANA,Okere,Abonse (Okere) CHPS,Eastern,CHPS
+GHANA,Gomoa East,Gomoa Adzentem CHPS (CR),Central,CHPS
+GHANA,Sekyere Kumawu,Bodomase (Sekyere Kumawu) HC,Ashanti,Health Center
+GHANA,Bawku West,Azupupunga CHPS,Upper East,CHPS
+GHANA,East Mamprusi,Kolinvai CHPS,North East,CHPS
+GHANA,Bosomtwe,Amakom Lakeside Methodist HC,Ashanti,Health Center
+GHANA,West Mamprusi,Gbeo (WMM) CHPS,North East,CHPS
+GHANA,Asante Mampong,Mampong Government HSP,Ashanti,Hospital
+GHANA,Sekyere South,Pope John Paul II HSP,Ashanti,Hospital
+GHANA,Bolgatanga,Sumbrungu HC,Upper East,Health Center
+GHANA,Karaga,Namburugu CHPS,Northern,CHPS
+GHANA,Yunyoo Nasuan,Nasuan HC,North East,Health Center
+GHANA,Agona East,Asafo (Agona East) HC (CR),Central,Health Center
+GHANA,Atiwa West,Awenare HC,Eastern,Health Center
+GHANA,Okere,Apirede CHPS,Eastern,CHPS
+GHANA,Kassena Nankana West,Sakaa CHPS,Upper East,CHPS
+GHANA,Upper Manya Krobo,Samlesi CHPS,Eastern,CHPS
+GHANA,Afigya Kwabre North,Kwamang (Afigya Kwabre North) HC,Ashanti,Health Center
+GHANA,East Mamprusi,Gadantinga CHPS,North East,CHPS
+GHANA,Okere,Abiriw HC-OKERE,Eastern,Health Center
+GHANA,Kwaebibirem,Kwae CHPS,Eastern,CHPS
+GHANA,Atiwa East,Enyiresi HSP,Eastern,Hospital
+GHANA,Kwahu South,Nkyenekyene HC,Eastern,Health Center
+GHANA,Sekyere East,Akokoaso HC (Sekyere East),Ashanti,Health Center
+GHANA,Okere,Asenema CHPS-OKERE,Eastern,CHPS
+GHANA,Asene Manso Akroso,Suponso CHPS-AMA,Eastern,CHPS
+GHANA,Atiwa East,Akyem Osoroase (Atiwa East) CHPS,Eastern,CHPS
+GHANA,Atwima Nwabiagya North,Saquobea Ventures,Ashanti,Other
+GHANA,East Mamprusi,Gambaga HC,North East,Health Center
+GHANA,Asante Mampong,Atonsuagya CHPS,Ashanti,CHPS
+GHANA,Akuapim South,Pakro Zongo CHPS,Eastern,CHPS
+GHANA,Gomoa West,Noguchi HC (CR),Central,Health Center
+GHANA,Juaben Municipal,Achiase Ejisu Juaben HC,Ashanti,Health Center
+GHANA,Nkoranza South,Donkro Nkwanta HC,Bono East,Health Center
+GHANA,Talensi,Datoku HC,Upper East,Health Center
+GHANA,Karaga,Monkula CHPS,Northern,CHPS
+GHANA,Kwaebibirem,247 Willy Rose Ent.,Eastern,Other
+GHANA,Asante Akim South,Dwendwenase (Asante Akim South) HC,Ashanti,Health Center
+GHANA,Kassena Nankana East,Pelungu CL,Upper East,Health Center
+GHANA,Ejisu Municipal,Aggie Veterinary Consult,Ashanti,Other
+GHANA,Awutu Senya West,Okwampa CHPS(CR),Central,CHPS
+GHANA,Akuapim South,Yaw Duodo CHPS,Eastern,CHPS
+GHANA,Atiwa West,Larbikrom (Atiwa) HC,Eastern,Health Center
+GHANA,Okere,Aseseeso HC-OKERE,Eastern,Health Center
+GHANA,Kassena Nankana West,Kassena Nankana East HC,Upper East,Health Center
+GHANA,Asante Akim North,Agogo Presby HSP,Ashanti,Hospital
+GHANA,Gomoa West,Gomoa Nkoransa CHPS (CR),Central,CHPS
+GHANA,Kwaebibirem,Kwaebibirem,Eastern,Other
+GHANA,Ejura Sekyedumase,Frante CHPS,Ashanti,CHPS
+GHANA,Atebubu Amantin,Mem CHPS,Bono East,CHPS
+GHANA,Bongo,Zorko HC,Upper East,Health Center
+GHANA,Bekwai Municipal,Bekwai Municipal HSP,Ashanti,Hospital
+GHANA,Suhum,Nankesse HC,Eastern,Health Center
+GHANA,Karaga,Yemokaraga CHPS,Northern,CHPS
+GHANA,New Juaben North,Oyoko HC,Eastern,Health Center
+GHANA,Bawku West,Azoungo CHPS,Upper East,CHPS
+GHANA,Kassena Nankana West,Paga HSP,Upper East,Hospital
+GHANA,Kassena Nankana East,Yua CHPS,Upper East,CHPS
+GHANA,Nabdam,Zua (Nabdam)CHPS,Upper East,Other
+GHANA,Garu,Dabilla CHPS,Upper East,CHPS
+GHANA,Bolgatanga,Kunkua (Bolgatanga) CHPS,Upper East,CHPS
+GHANA,Nkoranza North,Bono Manso (Nkoranza North) CHPS,Bono East,CHPS
+GHANA,Bekwai Municipal,Akomaa Memorial HSP,Ashanti,Hospital
+GHANA,Talensi,Big Boss CL,Upper East,Health Center
+GHANA,Bongo,Balungo (Bongo) CHPS,Upper East,CHPS
+GHANA,Agona West,Edukrom CHPS(CR),Central,CHPS
+GHANA,Kassena Nankana West,Bugsongo CHPS,Upper East,CHPS
+GHANA,Kassena Nankana West,Navio CHPS,Upper East,CHPS
+GHANA,Akuapim North,Tetteh Quarshie Memorial HSP,Eastern,Hospital
+GHANA,Kwahu Afram Plains North,Nsuogyasu CHPS,Eastern,CHPS
+GHANA,Kwahu West,Kwahu Jejeti HC,Eastern,Health Center
+GHANA,Nkoranza North,Boana (Nkoranza North)CHPS,Bono East,Other
+GHANA,Nkoranza North,Dinkra CHPS,Bono East,CHPS
+GHANA,Bosome Freho,Fereso CHPS,Ashanti,CHPS
+GHANA,Ejisu Municipal,Kurotia Korase CHPS,Ashanti,CHPS
+GHANA,Nabdam,Immaculate Conception of Mary HC,Upper East,Health Center
+GHANA,Tano North,Subonpang CHPS,Ahafo,CHPS
+GHANA,Akuapim South,Agyementi CHPS,Eastern,CHPS
+GHANA,Mamprugu Moagduri,Loagri CHPS,North East,CHPS
+GHANA,Asante Akim North,Akutuase CHPS,Ashanti,CHPS
+GHANA,Ejisu Municipal,Madonna HC Besease,Ashanti,Health Center
+GHANA,Savelugu,Diare HC,Northern,Health Center
+GHANA,Bosome Freho,Abosamso CHPS,Ashanti,CHPS
+GHANA,Ahafo Ano South East,Biemso RCH,Ashanti,CHPS
+GHANA,New Juaben South,Koforidua Regional HSP,Eastern,Hospital
+GHANA,Asante Akim North,Pataban-Onyemso CHPS,Ashanti,CHPS
+GHANA,Savelugu,Nambagla CHPS,Northern,CHPS
+GHANA,Effutu,Winneba Municipal Hospital,Central,Hospital
+GHANA,Kwahu East,Hweehwee CHPS,Eastern,CHPS
+GHANA,Bolgatanga East,Zonno CHPS,Upper East,CHPS
+GHANA,Abuakwa South,Addonkwanta (Abuakwa South)CHPS,Eastern,Other
+GHANA,Lower Manya Krobo,Lower Manya Krobo,Eastern,Other
+GHANA,Asante Akim Central,Obenimase CHPS,Ashanti,CHPS
+GHANA,Birim North,Nyafoman CHPs,Eastern,CHPS
+GHANA,Bekwai Municipal,Ahwene Memorial HSP,Ashanti,Hospital
+GHANA,Techiman Municipal,Fiaso CHPS,Bono East,CHPS
+GHANA,Kwahu Afram Plains South,Ahiatroga CHPS,Eastern,CHPS
+GHANA,West Akim,Anum (West Akim) HC,Eastern,Health Center
+GHANA,Bekwai Municipal,Kokofu General HSP,Ashanti,Hospital
+GHANA,Bosome Freho,Tebeso No.1 CHPS,Ashanti,CHPS
+GHANA,Suhum,Suhum,Eastern,Other
+GHANA,Asene Manso Akroso,Kyeremase CHPS-AMA,Eastern,CHPS
+GHANA,Asuogyaman,VRA Akosombo HSP,Eastern,Hospital
+GHANA,Nkoranza South,Bonsu HC,Bono East,Health Center
+GHANA,Akyemansa,Bosso Villa CHPS,Eastern,CHPS
+GHANA,Builsa North,Kom CHPS,Upper East,CHPS
+GHANA,Birim South,Apoli HC,Eastern,Health Center
+GHANA,Denkyembour,Dwenease (Denkyembuor) HC,Eastern,Health Center
+GHANA,Birim South,Adiembra CHPS,Eastern,CHPS
+GHANA,Asene Manso Akroso,Atiankama CHPS,Eastern,CHPS
+GHANA,Kwahu South,Obo Health Centre,Eastern,Other
+GHANA,Atwima Nwabiagya North,Barekese HC,Ashanti,Health Center
+GHANA,Talensi,Gbeogo (Talensi) CHPS,Upper East,CHPS
+GHANA,Kwahu Afram Plains South,Nsuogyaso CHPS,Eastern,CHPS
+GHANA,Okere,Akyeremateng CHPS-OKERE,Eastern,CHPS
+GHANA,Nkoranza North,Senya CHPS,Bono East,CHPS
+GHANA,Kwabre East,Truba CHPS,Ashanti,CHPS
+GHANA,Asene Manso Akroso,Asantemang (Asene Manso Akroso) CHPS,Eastern,CHPS
+GHANA,Asene Manso Akroso,Asibirim CHPS,Eastern,CHPS
+GHANA,Techiman Municipal,Jakvet Ent,Bono East,Other
+GHANA,Builsa South,Naadema CHPS,Upper East,CHPS
+GHANA,Asuogyaman,Tortibo CHPS,Eastern,CHPS
+GHANA,Akuapim North,Kwamoso CHPS,Eastern,CHPS
+GHANA,Asante Mampong,Mprim CHPS,Ashanti,CHPS
+GHANA,Kwahu South,Suminakese  CHPS,Eastern,CHPS
+GHANA,Gomoa Central,Gomoa Manso CHPS(CR),Central,CHPS
+GHANA,Akyemansa,Zevor CHPS,Eastern,CHPS
+GHANA,Birim South,Akotekrom (Birim South) CHPS,Eastern,CHPS
+GHANA,Akyemansa,Kofi Nimo CHPS,Eastern,CHPS
+GHANA,Afigya Kwabre South,Family Care HSP,Ashanti,Hospital
+GHANA,Upper Manya Krobo,Fatem CHPS,Eastern,CHPS
+GHANA,Ayensuano,Kuano CHPS,Eastern,CHPS
+GHANA,Juaben Municipal,Peminase HC,Ashanti,Health Center
+GHANA,Techiman Municipal,Philip Vetshop,Bono East,Other
+GHANA,Abuakwa North,Ettukrom CHPS,Eastern,CHPS
+GHANA,Kassena Nankana West,Tazika CHPS,Upper East,CHPS
+GHANA,Asene Manso Akroso,Batabi chps- AMA,Eastern,CHPS
+GHANA,Bolgatanga,Dapoore CHPS,Upper East,CHPS
+GHANA,Tano South,Derma HC,Ahafo,Health Center
+GHANA,Atwima Kwanwoma,Yabi CHPS,Ashanti,CHPS
+GHANA,Kwahu South,Kwahu Praso Presby HC,Eastern,Health Center
+GHANA,Asuogyaman,Atimpoku HC,Eastern,Health Center
+GHANA,West Akim,Asuofori CHPS,Eastern,CHPS
+GHANA,Builsa North,"Presbyterian HC, Sandema",Upper East,Health Center
+GHANA,Asante Mampong,Konodia Veterinary,Ashanti,Other
+GHANA,Birim South,Atuntumirem CHPS,Eastern,CHPS
+GHANA,Kwahu South,Ntomem CHPS,Eastern,CHPS
+GHANA,Savelugu,Zangbalun CHPS,Northern,CHPS
+GHANA,Asante Akim South,Banka HC (Asante Akim South),Ashanti,Health Center
+GHANA,Nkoranza North,Timiabu CHPS,Bono East,CHPS
+GHANA,Asuogyaman,Old Akrade CHPS,Eastern,CHPS
+GHANA,Birim South,Aduasa (Birim South) CHPS,Eastern,CHPS
+GHANA,Effutu,Dr. Prah CHPS,Central,CHPS
+GHANA,Effutu,Penkye CHPS,Central,CHPS
+GHANA,Birim North,Nwinso CHPS,Eastern,CHPS
+GHANA,Awutu Senya West,Bewuenum CHPS-CR,Central,CHPS
+GHANA,East Mamprusi,Samini CHPS,North East,CHPS
+GHANA,Akuapim South,Pakro HC,Eastern,Health Center
+GHANA,Ejisu Municipal,Ejisu Government HSP,Ashanti,Hospital
+GHANA,Nabdam,Kongo-Doborin CHPS,Upper East,CHPS
+GHANA,Kwahu West,Wawase Epicenter CHPS,Eastern,CHPS
+GHANA,Sekyere Kumawu,Woraso HC,Ashanti,Health Center
+GHANA,Sekyere East,Ahwerewa (Sekyere East) CHPS,Ashanti,CHPS
+GHANA,Kwahu Afram Plains South,Presby HC (Ekye Amanfrom),Eastern,Health Center
+GHANA,Fanteakwa North,Begoro Salvation Army HC,Eastern,Health Center
+GHANA,Offinso North,Akumadan (Offinso North) HC,Ashanti,Health Center
+GHANA,Kwaebibirem,Pramkese HC,Eastern,Health Center
+GHANA,Mamprugu Moagduri,Jadema HC,North East,Health Center
+GHANA,Akuapim South,Nsakye CHPS,Eastern,CHPS
+GHANA,Kwahu South,Kwahu Amanfrom CHPS,Eastern,CHPS
+GHANA,Kwahu West,Danteng HC,Eastern,Health Center
+GHANA,Yilo Krobo,Opersika HC,Eastern,Health Center
+GHANA,Ejura Sekyedumase,Ejura Government HSP,Ashanti,Hospital
+GHANA,Ejura Sekyedumase,Nokwreasa CHPS,Ashanti,CHPS
+GHANA,Awutu Senya West,Bonsuoku CHPS-CR,Central,CHPS
+GHANA,Bawku West,Apodabogo CHPS,Upper East,CHPS
+GHANA,Sekyere Kumawu,Kumawu Government Hospital,Ashanti,Hospital
+GHANA,Bekwai Municipal,Bodoma (Bekwai Municipal) CHPS,Ashanti,CHPS
+GHANA,East Mamprusi,Gbintiri HC,North East,Health Center
+GHANA,Yilo Krobo,Ahinkwa CHPS,Eastern,CHPS
+GHANA,Akyemansa,Anyinase (Akyemansa) HC,Eastern,Health Center
+GHANA,Agona East,Mensakrom HC (CR),Central,Health Center
+GHANA,Atwima Kwanwoma,Ampatia CHPS,Ashanti,CHPS
+GHANA,Afigya Kwabre North,Ahenkro (Afigya Kwabre North) HC,Ashanti,Health Center
+GHANA,Asikuma Odoben Brakwa,Benin CHPS(CR),Central,CHPS
+GHANA,Nabdam,Zanlerigu HC,Upper East,Health Center
+GHANA,Kassena Nankana East,Kapania CHPS,Upper East,CHPS
+GHANA,Talensi,Sakpare-Tengre CHPS,Upper East,CHPS
+GHANA,Sekyere Central,Nsuta HC (Sekyere Central),Ashanti,Health Center
+GHANA,Kwahu West,Jamasi No.1 CHPS,Eastern,CHPS
+GHANA,Kwaebibirem,Atobriso CHPS,Eastern,CHPS
+GHANA,Bawku West,Kopella CHPS,Upper East,CHPS
+GHANA,West Mamprusi,Our Lady Of Roccio CL,North East,Health Center
+GHANA,East Mamprusi,"Presbyterian CL,Langbinsi",North East,Health Center
+GHANA,Fanteakwa North,Otuater CHPS,Eastern,CHPS
+GHANA,Asante Akim South,Banso CHPS,Ashanti,CHPS
+GHANA,Bosomtwe,Brodekwano Methodist HC,Ashanti,Health Center
+GHANA,Gomoa East,Limousine CHPS (CR),Central,CHPS
+GHANA,Gomoa West,Kokofu CHPS(CR),Central,CHPS
+GHANA,Gomoa West,Denkyira CHPS (CR),Central,CHPS
+GHANA,Bunkpurugu-Nankpanduri,Kambatiak CHPS,North East,CHPS
+GHANA,East Mamprusi,Gbangu CHPS,North East,CHPS
+GHANA,Atebubu Amantin,Fakwasi CHPS,Bono East,CHPS
+GHANA,Bongo,Ayelbia CHPS,Upper East,CHPS
+GHANA,Karaga,Kpasong CHPS,Northern,CHPS
+GHANA,Chereponi,Chereponi District HSP,North East,Hospital
+GHANA,West Akim,Asamankese HSP,Eastern,Hospital
+GHANA,Mamprugu Moagduri,Kpatorigu CHPS,North East,CHPS
+GHANA,Upper Manya Krobo,Odichinase CHPS,Eastern,CHPS
+GHANA,Karaga,Tong CHPS,Northern,CHPS
+GHANA,Nkoranza North,Busunya HC,Bono East,Health Center
+GHANA,Suhum,Supresu HC,Eastern,Health Center
+GHANA,Fanteakwa North,Begoro HSP,Eastern,Hospital
+GHANA,Kassena Nankana East,Navrongo HC,Upper East,Health Center
+GHANA,Bawku West,Dagunga CHPS,Upper East,CHPS
+GHANA,Ejura Sekyedumase,St. Luke's (Ejura Sekyedumase) Hospital,Ashanti,Hospital
+GHANA,Akyemansa,Akyemansa,Eastern,Other
+GHANA,Afigya Kwabre South,Aborah Sika Catholic (Afigya Kwabre South) Clinic,Ashanti,Health Center
+GHANA,Sekyere South,Sacred Heart HC,Ashanti,Health Center
+GHANA,Tano North,Terchire HC,Ahafo,Health Center
+GHANA,Suhum,Abenabo (Suhum) CHPS,Eastern,CHPS
+GHANA,Gomoa West,Mprumem CHPS(CR),Central,CHPS
+GHANA,Gomoa West,Gomoa Brofo HC(CR),Central,Health Center
+GHANA,Suhum,Akote (Suhum) CHPS,Eastern,CHPS
+GHANA,Techiman Municipal,Godsway Poultry Service,Bono East,Other
+GHANA,Bosome Freho,Nsuaem HC,Ashanti,Health Center
+GHANA,Kwahu Afram Plains South,Ekye Central CHPS,Eastern,CHPS
+GHANA,Yunyoo Nasuan,Namango (Yunyoo Nasuan)  CHPS,North East,CHPS
+GHANA,Techiman Municipal,Asantanso (Techiman Municipal) CHPS,Bono East,CHPS
+GHANA,Bongo,Feo CHPS,Upper East,CHPS
+GHANA,Agona West,Bobikuma HC(CR),Central,Health Center
+GHANA,Kassena Nankana West,Kaasi CHPS,Upper East,CHPS
+GHANA,Fanteakwa North,Amotare CHPS,Eastern,CHPS
+GHANA,Afigya Kwabre North,Nkwantakese (Afigya Kwabre North)HC,Ashanti,Health Center
+GHANA,Ejisu Municipal,St. Anthony Ann (Ejisu Mun.) Hospital,Ashanti,Hospital
+GHANA,Kassena Nankana West,Mirigu CHPS,Upper East,CHPS
+GHANA,Denkyembour,Denkyembuor,Eastern,Other
+GHANA,Nabdam,Gungware CHPS,Upper East,CHPS
+GHANA,Agona East,Agona Nsaba HC(CR),Central,Health Center
+GHANA,Suhum,Obretema CHPS,Eastern,CHPS
+GHANA,Atiwa West,Abrenya (Atiwa West)CHPS,Eastern,Other
+GHANA,Agona East,Kwesi Paintsil CHPS (CR),Central,CHPS
+GHANA,Agona West,Otsenkorang CHPS (CR),Central,CHPS
+GHANA,Kassena Nankana East,Zuo (KNE) CHPS,Upper East,CHPS
+GHANA,Bekwai Municipal,Ahmadiyya Muslim HSP (Bekwai Municipal),Ashanti,Hospital
+GHANA,Kwahu West,Awenade CHPS,Eastern,CHPS
+GHANA,Atwima Kwanwoma,Ahenemakokoben (Atwima Kwanwoma) HC,Ashanti,Health Center
+GHANA,Upper Manya Krobo,Apimsu CHPS,Eastern,CHPS
+GHANA,Savelugu,Kukuobila CHPS,Northern,CHPS
+GHANA,Upper West Akim,Asuokaw CHPS,Eastern,CHPS
+GHANA,Achiase,Anamase CHPS,Eastern,CHPS
+GHANA,Yunyoo Nasuan,Gbingbani HC,North East,Health Center
+GHANA,Fanteakwa North,Addokrom (Fanteakwa North) CHPS,Eastern,CHPS
+GHANA,Lower Manya Krobo,St Martins de Porres HSP,Eastern,Hospital
+GHANA,Agona East,Suromanya CHPS(CR),Central,CHPS
+GHANA,Upper West Akim,Upper West Akim,Eastern,Other
+GHANA,Ayensuano,Mankrong CHPS,Eastern,CHPS
+GHANA,Atwima Nwabiagya North,Asuofua PC,Ashanti,Health Center
+GHANA,Techiman Municipal,Eddy Janco Enterprise,Bono East,Other
+GHANA,Birim North,Okaikrom CHPS,Eastern,CHPS
+GHANA,Asene Manso Akroso,Eshiem (Asene Manso Akroso) CHPS,Eastern,CHPS
+GHANA,Kassena Nankana East,Pindaa CHPS,Upper East,CHPS
+GHANA,Birim North,New Abirem HSP,Eastern,Hospital
+GHANA,Asene Manso Akroso,Asene CHPS,Eastern,CHPS
+GHANA,Atwima Kwanwoma,Methodist Hospital Aburaso (Atwima Kwanwoma),Ashanti,Hospital
+GHANA,Ejisu Municipal,Kwaso HC (Ejisu Municipal),Ashanti,Health Center
+GHANA,Agona East,Brahabekum CHPS (CR),Central,CHPS
+GHANA,Bosomtwe,Sawua HC,Ashanti,Health Center
+GHANA,Suhum,Okanta CHPS,Eastern,CHPS
+GHANA,Atiwa West,Asamama (Atiwa West) CHPS,Eastern,CHPS
+GHANA,Builsa South,Buterisa CHPS,Upper East,CHPS
+GHANA,Awutu Senya West,Senya Kokoado CHPS-CR,Central,CHPS
+GHANA,Yilo Krobo,Oterkpolu HC,Eastern,Health Center
+GHANA,Akyemansa,Odumase Akyemmansa CHPS,Eastern,CHPS
+GHANA,Awutu Senya East,Sapato CHPS (CR),Central,CHPS
+GHANA,Asene Manso Akroso,Asuoso CHPS,Eastern,CHPS
+GHANA,Yilo Krobo,Somanya HC,Eastern,Health Center
+GHANA,Agona West,Ahamadonko CHPS(CR),Central,CHPS
+GHANA,Asene Manso Akroso,Asuoso St Theresa's HSP,Eastern,Hospital
+GHANA,Agona East,Ofoase CHPS (CR),Central,CHPS
+GHANA,Upper West Akim,Kwao-Baah CHPS,Eastern,CHPS
+GHANA,Bosome Freho,St. Mary Yapesa (Bosome Freho) HC,Ashanti,Health Center
+GHANA,Asene Manso Akroso,Amanfrom CHPS - (Asene Manso Akroso),Eastern,CHPS
+GHANA,Akuapim North,Konko CHPS,Eastern,CHPS
+GHANA,Kwaebibirem,Okyinso CHPS,Eastern,CHPS
+GHANA,Tano North,St John Of God HSP (Duayaw Nkwanta),Ahafo,Hospital
+GHANA,Builsa North,Chiok CHPS,Upper East,CHPS
+GHANA,Tano South,Nsuta CHPS (Tano South),Ahafo,CHPS
+GHANA,Gomoa West,Kyiren Nkwanta CHPS(CR),Central,CHPS
+GHANA,Awutu Senya West,Ajaa CHPS,Central,CHPS
+GHANA,Ahafo Ano South East,St. Edward (Ahafo Ano South East) HSP,Ashanti,Hospital
+GHANA,Birim North,Afosu HC,Eastern,Health Center
+GHANA,Fanteakwa North,Ahomahomaso HC,Eastern,Health Center
+GHANA,Asuogyaman,South Senchi HC,Eastern,Health Center
+GHANA,Atiwa West,Akyem Bomaa CHPS,Eastern,CHPS
+GHANA,Abuakwa South,Abuakwa South Education Directorate,Eastern,Other
+GHANA,Birim Central,Birim Central,Eastern,Other
+GHANA,Akuapim North,Tinkong HC,Eastern,Health Center
+GHANA,Abuakwa South,Amanfrom (Abuakwa South) CHPS,Eastern,CHPS
+GHANA,Gomoa East,Gomoa Nyanyano HC (CR),Central,Health Center
+GHANA,Asante Akim Central,Kyekyewere CHPS (Asante Akim Central),Ashanti,CHPS
+GHANA,Abuakwa South,Bomponso No.1 CHPS,Eastern,CHPS
+GHANA,Gomoa Central,Ekwankrom CHPS (CR),Central,CHPS
+GHANA,Yilo Krobo,Akorley (Yilo Krobo) CHPS,Eastern,CHPS
+GHANA,Tano North,Adrobaa HC,Ahafo,Health Center
+GHANA,Birim North,Adausena HC,Eastern,Health Center
+GHANA,Nabdam,Yakote CHPS,Upper East,CHPS
+GHANA,Agona East,Duabone CHPS (CR),Central,CHPS
+GHANA,Denkyembour,Topremang CHPS,Eastern,CHPS
+GHANA,New Juaben North,Asaman ( New Juaben North) CHPS,Eastern,CHPS
+GHANA,Birim Central,Community 6 CHPS,Eastern,CHPS
+GHANA,Kwahu East,Sukwa CHPS,Eastern,CHPS
+GHANA,Bolgatanga,Bolgatanga Polytechnic CL,Upper East,Health Center
+GHANA,West Akim,Anoma Kojo (West Akim) CHPS,Eastern,CHPS
+GHANA,Builsa North,Namonsa CHPS,Upper East,CHPS
+GHANA,Tano North,Bomaa Government Hospital,Ahafo,Hospital
+GHANA,Denkyembour,Takrowase HC,Eastern,Health Center
+GHANA,Kumbungu,Voggu CHPS,Northern,CHPS
+GHANA,West Akim,Odjarde CHPS,Eastern,CHPS
+GHANA,Upper Manya Krobo,Alidor CHPS,Eastern,CHPS
+GHANA,Upper Manya Krobo,Aframase CHPS,Eastern,CHPS
+GHANA,Birim North,I & I Hospital,Eastern,Hospital
+GHANA,Asuogyaman,Kudi Kope HC,Eastern,Health Center
+GHANA,Builsa North,Sanwaasa CHPS,Upper East,CHPS
+GHANA,West Mamprusi,Zipline Vobsi,North East,Other
+GHANA,Birim Central,Mawuli / Quarters CHPS,Eastern,CHPS
+GHANA,Sefwi Wiawso,Zipline Sefwi,Western North,Other
+GHANA,Bongo,Sanabisi CHPS,Upper East,CHPS
+GHANA,Suhum,Work From Home - GH1,Eastern,Hospital
+GHANA,Agona East,Nyamendam CHPS (CR),Central,CHPS
+GHANA,Atwima Mponua,NKROMA CHPS-GH2,Ashanti,CHPS
+GHANA,Effutu,George Kwame Quansah HC (CR),Central,Health Center
+GHANA,Fanteakwa North,GH1-HM-006,Eastern,Other
+GHANA,Kumbungu,Gbullung HC,Northern,Health Center
+GHANA,Tempane,Akara CHPS,Upper East,CHPS
+GHANA,Asikuma Odoben Brakwa,Baako CHPS (CR),Central,CHPS
+GHANA,Akyemansa,Chia CHPS,Eastern,CHPS
+GHANA,Birim South,Suame CHPS,Eastern,CHPS
+GHANA,Atwima Nwabiagya Municipal,Seth Farms,Ashanti,Other
+GHANA,Effutu,Hon. Samuel Owusu Agyei HC (CR),Central,Health Center
+GHANA,Birim North,Abenya (Birim North) Chps,Eastern,CHPS
+GHANA,Yilo Krobo,Sawer Chps,Eastern,CHPS

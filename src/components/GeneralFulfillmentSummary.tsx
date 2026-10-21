@@ -39,11 +39,17 @@ export default function GeneralFulfillmentSummary({ details }: { details: Genera
     { status: 'order limit applied', title: 'Order Limit Applied' },
     { status: 'out of stock', title: 'Out of Stock' }
   ];
-  const metadata = [details.facility.status === 'mismatch' ? 'Facility Mismatch' : details.facility.status === 'not available in system entry' && 'Facility Not Found — review required', details.orderer.status === 'mismatch' ? 'Orderer Name Mismatch' : details.orderer.status === 'not available in system entry' && 'Orderer Name Not Found — review required', details.phone.status === 'mismatch' && 'Phone Number Mismatch'].filter(Boolean);
+  const metadata = [details.dropArea?.status === 'mismatch' && 'Location Mismatch — Delivery/Drop Area', details.district?.status === 'mismatch' && 'District Mismatch', details.facility.status === 'mismatch' && 'Facility Mismatch', details.orderer.status === 'mismatch' && 'Orderer Name Mismatch', details.phone.status === 'mismatch' && 'Phone Number Mismatch'].filter(Boolean);
   return <section className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm space-y-4" aria-label="Fulfillment summary">
     <h4 className="font-bold text-[#3B1A5E]">{details.finalStatus}</h4>
     {details.message && <p className="text-sm">{details.message}</p>}
     {!!details.warnings?.length && <div className="text-xs text-amber-800"><h5 className="font-semibold">Warnings</h5><ul>{details.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></div>}
+    {details.facility.status === 'review required' && <div className="text-xs text-amber-800" role="status">
+      <h5 className="font-semibold">REVIEW REQUIRED – Possible Facility Match</h5>
+      <p>{details.facility.whatsappValue} / {details.facility.fulfillmentValue}</p>
+      <p>{details.facility.reason}</p>
+      <p>Manually verify the facility before dispatch.</p>
+    </div>}
     {metadata.length > 0 && <div className="text-xs text-red-800"><h5 className="font-semibold">Metadata Discrepancies</h5><ul>{metadata.map(issue => <li key={String(issue)}>{issue}</li>)}</ul></div>}
     {groups.map(group => {
       const products = details.products.filter(product => product.fulfillmentStatus === group.status && (!group.kind || product.discrepancyKind === group.kind));
@@ -60,6 +66,6 @@ export default function GeneralFulfillmentSummary({ details }: { details: Genera
         </li>)}</ul>
       </div> : null;
     })}
-    <p className="text-xs font-semibold">Audit Result: {details.discrepancies.length ? 'Discrepancy Detected' : details.pendingOrderLimitCount ? 'Awaiting Order Limit Validation' : 'Confirmed — No Discrepancy'}</p>
+    <p className="text-xs font-semibold">Audit Result: {details.discrepancies.length ? 'Discrepancy Detected' : details.auditSummary?.missingRequiredCount ? 'Missing Required Information' : details.auditSummary?.reviewRequiredCount ? 'Manual Review Required' : details.pendingOrderLimitCount ? 'Awaiting Order Limit Validation' : 'VERIFIED MATCH'}</p>
   </section>;
 }

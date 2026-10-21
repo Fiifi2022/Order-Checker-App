@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let savedBackendUrl = SERVER_URL;
   let connectionAttempt = 0;
+  let auditController;
   let contextRevision = 0, inputRevision = 0, hintRevision = 0, hintTimer;
   const inputKey = () => JSON.stringify([whatsappText.value, fulfillmentText.value, document.getElementById('auditMode').value, document.getElementById('vaccineFacility').value]);
   const request = async (endpoint, options = {}) => {
@@ -41,21 +42,30 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const refreshHints = async () => {
     const current = ++hintRevision;
-    for (const [source, text] of [['whatsapp', whatsappText.value], ['fulfillment', fulfillmentText.value]]) {
-      const box = document.getElementById(`${source}Hints`);
-      if (!text.trim()) { box.hidden = true; box.replaceChildren(); continue; }
-      try {
-        const data = await request('/api/products/hints', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope: 'general', text }) });
-        if (current !== hintRevision) return;
-        box.replaceChildren(); box.hidden = !data.products.length;
-        if (data.products.length) {
+    const entries = [['whatsapp', whatsappText.value], ['fulfillment', fulfillmentText.value]];
+    const active = entries.filter(([, text]) => text.trim());
+    for (const [source, text] of entries) { if (!text.trim()) { const box = document.getElementById(`${source}Hints`); box.hidden = true; box.replaceChildren(); } }
+    if (!active.length) return;
+    try {
+      // Both fields share one authenticated catalogue read per debounced edit.
+      const data = await request('/api/products/hints', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope: 'general', texts: active.map(([, text]) => text) }) });
+      if (current !== hintRevision) return;
+      for (const [index, [source]] of active.entries()) {
+        const products = data.groups[index];
+        const box = document.getElementById(`${source}Hints`);
+        box.replaceChildren(); box.hidden = !products.length;
+        if (products.length) {
           const heading = document.createElement('strong'); heading.textContent = 'Fulfillment System reminders'; box.append(heading);
-          for (const product of data.products) { const row = document.createElement('p'); row.textContent = [product.name, product.fulfillmentSystemName ? `System name: ${product.fulfillmentSystemName}` : '', product.receivingDetails].filter(Boolean).join('\n'); box.append(row); }
+          for (const product of products) { const row = document.createElement('p'); row.textContent = [product.name, product.fulfillmentSystemName ? `System name: ${product.fulfillmentSystemName}` : '', product.receivingDetails].filter(Boolean).join('\n'); box.append(row); }
         }
-      } catch (error) { if (current === hintRevision) { box.hidden = false; box.textContent = `Receiving reminders unavailable: ${error.message}`; } }
+      }
+    } catch (error) {
+      if (current !== hintRevision) return;
+      for (const [source] of active) { const box = document.getElementById(`${source}Hints`); box.hidden = false; box.textContent = `Receiving reminders unavailable: ${error.message}`; }
     }
   };
   const invalidate = () => {
+    auditController?.abort();
     inputRevision++; activeResult = null; limitDecisions = {}; declinedLimitItems = [];
     vaccines.invalidate();
     results.textContent = 'Inputs changed. Run Analyze to verify the current order.';
@@ -72,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const input = source === 'whatsapp' ? whatsappText : fulfillmentText; input.value = text;
     chrome.storage.local.set({ [source === 'whatsapp' ? 'whatsappText' : 'fulfillmentText']: text }); invalidate();
   } });
-  const resetContext = () => { contextRevision++; inputRevision++; activeResult = null; limitDecisions = {}; catalogUI.reset(); screenshots.reset(); vaccines.reset(); clearHints(); };
+  const resetContext = () => { auditController?.abort(); contextRevision++; inputRevision++; activeResult = null; limitDecisions = {}; catalogUI.reset(); screenshots.reset(); vaccines.reset(); clearHints(); };
   document.getElementById('openPortal').addEventListener('click', () => {
     try { chrome.tabs.create({ url: normalizeBackendUrl(savedBackendUrl) }); } catch (error) { showError(error); }
   });
@@ -447,22 +457,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnVerify.disabled) return;
     const version = inputRevision, context = contextRevision;
+    const controller = new AbortController();
+    auditController = controller;
     activeResult = null;
     btnVerify.disabled = true;
     document.getElementById('auditStatus').textContent = 'Audit in progress';
     results.innerHTML = '<span style="color:#5C2D91; font-weight:bold; animation:pulse 1s infinite;">Checking clinical compliance portal...</span>';
 
+    const progressTimer = setTimeout(() => {
+      if (version === inputRevision && context === contextRevision && btnVerify.disabled) {
+        results.textContent = 'Your audit is taking slightly longer than expected. Please wait while we complete the verification.';
+      }
+    }, 3000);
     try {
       const activeUrl = normalizeBackendUrl(savedBackendUrl);
       if (normalizeBackendUrl(backendUrlInput.value) !== activeUrl) {
         throw new Error('Click Save to apply your changed backend URL before auditing.');
       }
-      const catalog = await request('/api/products');
-      if (version !== inputRevision || context !== contextRevision) return;
       const data = await request('/api/verify', {
+        signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(auditBody(wa, ff, catalog.revision, limitDecisions)),
+        body: JSON.stringify(auditBody(wa, ff, undefined, limitDecisions)),
       });
       if (!Array.isArray(data.items) || typeof data.allMatch !== 'boolean') {
         throw new Error('Unexpected audit response from the backend.');
@@ -478,6 +494,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (version === inputRevision && context === contextRevision) showError(err);
       await updateAuth();
     } finally {
+      clearTimeout(progressTimer);
+      if (auditController === controller) auditController = null;
       btnVerify.disabled = false;
     }
   };

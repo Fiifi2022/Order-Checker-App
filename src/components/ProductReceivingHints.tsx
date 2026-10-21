@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { authFetch } from '../utils/authFetch';
+import { readProductHintCatalog } from '../utils/productHintCatalog';
 import type { CatalogProduct } from '../../shared/productCatalog';
 import { productReceivingHints } from '../utils/productReceivingHints';
 
@@ -11,10 +11,8 @@ export default function ProductReceivingHints({ text, scope }: { text: string; s
     const load = async () => {
       request?.abort(); const controller = new AbortController(); request = controller;
       try {
-        const response = await authFetch('/api/products', { signal: controller.signal, cache: 'no-store' });
-        if (!response.ok) throw new Error('Catalog unavailable');
-        const data = await response.json();
-        if (!controller.signal.aborted) { setProducts(data.products); setUnavailable(false); }
+        const products = await readProductHintCatalog();
+        if (!controller.signal.aborted) { setProducts(products); setUnavailable(false); }
       } catch { if (!controller.signal.aborted) { setProducts([]); setUnavailable(true); } }
     };
     void load();

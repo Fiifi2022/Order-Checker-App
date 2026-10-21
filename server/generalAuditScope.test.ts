@@ -102,7 +102,9 @@ test('General Auditor verdicts show operational statuses and missing-name warnin
   assert.equal(audit('ORS - 5', 'ORT - 3').generalAudit.message, '1 discrepancy found — review before dispatch.');
   const absentNames = runGeneralAuditor('ORS - 5', 'ORS - 5');
   assert.equal(absentNames.issueCount, 0);
-  assert.deepEqual(absentNames.generalAudit.warnings, ['ORDERER NAME NOT FOUND', 'FACILITY NOT FOUND']);
+  assert.equal(absentNames.auditSummary.missingRequiredCount, 2);
+  assert.ok(absentNames.generalAudit.warnings?.includes('ORDERER NAME NOT FOUND'));
+  assert.ok(absentNames.generalAudit.warnings?.includes('FACILITY NOT FOUND'));
   const fields = renderToStaticMarkup(createElement(Details, { details: absentNames.generalAudit }));
   assert.match(fields, /ORDERER NAME NOT FOUND/);
   assert.match(fields, /FACILITY NOT FOUND/);

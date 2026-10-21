@@ -43,8 +43,8 @@ test('approved ASV and ARV identities take precedence over model ambiguity and a
     assert.ok(payload.aliases.some((entry: any) => entry.canonicalId === 'ANTI_SNAKE' && entry.aliases.includes('ASV')));
     assert.ok(payload.aliases.some((entry: any) => entry.canonicalId === 'ANTI_RABIES_VACCINE' && entry.aliases.includes('ARV')));
   }));
-  assert.equal(calls, 1);
-  assert.equal(result.semanticAnalysis.status, 'used');
+  assert.equal(calls, 0);
+  assert.equal(result.semanticAnalysis.status, 'skipped');
   assert.equal(result.generalAudit.semanticReviews?.length || 0, 0);
   assert.deepEqual(result.items.map(item => [item.name, item.requested, item.found, item.status]), [
     ['Anti Snake Serum Injection', '2', '2', 'match'],
@@ -146,14 +146,15 @@ test('API failure and invalid JSON fall back, while repeated successful extracti
   for (const kind of ['429', 'timeout', 'unavailable', 'invalid JSON']) {
     // Unparsed surrounding wording still takes the semantic path. Explicit
     // product-only input now bypasses Gemini even without metadata.
-    const a = `Unlisted ${kind} product - 5\nPlease verify.`;
+    const a = `Unlisted ${kind} product - 5\nAlso include a suitable product.`;
     const b = `Unlisted ${kind} product [5/5]`;
     const result = await runGeneralSemanticAudit(a, b, {}, {}, () => ({ models: { async generateContent() {
       if (kind === 'invalid JSON') return { text: 'not JSON' };
       throw Object.assign(new Error(kind), { status: kind === '429' ? 429 : 503 });
     } } }));
     assert.equal(result.semanticAnalysis.status, 'fallback');
-    assert.equal(result.allMatch, true);
+    assert.equal(result.allMatch, false);
+    assert.match(result.generalAudit.semanticReviews?.[0].reason || '', /unresolved/);
   }
   const a = headers + 'need paracetamol syrup 15';
   const b = headers + 'Paracetamol Syrup [15/15]';

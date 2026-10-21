@@ -1,0 +1,97 @@
+// Local Chromium validation against the isolated Firebase fixtures only.
+import assert from 'node:assert/strict';
+export async function validateBlueprintInsertion(page: any, base: string) {
+  await page.getByRole('button', { name: /^Allocation Blueprint/ }).click();
+  const originalCell = (col: number) => page.locator(`[data-grid-cell-row="validation-row"][data-grid-cell-col="${col}"]`).first();
+  await originalCell(2).waitFor();
+  const saved = async () => (await (await fetch(base + '/api/vaccine/blueprint-districts/validation-sheet/current', { headers: { Authorization: 'Bearer validation-token:0' } })).json()).sheet;
+  const saveAction = async (action: () => Promise<any>) => { const response = page.waitForResponse((response: any) => response.url().endsWith('/api/vaccine/blueprint-districts') && response.request().method() === 'POST'); response.catch(() => {}); await action(); assert.equal((await response).status(), 200); };
+  const baseline = await saved();
+  // A manual fill is distinct from earned yellow/green allocation status.
+  baseline.rows[0].baseFormatting = { 'vaccine:BCG:carryOver': { backgroundColor: '#E0E7FF' } };
+  const setup = await fetch(base + '/api/vaccine/blueprint-districts', { method: 'POST', headers: { Authorization: 'Bearer validation-token:0', 'Content-Type': 'application/json' }, body: JSON.stringify({ district: baseline, activeId: baseline.id }) });
+  assert.equal(setup.status, 200);
+  await page.reload(); await page.getByRole('button', { name: /^Allocation Blueprint/ }).click(); await originalCell(2).waitFor();
+  const originalVaccines = JSON.stringify(baseline.rows[0].vaccines);
+  const baseCount = 17;
+  const root = page.locator('#allocation-blueprint-sheet');
+  await page.getByRole('button', { name: 'Full screen', exact: true }).click();
+  await page.waitForFunction(() => document.getElementById('allocation-blueprint-sheet')?.dataset.sheetFullscreen === 'true');
+  assert.equal(await root.getByRole('tablist').count(), 0, 'Worksheet tabs must remain outside fullscreen');
+  assert.equal(await root.locator('table').count(), 1, 'Only the sheet grid should expand');
+  assert.equal(await root.evaluate((sheet: HTMLElement) => sheet.contains(document.querySelector('[aria-label="Allocation Blueprint worksheets"]'))), false);
+  const bounds = await root.boundingBox(), viewport = page.viewportSize();
+  assert.equal(Math.round(bounds.width), viewport.width); assert.equal(Math.round(bounds.height), viewport.height);
+  await originalCell(5).click({ button: 'right' });
+  await saveAction(() => page.getByRole('menuitem', { name: 'Add Column', exact: true }).click());
+  let data = await saved();
+  assert.equal(data.blankColumns.length, 1);
+  assert.deepEqual(data.products, baseline.products);
+  assert.equal(await page.locator('tbody tr[data-sheet-row-index="5"] td').count(), baseCount + 1);
+  assert.equal(await page.getByPlaceholder('e.g. Hepatitis B, Malaria RTSS, Soloshot 0.1ml').count(), 0);
+  const firstBlankId = data.blankColumns[0].id;
+  assert.deepEqual(data.blankColumns[0].headers, ['', '', '', '']);
+  for (const [index, colour] of ['rgb(237, 125, 49)', 'rgb(248, 203, 173)', 'rgb(252, 228, 214)', 'rgb(255, 242, 204)'].entries()) {
+    assert.equal(await page.locator(`thead tr[data-sheet-row-index="${index + 1}"] [data-grid-cell-col="17"]`).evaluate((cell: HTMLElement) => getComputedStyle(cell).backgroundColor), colour);
+  }
+  assert.equal(await originalCell(17).evaluate((cell: HTMLElement) => getComputedStyle(cell).backgroundColor), 'rgb(224, 231, 255)');
+  assert.equal(await page.locator('tfoot td').nth(6).evaluate((cell: HTMLElement) => getComputedStyle(cell).backgroundColor), 'rgb(255, 242, 204)');
+  await page.getByRole('button', { name: 'Exit full screen', exact: true }).click();
+  await page.waitForFunction(() => document.getElementById('allocation-blueprint-sheet')?.dataset.sheetFullscreen === 'false');
+  await saveAction(() => page.locator(`thead tr[data-sheet-row-index="4"] [data-grid-cell-col="17"] input`).fill('Notes'));
+  // Exercise the viewport fallback as well as native fullscreen, and ensure
+  // Esc exits without cancelling the latest cell edit.
+  await root.evaluate((element: HTMLElement) => { element.requestFullscreen = async () => { throw new Error('Fullscreen deliberately unavailable in validation'); }; });
+  await page.getByRole('button', { name: 'Full screen', exact: true }).click();
+  await saveAction(async () => { await originalCell(17).locator('input').fill('Full screen edit'); await originalCell(17).locator('input').press('Escape'); });
+  assert.equal(await originalCell(17).locator('input').inputValue(), 'Full screen edit');
+  assert.equal(await root.getAttribute('data-sheet-fullscreen'), 'false');
+  assert.equal(await page.evaluate(() => document.body.style.overflow), '');
+  await saveAction(() => originalCell(17).locator('input').fill('free text'));
+  await saveAction(() => originalCell(17).locator('input').press('Control+b'));
+  assert.equal(await originalCell(17).getAttribute('data-blueprint-bold'), 'true');
+  await saveAction(() => originalCell(17).locator('input').fill('=H5-I5'));
+  await originalCell(2).click({ button: 'right' });
+  await saveAction(() => page.getByRole('menuitem', { name: 'Add Row', exact: true }).click());
+  data = await saved(); assert.equal(data.rows.length, 2);
+  const newRowId = data.rows[1].id;
+  assert.equal(data.rows[1].rowKind, 'blank');
+  assert.deepEqual(data.rows[1].vaccines, {});
+  assert.equal(data.rows[1].baseFormatting['vaccine:BCG:carryOver'].backgroundColor, '#E0E7FF');
+  const blankRow = page.locator(`tbody tr:has([data-grid-cell-row="${newRowId}"])`);
+  assert.equal(await blankRow.locator('input').count(), 18);
+  assert.equal(await blankRow.locator('input[readonly]').count(), 0);
+  assert.ok((await blankRow.locator('input').evaluateAll((inputs: HTMLInputElement[]) => inputs.map(input => input.value))).every((value: string) => value === ''));
+  await saveAction(() => page.getByTitle('Undo', { exact: true }).click());
+  assert.equal((await saved()).rows.length, 1);
+  await saveAction(() => page.getByTitle('Redo', { exact: true }).click());
+  assert.equal((await saved()).rows.length, 2);
+  await saveAction(() => page.locator(`[data-grid-cell-row="${newRowId}"][data-grid-cell-col="8"] input`).fill('Editable balance position'));
+  assert.equal(await blankRow.locator('[data-grid-cell-col="8"]').evaluate((cell: HTMLElement) => getComputedStyle(cell).backgroundColor), 'rgb(255, 255, 255)');
+  await page.getByLabel('Number of rows or columns to insert').fill('3');
+  await originalCell(6).locator('input').click();
+  await saveAction(() => page.getByRole('button', { name: 'Insert Left', exact: true }).click());
+  data = await saved(); assert.equal(data.blankColumns.length, 4);
+  assert.equal(await page.locator('tbody tr[data-sheet-row-index="5"] td').count(), 21);
+  assert.equal(data.rows[0].cells[`blank:${firstBlankId}`], '=K5-L5');
+  await saveAction(() => page.getByTitle('Undo', { exact: true }).click());
+  assert.equal((await saved()).blankColumns.length, 1);
+  await saveAction(() => page.getByTitle('Redo', { exact: true }).click());
+  assert.equal((await saved()).blankColumns.length, 4);
+  await page.getByLabel('Number of rows or columns to insert').fill('2');
+  await originalCell(2).click({ button: 'right' });
+  await saveAction(() => page.getByRole('menuitem', { name: 'Insert 2 rows above', exact: true }).click());
+  data = await saved(); assert.equal(data.rows.length, 4); assert.equal(data.rows[2].id, 'validation-row');
+  assert.equal(data.rows[2].cells[`blank:${firstBlankId}`], '=K7-L7');
+  const firstBlankIndex = baseCount + data.blankColumns.findIndex((column: any) => column.id === firstBlankId);
+  await originalCell(firstBlankIndex).click({ button: 'right' });
+  await saveAction(() => page.getByRole('menuitem', { name: 'Move column right', exact: true }).click());
+  data = await saved(); assert.equal(data.blankColumns.length, 4);
+  assert.equal(JSON.stringify(data.rows.find((row: any) => row.id === 'validation-row').vaccines), originalVaccines);
+  await page.reload(); await page.getByRole('button', { name: /^Allocation Blueprint/ }).click(); await originalCell(2).waitFor();
+  data = await saved(); assert.equal(data.blankColumns.length, 4); assert.equal(data.rows.length, 4);
+  assert.equal(data.blankColumns.find((column: any) => column.id === firstBlankId).headers[3], 'Notes');
+  assert.equal(data.rows.find((row: any) => row.id === newRowId).cells['vaccine:BCG:balance'], 'Editable balance position');
+  assert.equal(await page.locator('tbody tr[data-sheet-row-index="7"] td').count(), 21);
+  return { addOneColumn: true, exactlyOneBlankRow: true, insertThreeColumns: true, insertTwoRows: true, rename: true, freeText: true, bold: true, moveColumn: true, undoRedoRowsAndColumns: true, formulaReferencesRebased: true, originalAllocationsUnchanged: true, blankCellsWhite: true, headerColoursPreserved: true, manualColoursInherited: true, fullscreen: true, sheetOnlyFullscreen: true, fullscreenMenuEditing: true, fullscreenFallback: true, escapePreservesEdits: true, persistedAfterReload: true };
+}

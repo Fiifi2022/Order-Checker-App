@@ -1,3 +1,4 @@
+import { optionalAuditAi } from './auditBudget';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -92,7 +93,7 @@ test('legacy audit generation also stops after one quota failure without model s
   const tracker = new GeminiUsageTracker(); let calls = 0;
   const start = source.indexOf('async function generateAuditContent(');
   const helper = source.slice(start, source.indexOf('// Health-check endpoint', start));
-  const context = vm.createContext({ geminiUsage: tracker });
+  const context = vm.createContext({ geminiUsage: tracker, optionalAuditAi });
   vm.runInContext(ts.transpile(helper), context);
   await assert.rejects(context.generateAuditContent({ models: { async generateContent(options: any) {
     calls++; assert.equal(options.config.httpOptions.retryOptions.attempts, 1);

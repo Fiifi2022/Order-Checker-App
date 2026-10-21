@@ -1,0 +1,1243 @@
+{
+  "scope": "General Auditor mandatory/optional validation; local tests, not a deployed production validation",
+  "automatedTests": {
+    "total": 601,
+    "passed": 600,
+    "failed": 0,
+    "skipped": 1,
+    "newParameterTests": 25
+  },
+  "typescript": "passed",
+  "productionBuild": "passed_existing_chunk_warning",
+  "facilities": {
+    "facilityRecords": 1509,
+    "scope": "Every supplied reference record, exact/case/spacing, prose and different-record comparisons; synthetic orderer/product; not independent verification of the directory",
+    "cases": 4531,
+    "passed": 4531,
+    "failed": 0,
+    "falseVerifiedMatches": 0,
+    "baselineComparisons": 0,
+    "optimizationDecisionChanges": 0,
+    "failures": [],
+    "elapsedMs": 32373.245528999996,
+    "labelledAudit": {
+      "samples": 1509,
+      "meanMs": 3.765640866799258,
+      "medianMs": 3.106951999998273,
+      "p95Ms": 8.397731000000931
+    }
+  },
+  "browser": {
+    "scope": "Real Chromium rendering + actual React/AuthGate/authFetch + complete Express app over loopback. Firebase identity and storage are test-only in-memory providers; Gemini deliberately unavailable. Not deployed/live authentication performance.",
+    "runtime": "v24.21.0",
+    "facilityRecords": 1509,
+    "cases": [
+      {
+        "run": "multivitamin-exact",
+        "frontendBeforeRequestMs": 3.2000000029802322,
+        "requestHeadersMs": 357.09999999403954,
+        "requestResponseMs": 526.5,
+        "frontendAfterResponseMs": 187,
+        "clickToRenderedMs": 547.2999999970198,
+        "allMatch": true,
+        "items": [
+          {
+            "name": "Multivitamin Syrup",
+            "status": "match"
+          }
+        ],
+        "semanticStatus": "skipped"
+      },
+      {
+        "run": "clinical-synonym",
+        "frontendBeforeRequestMs": 2.4000000059604645,
+        "requestHeadersMs": 122.79999999701977,
+        "requestResponseMs": 222.29999999701977,
+        "frontendAfterResponseMs": 104.6000000089407,
+        "clickToRenderedMs": 229.80000001192093,
+        "allMatch": true,
+        "items": [
+          {
+            "name": "PCM",
+            "status": "match"
+          }
+        ],
+        "semanticStatus": "skipped"
+      },
+      {
+        "run": "quantity-difference",
+        "frontendBeforeRequestMs": 1.8999999910593033,
+        "requestHeadersMs": 112.70000000298023,
+        "requestResponseMs": 181.40000000596046,
+        "frontendAfterResponseMs": 77.29999999701977,
+        "clickToRenderedMs": 191.8999999910593,
+        "allMatch": false,
+        "items": [
+          {
+            "name": "Multivitamin Syrup",
+            "status": "quantity mismatch"
+          }
+        ],
+        "semanticStatus": "skipped"
+      },
+      {
+        "run": "partial-stock",
+        "frontendBeforeRequestMs": 3,
+        "requestHeadersMs": 138.1000000089407,
+        "requestResponseMs": 270.1000000089407,
+        "frontendAfterResponseMs": 136.29999999701977,
+        "clickToRenderedMs": 277.40000000596046,
+        "allMatch": true,
+        "items": [
+          {
+            "name": "Multivitamin Syrup",
+            "status": "match"
+          },
+          {
+            "name": "Amoxicillin",
+            "status": "out of stock"
+          }
+        ],
+        "semanticStatus": "skipped"
+      },
+      {
+        "run": "unresolved-separate-line",
+        "frontendBeforeRequestMs": 3.3999999910593033,
+        "requestHeadersMs": 210.80000001192093,
+        "requestResponseMs": 302.40000000596046,
+        "frontendAfterResponseMs": 98,
+        "clickToRenderedMs": 312.20000000298023,
+        "allMatch": false,
+        "items": [
+          {
+            "name": "Multivitamin Syrup",
+            "status": "match"
+          }
+        ],
+        "reviews": [
+          {
+            "kind": "unparsed_text",
+            "originalText": "Please include an additional product for the patient."
+          }
+        ],
+        "semanticStatus": "fallback"
+      },
+      {
+        "run": "clinical-specification",
+        "frontendBeforeRequestMs": 2.6000000089406967,
+        "requestHeadersMs": 104.59999999403954,
+        "requestResponseMs": 158.70000000298023,
+        "frontendAfterResponseMs": 60.900000005960464,
+        "clickToRenderedMs": 168.1000000089407,
+        "allMatch": false,
+        "items": [
+          {
+            "name": "Multivitamin Syrup 100ml",
+            "status": "missing item"
+          },
+          {
+            "name": "Multivitamin Syrup 200ml",
+            "status": "extra item"
+          }
+        ],
+        "semanticStatus": "skipped"
+      },
+      {
+        "run": "optional-missing-fulfilment",
+        "frontendBeforeRequestMs": 3.3999999910593033,
+        "requestHeadersMs": 140.79999999701977,
+        "requestResponseMs": 244.70000000298023,
+        "frontendAfterResponseMs": 108.40000000596046,
+        "clickToRenderedMs": 252.59999999403954,
+        "allMatch": true,
+        "items": [
+          {
+            "name": "Multivitamin Syrup",
+            "status": "match"
+          }
+        ],
+        "semanticStatus": "skipped"
+      },
+      {
+        "run": "optional-location-conflict",
+        "frontendBeforeRequestMs": 1.9000000059604645,
+        "requestHeadersMs": 162.20000000298023,
+        "requestResponseMs": 252.79999999701977,
+        "frontendAfterResponseMs": 101.8999999910593,
+        "clickToRenderedMs": 266,
+        "allMatch": false,
+        "items": [
+          {
+            "name": "Multivitamin Syrup",
+            "status": "match"
+          }
+        ],
+        "semanticStatus": "skipped"
+      },
+      {
+        "run": "missing-required-orderer",
+        "frontendBeforeRequestMs": 1.7000000029802322,
+        "requestHeadersMs": 146.5,
+        "requestResponseMs": 213.5,
+        "frontendAfterResponseMs": 74.79999999701977,
+        "clickToRenderedMs": 223,
+        "allMatch": false,
+        "items": [
+          {
+            "name": "Multivitamin Syrup",
+            "status": "match"
+          }
+        ],
+        "semanticStatus": "skipped"
+      },
+      {
+        "run": "facility-mismatch",
+        "frontendBeforeRequestMs": 1.6000000089406967,
+        "requestHeadersMs": 161.59999999403954,
+        "requestResponseMs": 279.8999999910593,
+        "frontendAfterResponseMs": 123.29999999701977,
+        "clickToRenderedMs": 286.5,
+        "allMatch": false,
+        "items": [
+          {
+            "name": "Multivitamin Syrup",
+            "status": "match"
+          }
+        ],
+        "semanticStatus": "skipped"
+      },
+      {
+        "run": "orderer-mismatch",
+        "frontendBeforeRequestMs": 2.2999999970197678,
+        "requestHeadersMs": 167.79999999701977,
+        "requestResponseMs": 272.29999999701977,
+        "frontendAfterResponseMs": 110.1000000089407,
+        "clickToRenderedMs": 280.20000000298023,
+        "allMatch": false,
+        "items": [
+          {
+            "name": "Multivitamin Syrup",
+            "status": "match"
+          }
+        ],
+        "semanticStatus": "skipped"
+      },
+      {
+        "run": "ambiguous-facility",
+        "frontendBeforeRequestMs": 2.1000000089406967,
+        "requestHeadersMs": 117.20000000298023,
+        "requestResponseMs": 173,
+        "frontendAfterResponseMs": 58.79999999701977,
+        "clickToRenderedMs": 178.1000000089407,
+        "allMatch": false,
+        "items": [
+          {
+            "name": "Multivitamin Syrup",
+            "status": "match"
+          }
+        ],
+        "semanticStatus": "skipped"
+      },
+      {
+        "run": "slow-backend-3300ms",
+        "frontendBeforeRequestMs": 2,
+        "requestHeadersMs": 3379.6000000089407,
+        "requestResponseMs": 3456.7999999970198,
+        "frontendAfterResponseMs": 81.5,
+        "clickToRenderedMs": 3463.1000000089407,
+        "allMatch": true,
+        "items": [
+          {
+            "name": "Multivitamin Syrup",
+            "status": "match"
+          }
+        ],
+        "semanticStatus": "skipped"
+      }
+    ],
+    "browserErrors": [],
+    "backendTimings": [
+      {
+        "run": "multivitamin-exact",
+        "status": 200,
+        "elapsedMs": 353.3,
+        "stagesMs": {
+          "authentication": 4.61,
+          "catalogRead": 5.38,
+          "catalogApply": 26.45,
+          "facilityRecords": 22.01,
+          "ordererIdentification": 1.82,
+          "facilityIdentification": 34.71,
+          "productNormalization": 5.65,
+          "productExtraction": 18.79,
+          "quantityVerification": 148.07,
+          "finalValidation": 5.94,
+          "deterministic": 215.95,
+          "historyWrite": 0.43,
+          "apiResponse": 352.15,
+          "total": 352.38
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "clinical-synonym",
+        "status": 200,
+        "elapsedMs": 119,
+        "stagesMs": {
+          "authentication": 0.39,
+          "catalogRead": 3.71,
+          "catalogApply": 21.72,
+          "facilityRecords": 10.54,
+          "ordererIdentification": 0.08,
+          "facilityIdentification": 3.75,
+          "productNormalization": 0.17,
+          "productExtraction": 3.03,
+          "quantityVerification": 64.74,
+          "finalValidation": 1.59,
+          "deterministic": 74.85,
+          "historyWrite": 0.14,
+          "apiResponse": 118.45,
+          "total": 118.51
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "quantity-difference",
+        "status": 200,
+        "elapsedMs": 110.11,
+        "stagesMs": {
+          "authentication": 0.3,
+          "catalogRead": 4.7,
+          "catalogApply": 19.37,
+          "facilityRecords": 8.38,
+          "ordererIdentification": 0.04,
+          "facilityIdentification": 1.91,
+          "productNormalization": 0.1,
+          "productExtraction": 0.36,
+          "quantityVerification": 65.16,
+          "finalValidation": 0.91,
+          "deterministic": 69.15,
+          "historyWrite": 0.15,
+          "apiResponse": 109.75,
+          "total": 109.81
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "partial-stock",
+        "status": 200,
+        "elapsedMs": 132.63,
+        "stagesMs": {
+          "authentication": 0.22,
+          "catalogRead": 5.21,
+          "catalogApply": 19.05,
+          "facilityRecords": 17.14,
+          "ordererIdentification": 0.04,
+          "facilityIdentification": 5.59,
+          "productNormalization": 0.32,
+          "productExtraction": 1.57,
+          "quantityVerification": 72.53,
+          "finalValidation": 0.73,
+          "deterministic": 82.3,
+          "historyWrite": 0.17,
+          "apiResponse": 132.13,
+          "total": 132.17
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 4,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "unresolved-separate-line",
+        "status": 200,
+        "elapsedMs": 205.3,
+        "stagesMs": {
+          "authentication": 0.39,
+          "catalogRead": 3.34,
+          "catalogApply": 22.35,
+          "facilityRecords": 10.71,
+          "ordererIdentification": 0.04,
+          "facilityIdentification": 1.7,
+          "productNormalization": 0.1,
+          "productExtraction": 0.4,
+          "quantityVerification": 60.09,
+          "finalValidation": 0.98,
+          "deterministic": 63.76,
+          "gemini": 81.62,
+          "historyWrite": 0.2,
+          "apiResponse": 204.48,
+          "total": 204.57
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "gemini": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "clinical-specification",
+        "status": 200,
+        "elapsedMs": 100.55,
+        "stagesMs": {
+          "authentication": 0.36,
+          "catalogRead": 4.91,
+          "catalogApply": 16.56,
+          "facilityRecords": 10.92,
+          "ordererIdentification": 0.04,
+          "facilityIdentification": 2.95,
+          "productNormalization": 0.15,
+          "productExtraction": 0.49,
+          "quantityVerification": 53.22,
+          "finalValidation": 0.89,
+          "deterministic": 58.3,
+          "historyWrite": 0.16,
+          "apiResponse": 100.06,
+          "total": 100.09
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "optional-missing-fulfilment",
+        "status": 200,
+        "elapsedMs": 127.7,
+        "stagesMs": {
+          "authentication": 0.33,
+          "catalogRead": 4.85,
+          "catalogApply": 21.73,
+          "facilityRecords": 16.77,
+          "ordererIdentification": 0.04,
+          "facilityIdentification": 2.53,
+          "productNormalization": 0.16,
+          "productExtraction": 0.49,
+          "quantityVerification": 71.9,
+          "finalValidation": 0.94,
+          "deterministic": 76.73,
+          "historyWrite": 0.12,
+          "apiResponse": 127.15,
+          "total": 127.24
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "optional-location-conflict",
+        "status": 200,
+        "elapsedMs": 159.04,
+        "stagesMs": {
+          "authentication": 0.5,
+          "catalogRead": 5.62,
+          "catalogApply": 37.94,
+          "facilityRecords": 15.95,
+          "ordererIdentification": 0.07,
+          "facilityIdentification": 2.94,
+          "productNormalization": 0.17,
+          "productExtraction": 0.74,
+          "quantityVerification": 86.36,
+          "finalValidation": 0.68,
+          "deterministic": 91.92,
+          "historyWrite": 0.13,
+          "apiResponse": 158.69,
+          "total": 158.72
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "missing-required-orderer",
+        "status": 200,
+        "elapsedMs": 143.82,
+        "stagesMs": {
+          "authentication": 0.18,
+          "catalogRead": 3.96,
+          "catalogApply": 26.34,
+          "facilityRecords": 15.24,
+          "ordererIdentification": 1.23,
+          "facilityIdentification": 2.79,
+          "productNormalization": 0.13,
+          "productExtraction": 0.39,
+          "quantityVerification": 82.6,
+          "finalValidation": 0.99,
+          "deterministic": 88.83,
+          "historyWrite": 0.2,
+          "apiResponse": 143.2,
+          "total": 143.23
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "facility-mismatch",
+        "status": 200,
+        "elapsedMs": 155.16,
+        "stagesMs": {
+          "authentication": 0.32,
+          "catalogRead": 4.96,
+          "catalogApply": 20.35,
+          "facilityRecords": 14.18,
+          "ordererIdentification": 0.03,
+          "facilityIdentification": 5.77,
+          "productNormalization": 0.18,
+          "productExtraction": 0.51,
+          "quantityVerification": 97.55,
+          "finalValidation": 0.92,
+          "deterministic": 105.6,
+          "historyWrite": 0.19,
+          "apiResponse": 154.69,
+          "total": 154.75
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "orderer-mismatch",
+        "status": 200,
+        "elapsedMs": 162.82,
+        "stagesMs": {
+          "authentication": 0.45,
+          "catalogRead": 6.61,
+          "catalogApply": 29.88,
+          "facilityRecords": 21.12,
+          "ordererIdentification": 0.07,
+          "facilityIdentification": 4.51,
+          "productNormalization": 0.24,
+          "productExtraction": 0.64,
+          "quantityVerification": 89.39,
+          "finalValidation": 0.78,
+          "deterministic": 96.34,
+          "historyWrite": 0.13,
+          "apiResponse": 162.42,
+          "total": 162.46
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "ambiguous-facility",
+        "status": 200,
+        "elapsedMs": 112.92,
+        "stagesMs": {
+          "authentication": 0.41,
+          "catalogRead": 4.42,
+          "catalogApply": 15.59,
+          "facilityRecords": 7.44,
+          "ordererIdentification": 0.02,
+          "facilityIdentification": 2.27,
+          "productNormalization": 0.13,
+          "productExtraction": 0.47,
+          "quantityVerification": 71.5,
+          "finalValidation": 0.86,
+          "deterministic": 75.75,
+          "historyWrite": 0.14,
+          "apiResponse": 112.58,
+          "total": 112.61
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "slow-backend-3300ms",
+        "status": 200,
+        "elapsedMs": 3374.32,
+        "stagesMs": {
+          "authentication": 3303.8,
+          "catalogRead": 2.04,
+          "catalogApply": 14.81,
+          "facilityRecords": 9.06,
+          "ordererIdentification": 0.02,
+          "facilityIdentification": 1.25,
+          "productNormalization": 0.07,
+          "productExtraction": 0.23,
+          "quantityVerification": 37.35,
+          "finalValidation": 0.42,
+          "deterministic": 39.56,
+          "historyWrite": 0.1,
+          "apiResponse": 3374.07,
+          "total": 3374.09
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "status": 401,
+        "elapsedMs": 1.12,
+        "stagesMs": {
+          "apiResponse": 0.84,
+          "total": 0.86
+        },
+        "counts": {
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "status": 401,
+        "elapsedMs": 1.66,
+        "stagesMs": {
+          "authentication": 0.37,
+          "apiResponse": 1.26,
+          "total": 1.31
+        },
+        "counts": {
+          "authentication": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "run": "extension-client",
+        "status": 200,
+        "elapsedMs": 85.47,
+        "stagesMs": {
+          "authentication": 0.34,
+          "catalogRead": 3.23,
+          "catalogApply": 17.9,
+          "facilityRecords": 8.87,
+          "ordererIdentification": 0.02,
+          "facilityIdentification": 1.49,
+          "productNormalization": 0.12,
+          "productExtraction": 0.35,
+          "quantityVerification": 49.49,
+          "finalValidation": 0.44,
+          "deterministic": 52.2,
+          "historyWrite": 0.16,
+          "apiResponse": 85.25,
+          "total": 85.27
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "facilityRecords": 1,
+          "ordererIdentification": 2,
+          "facilityIdentification": 3,
+          "productNormalization": 2,
+          "productExtraction": 2,
+          "quantityVerification": 1,
+          "finalValidation": 1,
+          "deterministic": 1,
+          "historyWrite": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      },
+      {
+        "status": 200,
+        "elapsedMs": 43.89,
+        "stagesMs": {
+          "authentication": 0.18,
+          "catalogRead": 2.42,
+          "catalogApply": 10.91,
+          "apiResponse": 43.68,
+          "total": 43.7
+        },
+        "counts": {
+          "authentication": 2,
+          "catalogRead": 1,
+          "catalogApply": 1,
+          "apiResponse": 1,
+          "total": 1
+        }
+      }
+    ],
+    "initialReadDiagnostics": {
+      "startedAt": "2026-10-20T08:42:42.552Z",
+      "scope": "This server process since startup; not Firebase billing. Failed requests, index reads and SDK-internal retries may incur additional reads.",
+      "listeners": 0,
+      "operations": [
+        {
+          "route": "/vaccine/dhd-inventory",
+          "collection": "user_roles",
+          "operations": 2,
+          "returnedDocuments": 2,
+          "minimumReadEstimate": 2,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/dhd-inventory",
+          "collection": "vaccine_dhd_inventory",
+          "operations": 2,
+          "returnedDocuments": 0,
+          "minimumReadEstimate": 2,
+          "failures": 0
+        },
+        {
+          "route": "startup_or_background",
+          "collection": "activity_logs",
+          "operations": 1,
+          "returnedDocuments": 0,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/auth/registration",
+          "collection": "user_profiles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/auth/me",
+          "collection": "user_roles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/auth/me",
+          "collection": "user_profiles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/blueprint-districts",
+          "collection": "user_roles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/blueprint-districts",
+          "collection": "product_catalog",
+          "operations": 1,
+          "returnedDocuments": 0,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/blueprint-districts",
+          "collection": "vaccine_districts",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/activity/log",
+          "collection": "user_roles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/osu",
+          "collection": "user_roles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/gemini-status/events",
+          "collection": "user_roles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/blueprint-districts/:id/current",
+          "collection": "user_roles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/blueprint-districts/:id/current",
+          "collection": "vaccine_districts",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/admin/firestore-reads",
+          "collection": "user_roles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        }
+      ]
+    },
+    "liveBlueprintPolling": {
+      "passed": true,
+      "freshSelectedSheet": true,
+      "automaticTeamDirectoryLoads": 0,
+      "scope": "SDK-result counters with isolated in-memory Firebase provider",
+      "afterConfirmationBalance": 17
+    },
+    "initialAppReadyMs": 1079.3970369999997,
+    "orderLimitAcknowledgement": true,
+    "slowProgressShown": true,
+    "unauthenticatedVerifyStatus": 401,
+    "forgedTokenStatus": 401,
+    "blueprintRendered": true,
+    "vaccineCheckerRendered": true,
+    "extensionClient": {
+      "elapsedMs": 94.51445299999978,
+      "allMatch": true
+    },
+    "vaccineAtomicDeduction": {
+      "before": 20,
+      "after": 17,
+      "retry": 17,
+      "passed": true,
+      "storage": "isolated in-memory provider, not Firestore emulator"
+    },
+    "finalReadDiagnostics": {
+      "startedAt": "2026-10-20T08:42:42.552Z",
+      "scope": "This server process since startup; not Firebase billing. Failed requests, index reads and SDK-internal retries may incur additional reads.",
+      "listeners": 0,
+      "operations": [
+        {
+          "route": "/verify",
+          "collection": "user_roles",
+          "operations": 15,
+          "returnedDocuments": 15,
+          "minimumReadEstimate": 15,
+          "failures": 0
+        },
+        {
+          "route": "/verify",
+          "collection": "product_catalog",
+          "operations": 15,
+          "returnedDocuments": 15,
+          "minimumReadEstimate": 15,
+          "failures": 0
+        },
+        {
+          "route": "/verify",
+          "collection": "vaccine_districts",
+          "operations": 15,
+          "returnedDocuments": 15,
+          "minimumReadEstimate": 15,
+          "failures": 0
+        },
+        {
+          "route": "/verify",
+          "collection": "general_facility_directory",
+          "operations": 14,
+          "returnedDocuments": 0,
+          "minimumReadEstimate": 14,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/dhd-inventory",
+          "collection": "user_roles",
+          "operations": 4,
+          "returnedDocuments": 4,
+          "minimumReadEstimate": 4,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/dhd-inventory",
+          "collection": "vaccine_dhd_inventory",
+          "operations": 4,
+          "returnedDocuments": 0,
+          "minimumReadEstimate": 4,
+          "failures": 0
+        },
+        {
+          "route": "/activity/log",
+          "collection": "user_roles",
+          "operations": 4,
+          "returnedDocuments": 4,
+          "minimumReadEstimate": 4,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/allocations",
+          "collection": "user_roles",
+          "operations": 4,
+          "returnedDocuments": 4,
+          "minimumReadEstimate": 4,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/allocations",
+          "collection": "product_catalog",
+          "operations": 4,
+          "returnedDocuments": 4,
+          "minimumReadEstimate": 4,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/allocations",
+          "collection": "vaccine_districts",
+          "operations": 4,
+          "returnedDocuments": 4,
+          "minimumReadEstimate": 4,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/allocations/commit",
+          "collection": "vaccine_districts",
+          "operations": 4,
+          "returnedDocuments": 4,
+          "minimumReadEstimate": 4,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/allocations/commit",
+          "collection": "vaccine_verified_orders",
+          "operations": 4,
+          "returnedDocuments": 4,
+          "minimumReadEstimate": 4,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/blueprint-districts/:id/current",
+          "collection": "user_roles",
+          "operations": 3,
+          "returnedDocuments": 3,
+          "minimumReadEstimate": 3,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/blueprint-districts/:id/current",
+          "collection": "vaccine_districts",
+          "operations": 3,
+          "returnedDocuments": 3,
+          "minimumReadEstimate": 3,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/blueprint-districts",
+          "collection": "user_roles",
+          "operations": 2,
+          "returnedDocuments": 2,
+          "minimumReadEstimate": 2,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/blueprint-districts",
+          "collection": "product_catalog",
+          "operations": 2,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 2,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/blueprint-districts",
+          "collection": "vaccine_districts",
+          "operations": 2,
+          "returnedDocuments": 2,
+          "minimumReadEstimate": 2,
+          "failures": 0
+        },
+        {
+          "route": "/admin/firestore-reads",
+          "collection": "user_roles",
+          "operations": 2,
+          "returnedDocuments": 2,
+          "minimumReadEstimate": 2,
+          "failures": 0
+        },
+        {
+          "route": "/products",
+          "collection": "user_roles",
+          "operations": 2,
+          "returnedDocuments": 2,
+          "minimumReadEstimate": 2,
+          "failures": 0
+        },
+        {
+          "route": "/products",
+          "collection": "product_catalog",
+          "operations": 2,
+          "returnedDocuments": 2,
+          "minimumReadEstimate": 2,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/allocations/commit",
+          "collection": "user_roles",
+          "operations": 2,
+          "returnedDocuments": 2,
+          "minimumReadEstimate": 2,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/allocations/commit",
+          "collection": "product_catalog",
+          "operations": 2,
+          "returnedDocuments": 2,
+          "minimumReadEstimate": 2,
+          "failures": 0
+        },
+        {
+          "route": "/vaccine/allocations/commit",
+          "collection": "vaccine_transactions",
+          "operations": 2,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 2,
+          "failures": 0
+        },
+        {
+          "route": "startup_or_background",
+          "collection": "activity_logs",
+          "operations": 1,
+          "returnedDocuments": 0,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/auth/registration",
+          "collection": "user_profiles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/auth/me",
+          "collection": "user_roles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/auth/me",
+          "collection": "user_profiles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/osu",
+          "collection": "user_roles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/gemini-status/events",
+          "collection": "user_roles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "other_authenticated_route",
+          "collection": "user_roles",
+          "operations": 1,
+          "returnedDocuments": 1,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/verify",
+          "collection": "vaccine_transactions",
+          "operations": 1,
+          "returnedDocuments": 0,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        },
+        {
+          "route": "/verify",
+          "collection": "vaccine_verified_orders",
+          "operations": 1,
+          "returnedDocuments": 0,
+          "minimumReadEstimate": 1,
+          "failures": 0
+        }
+      ]
+    },
+    "status": "passed"
+  },
+  "deployment": "No commit, push or deployment performed"
+}

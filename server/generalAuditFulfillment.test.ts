@@ -1,9 +1,10 @@
+import { runGeneralProductFixture as runGeneralAuditor, createGeneralProductRun as createGeneralAuditRun, withRequiredGeneralHeaders } from './generalProductTestFixtures';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { normalizeGeneralProductName, runGeneralAuditor } from './generalAuditor';
-import { createGeneralAuditRun, completeGeneralAuditRun, isCurrentGeneralAuditRun } from '../src/utils/generalAuditRun';
+import { normalizeGeneralProductName } from './generalAuditor';
+import { completeGeneralAuditRun, isCurrentGeneralAuditRun } from '../src/utils/generalAuditRun';
 import GeneralFulfillmentSummary, { GeneralOrderLimitPrompt } from '../src/components/GeneralFulfillmentSummary';
 
 const limit = (product: string, answer: boolean) => ({ [normalizeGeneralProductName(product)]: answer });
@@ -18,7 +19,7 @@ test('mixed stock availability confirms without any discrepancy and groups every
   assert.equal(result.generalAudit.finalStatus, 'PARTIALLY OUT OF STOCK — CONFIRMED');
   assert.deepEqual(result.items.map(item => item.status), ['match', 'out of stock', 'match', 'out of stock']);
   const html = summaryMarkup(result);
-  for (const text of ['Fully Supplied / In Stock', 'Out of Stock', 'Product A — 1/1', 'Product B — 0/1', 'Product C — 1/1', 'Product D — 0/1', 'Confirmed — No Discrepancy']) assert.ok(html.includes(text), text);
+  for (const text of ['Fully Supplied / In Stock', 'Out of Stock', 'Product A — 1/1', 'Product B — 0/1', 'Product C — 1/1', 'Product D — 0/1', 'VERIFIED MATCH']) assert.ok(html.includes(text), text);
 });
 
 test('fully out of stock confirms all identified products and lists each unavailable quantity', () => {
@@ -46,7 +47,7 @@ test('unexplained lower quantities are discrepancies while allowing a confirmed 
   assert.match(html, />Yes<\/button>/);
   assert.match(html, />No<\/button>/);
   assert.match(summaryMarkup(result), /Quantity Discrepancies/);
-  assert.doesNotMatch(summaryMarkup(result), /Confirmed — No Discrepancy/);
+  assert.doesNotMatch(summaryMarkup(result), /VERIFIED MATCH/);
 });
 
 test('Yes confirms the order limit while preserving requested, supplied and difference values', () => {
@@ -85,7 +86,7 @@ test('combined order limit, stock shortage and full supply produces the valid co
   assert.equal(confirmed.generalAudit.finalStatus, 'PARTIALLY FULFILLED — CONFIRMED');
   assert.deepEqual(confirmed.items.map(item => item.status), ['order limit applied', 'out of stock', 'match']);
   const html = summaryMarkup(confirmed);
-  for (const text of ['Product C — 4/4', 'Product A — Requested 10, Supplied 5', 'Product B — 0/2', 'Confirmed — No Discrepancy']) assert.ok(html.includes(text));
+  for (const text of ['Product C — 4/4', 'Product A — Requested 10, Supplied 5', 'Product B — 0/2', 'VERIFIED MATCH']) assert.ok(html.includes(text));
 });
 
 test('every reduced product requires its own answer and previously answered products remain separate', () => {

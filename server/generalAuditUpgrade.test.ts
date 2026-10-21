@@ -1,7 +1,8 @@
+import { runGeneralProductFixture as runGeneralAuditor, createGeneralProductRun as createGeneralAuditRun, withRequiredGeneralHeaders } from './generalProductTestFixtures';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { runGeneralAuditor, normalizeGeneralProductName } from './generalAuditor';
+import { normalizeGeneralProductName } from './generalAuditor';
 import catalogue from '../src/utils/generalPackagingCatalogue.json';
 import { generalAuditAnalytics, generalRuleDiagnostics } from './generalAuditMonitoring';
 
@@ -42,9 +43,10 @@ test('aliases preserve clinical strengths and forms', () => {
 });
 test('facility locality and orderer identities normalize without accepting different identities', () => {
   const customer = 'Facility: Vea Health Centre\nOrderer: Mary A. Mensah\nORS - 5';
-  const supplied = 'Facility: VEA Hospital\nOrderer: Nurse Mary Mensah\nORS - 5';
+  const supplied = 'Facility: VEA Health Center\nOrderer: Nurse Mary Mensah\nORS - 5';
   assert.equal(runGeneralAuditor(customer, supplied).allMatch, true);
-  assert.equal(runGeneralAuditor(customer, supplied.replace('VEA Hospital', 'Kade Hospital')).generalAudit.facility.status, 'mismatch');
+  assert.equal(runGeneralAuditor(customer, supplied.replace('VEA Health Center', 'VEA Hospital')).generalAudit.facility.status, 'mismatch');
+  assert.equal(runGeneralAuditor(customer, supplied.replace('VEA Health Center', 'Kade Hospital')).generalAudit.facility.status, 'mismatch');
   assert.equal(runGeneralAuditor(customer, supplied.replace('Mary Mensah', 'Jane Mensah')).generalAudit.orderer.status, 'mismatch');
 });
 test('OSU is supporting evidence and never adds products or overrides actual quantities', () => {

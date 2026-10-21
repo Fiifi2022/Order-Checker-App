@@ -29,8 +29,9 @@ test('exact regression uses only the two current inputs and flags missing fulfil
     { name: 'Paracetamol 120mg/5mL Syrup, 100mL', requested: '5', found: '5', status: 'match' }
   ]);
   assert.equal(result.allMatch, false);
-  assert.equal(result.issueCount, 2);
-  assert.equal(result.verdict, 'DISCREPANCY');
+  assert.equal(result.issueCount, 0);
+  assert.equal(result.auditSummary.missingRequiredCount, 2);
+  assert.equal(result.verdict, 'MISSING REQUIRED INFORMATION');
   assert.doesNotMatch(JSON.stringify(result), /Artemether|Lumefantrine|500mg/);
   for (const item of result.items) {
     assert.equal(item.provenance.length, 2);
@@ -114,7 +115,9 @@ test('explicit zero fulfillment records out of stock without a discrepancy', () 
 });
 
 test('unreadable inputs cannot generate a fabricated perfect audit', () => {
-  assert.throws(() => runProductAudit('Hello', 'Received'), /No explicit product quantities/);
+  const result = runProductAudit('Hello', 'Received');
+  assert.equal(result.allMatch, false);
+  assert.equal(result.auditSummary.missingRequiredCount, 1);
 });
 
 
@@ -140,7 +143,8 @@ test('other metadata does not affect the four General Auditor checks', () => {
   const matched = runProductAudit('Name of Health Facility: Kade HC\nPhone: 0244123456\nORS - 5', 'Facility: Kade Health Center\nContact: +233244123456\nORS [5/5]');
   assert.equal(matched.issueCount, 0);
   const mismatched = runProductAudit('District: West Mamprusi\nORS - 5', 'District: East Mamprusi\nORS [5/5]');
-  assert.equal(mismatched.issueCount, 0);
+  assert.equal(mismatched.issueCount, 1);
+  assert.equal(mismatched.generalAudit.district?.status, 'mismatch');
   assert.deepEqual(mismatched.items.map(item => item.name), ['ORS']);
 });
 
@@ -214,8 +218,9 @@ test('missing requested fulfillment identities require review without being labe
         side !== 'system' ? completeRequest.replace(field, '') : completeRequest,
         side !== 'customer' ? completeSystem.replace(field, '') : completeSystem
       );
-      assert.equal(result.allMatch, side !== 'system');
-      assert.equal(result.issueCount, side === 'system' ? 1 : 0);
+      assert.equal(result.allMatch, false);
+      assert.equal(result.issueCount, 0);
+      assert.equal(result.auditSummary.missingRequiredCount, 1);
       assert.equal(result.generalAudit[key].status, side === 'system' ? 'not available in system entry' : 'missing from customer request');
     }
   }
@@ -226,19 +231,20 @@ test('empty and placeholder system names are unavailable', () => {
   for (const value of ['', 'N/A', 'None', 'Unknown', 'Not provided']) {
     const result = runGeneralAuditor(completeRequest, completeSystem.replace('Isaac Awuyem', value));
     assert.equal(result.meta.ordererName.status, 'not available in system entry');
-    assert.equal(result.issueCount, 1);
+    assert.equal(result.issueCount, 0);
+    assert.ok(result.auditSummary.missingRequiredCount);
   }
 });
 
-test('facility suffix and honorific differences match', () => {
+test('facility abbreviations and honorifics match, but different types do not', () => {
   const matched = runGeneralAuditor(
     'Name of Orderer: Dr. Isaac Awuyem\nFacility: Kade HC\nORS - 5',
     'Orderer Name = Isaac Awuyem\nFacility Name - Kade Health Centre\nORS [5/5]'
   );
   assert.equal(matched.allMatch, true);
   const mismatch = runGeneralAuditor(completeRequest, completeSystem.replace('Gbimsi CHPS', 'Gbimsi Hospital'));
-  assert.equal(mismatch.meta.facilityName?.status, 'match');
-  assert.equal(mismatch.issueCount, 0);
+  assert.equal(mismatch.meta.facilityName?.status, 'mismatch');
+  assert.equal(mismatch.issueCount, 1);
 });
 
 test('exact request without system headers matches two products and marks headers unavailable', () => {
@@ -246,7 +252,7 @@ test('exact request without system headers matches two products and marks header
   assert.deepEqual(result.generalAudit.productCount, { requested: 2, found: 2, status: 'match' });
   assert.equal(result.generalAudit.facility.status, 'not available in system entry');
   assert.equal(result.generalAudit.orderer.status, 'not available in system entry');
-  assert.deepEqual(result.generalAudit.discrepancies, ['Orderer Name Not Found', 'Facility Not Found']);
+  assert.deepEqual(result.generalAudit.discrepancies, []);
 });
 
 test('mismatch regression identifies actual problems despite equal product counts', () => {
@@ -265,7 +271,7 @@ test('mismatch regression identifies actual problems despite equal product count
 });
 
 test('distinct product counts aggregate duplicates consistently on both sides', () => {
-  const result = runGeneralAuditor('ORS - 2\nORS - 3', 'ORS [1/1]\nOral Rehydration Salts [4/4]');
+  const result = runProductAudit('ORS - 2\nORS - 3', 'ORS [1/1]\nOral Rehydration Salts [4/4]');
   assert.deepEqual(result.generalAudit.productCount, { requested: 1, found: 1, status: 'match' });
   assert.equal(result.allMatch, true);
   const missing = runGeneralAuditor('ORS - 5\nMultivitamin Syrup - 5', 'ORS [5/5]');
@@ -368,7 +374,8 @@ test('customer missing and system unavailable remain separate field statuses', (
   const result = runGeneralAuditor('Facility: Gbimsi CHPS\nORS - 5', 'Orderer: Isaac Awuyem\nORS [5/5]');
   assert.equal(result.meta.ordererName.status, 'missing from customer request');
   assert.equal(result.meta.facilityName.status, 'not available in system entry');
-  assert.equal(result.issueCount, 1);
+  assert.equal(result.issueCount, 0);
+    assert.ok(result.auditSummary.missingRequiredCount);
 });
 
 
@@ -399,7 +406,7 @@ test('exact new regression locates the name in fulfillment prose without a field
   );
   assert.equal(result.meta.ordererName.fulfillmentValue, 'Isaac Awuyem');
   assert.equal(result.meta.ordererName.status, 'match');
-  assert.equal(result.verdict, 'DISCREPANCY');
+  assert.equal(result.verdict, 'MISSING REQUIRED INFORMATION');
 });
 
 test('sentence names normalize case, repeated spaces and harmless punctuation', () => {
@@ -438,7 +445,8 @@ test('name unavailable requires no exact name or identifiable orderer phrase in 
     const result = runGeneralAuditor('Name of Orderer: Isaac Awuyem\nORS - 5', system + '\nORS [5/5]');
     assert.equal(result.meta.ordererName.status, 'not available in system entry', system);
     assert.equal(result.meta.ordererName.whatsappValue, 'Isaac Awuyem');
-    assert.equal(result.issueCount, 1);
+    assert.equal(result.issueCount, 0);
+    assert.ok(result.auditSummary.missingRequiredCount);
   }
 });
 
@@ -473,8 +481,9 @@ test('exact facility regression finds Gbimsi CHPS in current fulfillment prose',
   assert.equal(result.meta.facilityName.fulfillmentValue, 'Gbimsi CHPS');
   assert.equal(result.meta.facilityName.status, 'match');
   assert.equal(result.meta.ordererName.status, 'not available in system entry');
-  assert.equal(result.issueCount, 1);
-  assert.equal(result.verdict, 'DISCREPANCY');
+  assert.equal(result.issueCount, 0);
+    assert.ok(result.auditSummary.missingRequiredCount);
+  assert.equal(result.verdict, 'MISSING REQUIRED INFORMATION');
 });
 
 test('all requested fulfillment facility labels and sentence formats are recognized', () => {
@@ -489,7 +498,8 @@ test('all requested fulfillment facility labels and sentence formats are recogni
     const result = runGeneralAuditor(facilityCrossCheckCustomer, line + '\n' + facilityCrossCheckProducts);
     assert.equal(result.meta.facilityName.fulfillmentValue, 'Gbimsi CHPS', line);
     assert.equal(result.meta.facilityName.status, 'match', line);
-    assert.equal(result.issueCount, 1, line);
+    assert.equal(result.issueCount, 0, line);
+    assert.equal(result.auditSummary.missingRequiredCount, 1);
     assert.deepEqual(result.items.map(item => item.name), ['Multivitamin Syrup']);
   }
 });
@@ -501,8 +511,9 @@ test('clearly different facilities in prose or destination fields raise facility
     assert.equal(result.meta.facilityName.fulfillmentValue, 'Walewale Hospital', line);
     assert.equal(result.meta.facilityName.status, 'mismatch', line);
     assert.equal(result.meta.ordererName.status, 'not available in system entry');
-    assert.equal(result.issueCount, 2);
-    assert.deepEqual(result.generalAudit.discrepancies, ['Orderer Name Not Found', 'Facility Name Mismatch']);
+    assert.equal(result.issueCount, 1);
+    assert.equal(result.auditSummary.missingRequiredCount, 1);
+    assert.deepEqual(result.generalAudit.discrepancies, ['Facility Name Mismatch']);
   }
 });
 
@@ -524,8 +535,8 @@ test('facility formatting aliases and listed suffix differences match', () => {
     ['Gbimsi CHPS', 'Order for Gbimsi Hospital']
   ]) {
     const result = runGeneralAuditor(`Facility: ${customer}\nORS - 5`, system + '\nORS [5/5]');
-    assert.equal(result.meta.facilityName.status, 'match', system);
-    assert.equal(result.issueCount, 0);
+    assert.equal(result.meta.facilityName.status, 'mismatch', system);
+    assert.equal(result.issueCount, 1);
   }
 });
 
@@ -539,7 +550,8 @@ test('drop areas, districts and people never substitute for the current customer
     assert.equal(result.meta.facilityName.whatsappValue, 'Gbimsi CHPS');
     assert.equal(result.meta.facilityName.fulfillmentValue, 'N/A', line);
     assert.equal(result.meta.facilityName.status, 'not available in system entry', line);
-    assert.equal(result.issueCount, line === 'Order for Isaac Awuyem' ? 1 : 2, line);
+    assert.equal(result.issueCount, 0, line);
+    assert.ok(result.auditSummary.missingRequiredCount);
     assert.doesNotMatch(result.verdict + result.insights.join(' '), /Facility Name Missing/);
   }
 });
@@ -581,7 +593,7 @@ test('explicit delivery-facility labels identify names even without a suffix', (
 
 test('zero fulfillment fractions with brackets, parentheses and units record out of stock', () => {
   for (const quantity of ['[0/1]', '(0/1)', '( 0 / 1 )', '[0/1 bottles]', '(0/1 bottles)', '(0/1) bottles', '0 bottles']) {
-    const result = runGeneralAuditor('Multivitamin Syrup - 1 bottles', `Multivitamin Syrup ${quantity}`);
+    const result = runProductAudit('Multivitamin Syrup - 1 bottles', `Multivitamin Syrup ${quantity}`);
     assert.equal(result.items[0].status, 'out of stock', quantity);
     assert.equal(Number.parseFloat(result.items[0].found), 0);
     assert.match(result.items[0].action, /out of stock/);

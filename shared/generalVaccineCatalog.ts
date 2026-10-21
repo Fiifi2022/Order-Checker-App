@@ -1,10 +1,18 @@
 import { catalogKey, catalogProductNames, type CatalogProduct } from './productCatalog';
 
+let version = 0;
+let configuration = '';
+
+export const getGeneralVaccineCatalogVersion = () => version;
 let identities = new Map<string, string>();
 let conflicts = new Set<string>();
 
 /** Bring vaccine catalog labels into General without merging its distinct identities. */
 export function setGeneralVaccineCatalog(products: CatalogProduct[]) {
+  const signature = JSON.stringify(products);
+  if (signature === configuration) return;
+  configuration = signature;
+  version++;
   const general = products.filter(product => product.scope === 'general');
   const labels = new Map<string, CatalogProduct[]>();
   const contextual = new Set<string>();

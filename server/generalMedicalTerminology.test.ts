@@ -208,8 +208,8 @@ test('approved local aliases preserve stock, aggregation and clinically meaningf
 });
 
 test('exact reported order uses identical canonical IDs on both sides without Gemini', async () => {
-  const customer = 'ASV - 5\nARV - 5';
-  const fulfilment = 'Anti snake vaccine [5/5]\nAnti rabies vaccine [5/5]';
+  const customer = 'Orderer: Test Operator\nFacility: Test Health Centre\nASV - 5\nARV - 5';
+  const fulfilment = 'Orderer: Test Operator\nFacility: Test Health Centre\nAnti snake vaccine [5/5]\nAnti rabies vaccine [5/5]';
   const expected = ['ANTI_SNAKE', 'ANTI_RABIES_VACCINE'];
   assert.deepEqual(parseGeneralProducts(customer, 'customer_request').map(product => product.canonicalId), expected);
   assert.deepEqual(parseGeneralProducts(fulfilment, 'fulfillment_confirmation').map(product => product.canonicalId), expected);

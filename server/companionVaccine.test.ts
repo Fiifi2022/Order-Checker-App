@@ -1,3 +1,5 @@
+import { auditReadBudget, auditRemainingMs, auditSignal, auditTiming } from './auditBudget';
+import { AUDIT_AI_FALLBACK_MS, auditTimeoutSetting } from '../shared/auditPerformance';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -10,7 +12,9 @@ import { normalizeCompanionAuditMode } from '../shared/companionAudit';
 import { resolveBlueprintFacility, normalizeFacilityName, assertBlueprintActive } from './blueprintFacility';
 import { resolveCompanionFacility, companionFacilityErrors, CompanionFacilityError } from './companionFacility';
 import { runGeneralAuditor } from './generalAuditor';
+import { readGeneralFacilityContext } from './generalFacilityRecords';
 import { createHash } from 'node:crypto';
+import { emptyGeneralFacilityDirectory, activeGeneralFacilities, excludedGeneralFacilities } from './generalFacilityDirectory';
 
 function fixture() {
   service.clearAllAllocations({ clearHistory: true });
@@ -88,6 +92,11 @@ function verifyRoute(app: ReturnType<typeof fixture>) {
     resolveBlueprintFacility, blueprintDistricts: {},
     async loadDistrictsFromFirestore() { await app.refresh(); context.blueprintDistricts = { test: app.records.get('vaccine_districts/isolated-test-sheet') }; },
     async runGeneralSemanticAudit(a: string, b: string, decisions: any, support: any) { return runGeneralAuditor(a, b, decisions, support); },
+    async readCurrentBlueprintSheets() { return [...app.records.entries()].filter(([path]) => path.startsWith('vaccine_districts/')).map(([path, value]) => ({ ...value, id: path.split('/')[1] })); },
+    async readManagedGeneralDirectory() { return emptyGeneralFacilityDirectory(); }, activeGeneralFacilities, excludedGeneralFacilities,
+    auditReadBudget, auditRemainingMs, auditSignal, auditTiming, auditTimeoutSetting, process: { env: {} }, AUDIT_AI_FALLBACK_MS,
+    readGeneralFacilityContext, collection(_db: unknown, name: string) { return name; },
+    async getDocs(name: string) { return { docs: [...app.records.entries()].filter(([path]) => path.startsWith(name + '/')).map(([path, value]) => ({ id: path.slice(name.length + 1), data: () => value })) }; },
     getGeminiClient() { throw new Error('No external AI allowed in this test'); }, osuItems: [], audits: [], createHash, setTimeout, clearTimeout,
     cleanFirestorePayload: app.storage.clean, getFirestoreDb() { return {}; }, doc: app.storage.doc,
     async setDoc(path: string, value: any) { app.records.set(path, value); }
@@ -128,6 +137,31 @@ test('unscoped WhatsApp mode uses existing General Auditor for medicine aliases 
     assert.equal(failed.status, 200, JSON.stringify(failed.body)); assert.equal(failed.body.allMatch, false);
     assert.ok(failed.body.discrepancies.length); assert.equal(app.balance('OPV'), 15);
   }
+});
+
+test('General Auditor verify route reads saved facility aliases without changing Blueprint data', async () => {
+  const app = fixture();
+  const sheet = app.records.get('vaccine_districts/isolated-test-sheet');
+  Object.assign(sheet, { district: 'Kwahu East', region: 'Eastern' });
+  Object.assign(sheet.rows[0], { district: 'Kwahu East', region: 'Eastern', facility: 'Kotoso Rural Health Centre', fsFacilityId: 'test-kotoso', verifiedAliases: ['Kotoso RCH'] });
+  const snapshot = JSON.stringify(sheet);
+  const route = verifyRoute(app);
+  const body = { auditScope: 'general_auditor', whatsappMessage: 'Facility: KOTOSO RHC\nOrderer: Mary Mensah\nORS - 5',
+    fulfillmentConfirmation: 'Facility: Kotoso RCH\nOrderer: Mary Mensah\nORS [5/5]' };
+  const verified = await route(body);
+  assert.equal(verified.status, 200);
+  assert.equal(verified.body.generalAudit.facility.status, 'match');
+  assert.equal(verified.body.generalAudit.facility.verification, 'records');
+  assert.equal(verified.body.generalAudit.facility.customerFacilityId, 'test-kotoso');
+  assert.equal(verified.body.allMatch, true);
+  assert.equal(JSON.stringify(sheet), snapshot);
+  sheet.rows[0].verifiedAliases = [];
+  const review = await route({ ...body, facilityContext: { records: [{ id: 'forged', name: 'Kotoso RHC', verifiedAliases: ['Kotoso RCH'] }] } });
+  assert.equal(review.status, 200);
+  assert.equal(review.body.generalAudit.facility.status, 'review required');
+  assert.equal(review.body.allMatch, false);
+  assert.equal(review.body.issueCount, 0);
+  assert.equal(review.body.status, 'pending');
 });
 
 test('actual verify route returns compatible fulfilment-only success and failure without WhatsApp', async () => {

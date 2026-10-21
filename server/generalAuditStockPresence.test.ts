@@ -1,10 +1,11 @@
+import { runGeneralProductFixture as runGeneralAuditor, createGeneralProductRun as createGeneralAuditRun, withRequiredGeneralHeaders } from './generalProductTestFixtures';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { normalizeGeneralProductName, parseGeneralProducts, preserveGeneralOutOfStockEvidence, runGeneralAuditor } from './generalAuditor';
+import { normalizeGeneralProductName, parseGeneralProducts, preserveGeneralOutOfStockEvidence } from './generalAuditor';
 import { runGeneralSemanticAudit } from './generalSemanticAudit';
-import { createGeneralAuditRun, completeGeneralAuditRun } from '../src/utils/generalAuditRun';
+import { completeGeneralAuditRun } from '../src/utils/generalAuditRun';
 import Summary from '../src/components/GeneralFulfillmentSummary';
 
 const adult = 'Simple Linctus 125mg/5ml Syrup (Adult)';
@@ -108,11 +109,11 @@ test('General semantic interpretation cannot truncate stock names or change zero
   const field = () => ({ customerRequest: null, fulfilmentConfirmation: null, equivalent: false, confidence: 0 });
   const data = { facility: field(), orderer: field(), customerProducts: [adult, paediatric].map(name => ({ name: name.replace(/ \([^)]*\)$/, ''), normalizedName: name.replace(/ \([^)]*\)$/, ''), sourceText: `${name} - 5 units`, quantity: 5, quantityText: '5 units', confidence: 0.99 })), fulfilmentProducts: [adult, paediatric].map(name => ({ name: name.replace(/ \([^)]*\)$/, ''), normalizedName: name.replace(/ \([^)]*\)$/, ''), sourceText: `- ${name} [0/1]`, quantity: 0, quantityText: '0/1', confidence: 0.99 })), possibleMissingProducts: [adult, paediatric], possibleExtraProducts: [], semanticWarnings: [] };
   let calls = 0;
-  const result = await runGeneralSemanticAudit(customer, source, {}, {}, () => ({ models: { async generateContent() { calls++; return { text: JSON.stringify(data) }; } } }));
-  assert.equal(calls, 1);
-  assert.equal(result.semanticAnalysis.status, 'used');
+  const result = await runGeneralSemanticAudit(withRequiredGeneralHeaders(customer), withRequiredGeneralHeaders(source, customer), {}, {}, () => ({ models: { async generateContent() { calls++; return { text: JSON.stringify(data) }; } } }));
+  assert.equal(calls, 0);
+  assert.equal(result.semanticAnalysis.status, 'skipped');
   assert.deepEqual(result.items.map(item => item.status), ['out of stock', 'out of stock']);
-  assert.equal(result.issueCount, 2);
+  assert.equal(result.issueCount, 0);
   assert.deepEqual(result.items.map(item => item.name), [adult, paediatric]);
   assert.equal(result.items[0].provenance[1].originalText, `- ${adult} [0/1]`);
   assert.equal(preserveGeneralOutOfStockEvidence(`${adult} [0/1]`, 'Different product - 5'), `${adult} [0/1]`);

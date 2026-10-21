@@ -1,0 +1,18 @@
+{
+  "facilityRecords": 1509,
+  "scope": "Every supplied reference record, exact/case/spacing, prose and different-record comparisons; synthetic orderer/product; not independent verification of the directory",
+  "cases": 4531,
+  "passed": 4531,
+  "failed": 0,
+  "falseVerifiedMatches": 0,
+  "baselineComparisons": 0,
+  "optimizationDecisionChanges": 0,
+  "failures": [],
+  "elapsedMs": 19119.325005,
+  "labelledAudit": {
+    "samples": 1509,
+    "meanMs": 1.9817755878064869,
+    "medianMs": 1.6899990000001708,
+    "p95Ms": 3.3796030000000883
+  }
+}

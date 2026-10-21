@@ -3,16 +3,19 @@ import type { GeneralProductCategory } from './generalProductCategory';
 export interface GeneralFieldResult {
   whatsappValue: string;
   fulfillmentValue: string;
-  status: 'match' | 'mismatch' | 'not available in system entry' | 'missing from customer request';
+  status: 'match' | 'mismatch' | 'not available in system entry' | 'missing from customer request' | 'review required' | 'optional not provided';
 }
 export interface GeneralAuditCheckSummary {
   totalChecks: number;
   passedChecks: number;
   failedChecks: number;
   discrepancyCount: number;
+  reviewRequiredCount?: number;
+  missingRequiredCount?: number;
   confidence: number;
 }
 export interface GeneralSemanticReview {
+  kind?: 'product' | 'unparsed_text';
   originalText: string;
   source: 'customer_request' | 'fulfillment_confirmation';
   possibleMatches: string[];
@@ -21,9 +24,11 @@ export interface GeneralSemanticReview {
 export interface GeneralAuditDetails {
   semanticReviews?: GeneralSemanticReview[];
   auditSummary?: GeneralAuditCheckSummary;
-  facility: GeneralFieldResult;
+  facility: import('./generalFacility').GeneralFacilityResult;
   orderer: GeneralFieldResult;
   phone: GeneralFieldResult;
+  dropArea?: GeneralFieldResult;
+  district?: GeneralFieldResult;
   counts: { fullySupplied: number; outOfStock: number; orderLimited: number; pendingOrderLimits: number };
   productCount: { requested: number; found: number; status: 'match' | 'mismatch' };
   discrepancies: string[];

@@ -1,8 +1,9 @@
+import { runGeneralProductFixture as runGeneralAuditor, createGeneralProductRun as createGeneralAuditRun, withRequiredGeneralHeaders } from './generalProductTestFixtures';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
-import { applyGeneralOrderLimitDecision, runGeneralAuditor } from './generalAuditor';
+import { applyGeneralOrderLimitDecision } from './generalAuditor';
 import { GeneralOrderLimitPrompt } from '../src/components/GeneralFulfillmentSummary';
 
 test('clicking Yes immediately confirms the item and yields a green order without another comparison', () => {

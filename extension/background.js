@@ -23,6 +23,10 @@ import { extensionConfig } from "./config.js";
 async function fetchJson(url, options = {}, timeoutMs = 9e4) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const parent = options.signal;
+  const cancel = () => controller.abort();
+  parent?.addEventListener("abort", cancel, { once: true });
+  if (parent?.aborted) cancel();
   try {
     const response = await fetch(url, { ...options, signal: controller.signal, cache: "no-store" });
     let data;
@@ -48,6 +52,7 @@ async function fetchJson(url, options = {}, timeoutMs = 9e4) {
     throw error;
   } finally {
     clearTimeout(timer);
+    parent?.removeEventListener("abort", cancel);
   }
 }
 
@@ -78,15 +83,33 @@ async function getToken() {
   }
 }
 async function backendRequest(baseUrl, endpoint, options = {}, timeoutMs) {
-  const token = await getToken();
+  const audit = ["/api/verify", "/api/vaccine/validate"].includes(endpoint);
+  const configured = Number(extensionConfig.auditTimeoutMs);
+  const auditLimit = Number.isFinite(configured) && configured >= 4e3 && configured <= 6e4 ? configured : 2e4;
+  const limit = timeoutMs ?? (audit ? auditLimit : 9e4);
+  const started = Date.now();
+  let tokenTimer;
+  let cancelToken;
+  const cancelled = new Promise((_, reject) => {
+    cancelToken = () => reject(new Error("Audit cancelled."));
+  });
+  if (audit) options.signal?.addEventListener("abort", cancelToken, { once: true });
+  if (audit && options.signal?.aborted) cancelToken();
   try {
+    const token = audit ? await Promise.race([getToken(), cancelled, new Promise((_, reject) => {
+      tokenTimer = setTimeout(() => reject(new Error("The audit could not be completed within the available processing time. Please retry.")), limit);
+    })]) : await getToken();
+    clearTimeout(tokenTimer);
     return await fetchJson(`${baseUrl}${endpoint}`, {
       ...options,
       headers: { ...options.headers, Authorization: `Bearer ${token}` }
-    }, timeoutMs ?? (endpoint === "/api/verify" ? 18e4 : 9e4));
+    }, audit ? Math.max(1, limit - (Date.now() - started)) : limit);
   } catch (error) {
     if (error.status === 401) await signOut();
     throw error;
+  } finally {
+    clearTimeout(tokenTimer);
+    options.signal?.removeEventListener("abort", cancelToken);
   }
 }
 

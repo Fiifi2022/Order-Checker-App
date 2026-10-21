@@ -4,7 +4,7 @@ export default function GeneralVerificationConfidence({ summary, pendingOrderLim
   summary: GeneralAuditCheckSummary;
   pendingOrderLimits?: number;
 }) {
-  const matched = summary.confidence === 100 && summary.discrepancyCount === 0 && pendingOrderLimits === 0;
+  const matched = summary.confidence === 100 && summary.discrepancyCount === 0 && pendingOrderLimits === 0 && !summary.reviewRequiredCount;
   const label = summary.discrepancyCount > 0 ? 'DISCREPANCY DETECTED' : matched ? 'SYSTEM MATCH' : 'REVIEW REQUIRED';
   const color = matched ? '#22C55E' : summary.confidence >= 75 ? '#F59E0B' : '#EF4444';
   const textColor = matched ? 'text-green-600' : summary.confidence >= 75 ? 'text-amber-600' : 'text-red-600';
@@ -23,7 +23,7 @@ export default function GeneralVerificationConfidence({ summary, pendingOrderLim
       </div>
     </div>
     <p className="text-xs text-slate-500 leading-relaxed max-w-[200px]">
-      Comparison of the entered facility name, orderer name, products, and quantities.
+      Checks mandatory orderer, facility, products and quantities; compares delivery/drop area and district when both sides provide them.
     </p>
   </div>;
 }

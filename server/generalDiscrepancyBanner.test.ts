@@ -16,6 +16,12 @@ test('single identity errors show their actual names instead of the generic coun
     ['Orderer: Isaac Awuyem', 'Facility Name Not Found']
   ]) {
     const result = runGeneralAuditor(headers + 'Paracetamol - 5', system + '\nParacetamol [5/5]');
+    if (/Not Found/.test(expected)) {
+      assert.equal(result.issueCount, 0);
+      assert.equal(result.auditSummary.missingRequiredCount, 1);
+      assert.equal(render(result.generalAudit.discrepancies), '');
+      continue;
+    }
     assert.equal(result.issueCount, 1);
     assert.equal(render(result.generalAudit.discrepancies), `<p class="text-xs text-slate-500 mt-1 sm:mt-0">${expected}</p>`);
   }

@@ -122,3 +122,22 @@ test('multiple stored roles combine permissions and honor subsequent revocation'
   assert.equal((await request({ account: { ...account, roles: ['cca', 'admin'] }, path: '/admin/accounts', method: 'GET' })).next, true);
   assert.equal(canAccess(['warehouse', 'admin'], 'POST', '/roles/switch'), false);
 });
+
+test('KPI and audit/activity report reads require an administrator while operational writes remain available', async () => {
+  const reports = ['/kpis', '/audits', '/activity/logs', '/activity/usage', '/general-auditor/history'];
+  for (const path of reports) {
+    assert.equal(canAccess('admin', 'GET', path), true);
+    assert.equal(canAccess(['cca', 'admin'], 'GET', path), true);
+    for (const role of ['cca', 'warehouse', 'dco', 'auditor']) {
+      assert.equal(canAccess(role, 'GET', path), false, `${role}: ${path}`);
+      assert.equal(canAccess(role, 'GET', path.toUpperCase() + '/'), false);
+      assert.equal((await request({ account: { ...profile, role }, path, method: 'GET' })).status, 403);
+    }
+  }
+  for (const role of ['cca', 'warehouse', 'dco', 'auditor']) {
+    for (const path of ['/verify', '/activity/log', '/audits/check/order-limit']) assert.equal(canAccess(role, 'POST', path), true, `${role}: ${path}`);
+    assert.equal(canAccess(role, 'GET', '/vaccine/allocations'), true);
+  }
+  assert.equal((await request({ account: { ...profile, role: 'admin' }, path: '/kpis', method: 'GET' })).next, true);
+  assert.equal((await request({ account: { ...profile, role: 'admin', roles: ['cca'] }, path: '/kpis', method: 'GET' })).status, 403);
+});

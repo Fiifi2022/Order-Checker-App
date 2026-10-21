@@ -137,6 +137,7 @@ function auditButtonHarness(result = approved) {
   const context: any = vm.createContext({
     selectedFacilityId:'selected-facility', orderSource:'whatsapp',whatsappMessage:'OPV 10',fulfillmentConfirmation:'OPV [10/10]\nOPV Dropper [10/10]',ccaName:'Test CCA',fsAudit:null,
     manualAuditInFlight:{current:false},allocationUpdateInFlight:{current:false},manualAuditIdentity:{current:null},latestAuditInputKey:{current:'draft-key'},debounceTimerRef:{current:null},
+    auditRequest: { current: null }, AbortController,
     crypto:{randomUUID(){return String(++uuid);}},clearTimeout,
     async authFetch(_url:string,options:any){validations++;ids.push(JSON.parse(options.body).checkId);return new Response(JSON.stringify(result));},
     async handleConfirmOrder(audit:any,snapshot:any){deductions++;assert.equal(audit.auditLogId,result.auditLogId);assert.equal(snapshot.facilityId,result.facilityId);},
@@ -226,18 +227,20 @@ test('Blueprint opens the checker-selected sheet instead of the previously activ
   const source = readFileSync(new URL('../src/components/VaccineAllocationBlueprint.tsx',import.meta.url),'utf8');
   const start = source.indexOf('const loadBlueprintFromServer =');
   const code = source.slice(start,source.indexOf('const handleSwitchDistrict',start));
-  let selected = '', rows:any[]=[];
+  let selected = '', rows:any[]=[], blankColumns:any[]=[], sizing:any;
   const noOp = () => {};
   const context = vm.createContext({
     preferredSheetId:'east',setBlueprintLoadError:noOp,historyResetPendingRef:{current:false},DEFAULT_BLUEPRINT_PRODUCTS:[],DEFAULT_BLUEPRINT_HEADER_LABELS:[],
-    async safeFetchJson(){return {activeDistrictId:'west',districts:[{id:'west',district:'West',rows:[{balance:3}]},{id:'east',district:'East',rows:[{balance:1}]}]};},
+    async safeFetchJson(){return {activeDistrictId:'west',districts:[{id:'west',district:'West',rows:[{balance:3}]},{id:'east',district:'East',rows:[{balance:1}],blankColumns:[{id:'east-notes',before:null,headers:[]}],sheetSizing:{columnWidths:{'field:facility':240},rowHeights:{}}}]};},
     setLoading:noOp,setDistricts:noOp,setActiveDistrictId(id:string){selected=id;},setDistrict:noOp,setMonth:noOp,setProducts:noOp,
     setRows(value:any[]){rows=value;},normalizeBlueprintRowsProgress(value:any[]){return value;},setCellMerges:noOp,setHeaderLabels:noOp,setActiveHeaderCell:noOp,
-    updateDeletedColumns:noOp,setHiddenRowIds:noOp,setMergeHeaders:noOp,setFreezeRows:noOp,setFreezeColumns:noOp,initializeDefaultRows(){throw new Error('Unexpected default sheet');},console
+    emptyBlueprintSizing(){return {columnWidths:{},rowHeights:{}};},updateSheetSizing(value:any){sizing=value;},updateBlankColumns(value:any[]){blankColumns=value;},updateDeletedColumns:noOp,setHiddenRowIds:noOp,setMergeHeaders:noOp,setFreezeRows:noOp,setFreezeColumns:noOp,initializeDefaultRows(){throw new Error('Unexpected default sheet');},console
   });
   vm.runInContext(ts.transpile(code+'\nglobalThis.load = loadBlueprintFromServer;'),context);
   await context.load();assert.equal(selected,'east');assert.equal(rows[0].balance,1);
+  assert.equal(blankColumns[0].id,'east-notes');assert.equal(sizing.columnWidths['field:facility'],240);
   context.preferredSheetId='deleted';await context.load();assert.equal(selected,'west');
+  assert.equal(blankColumns.length,0);assert.equal(Object.keys(sizing.columnWidths).length,0);
 });
 
 test('missing or ambiguous cloud rows never save or publish a deduction', async () => {

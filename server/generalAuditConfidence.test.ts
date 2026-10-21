@@ -43,7 +43,7 @@ test('three failed checks out of eight round 62.5% to 63%', () => {
 
 test('missing and extra products each fail once without fictitious quantity checks', () => {
   const missing = score(headers + 'Paracetamol - 5', headers + 'No fulfilled products.');
-  assert.deepEqual(missing.auditSummary, { totalChecks: 3, passedChecks: 2, failedChecks: 1, discrepancyCount: 1, confidence: 67 });
+  assert.deepEqual(missing.auditSummary, { totalChecks: 3, passedChecks: 2, failedChecks: 1, discrepancyCount: 1, confidence: 67, missingRequiredCount: 1, reviewRequiredCount: 1 });
   const extra = score(headers + 'Paracetamol - 5', headers + 'Paracetamol [5/5]\nORS [5/5]');
   assert.deepEqual(extra.auditSummary, { totalChecks: 5, passedChecks: 4, failedChecks: 1, discrepancyCount: 1, confidence: 80 });
   const duplicates = score(headers + 'PCM - 2\nParacetamol - 3', headers + 'Paracetamol [3/5]');
@@ -73,13 +73,13 @@ test('valid stock and confirmed limits pass without changing the original reques
 
 test('missing requested identities fail, and available optional phone checks are scored', () => {
   const missing = score(request, 'Paracetamol [5/5]\nORS [5/5]');
-  assert.deepEqual(missing.auditSummary, { totalChecks: 6, passedChecks: 4, failedChecks: 2, discrepancyCount: 2, confidence: 67 });
+  assert.deepEqual(missing.auditSummary, { totalChecks: 6, passedChecks: 4, failedChecks: 2, discrepancyCount: 0, confidence: 67, missingRequiredCount: 2, reviewRequiredCount: 2 });
   const phone = score(request + '\nPhone: 0241234567', fulfillment + '\nPhone: 0247654321');
   assert.equal(phone.auditSummary.totalChecks, 7);
   assert.equal(phone.auditSummary.passedChecks, 6);
   assert.equal(phone.confidence, 86);
   const absent = score('PCM - 5', 'PCM [5/5]');
-  assert.equal(absent.auditSummary.totalChecks, 2); // No invented identity or phone validations.
+  assert.equal(absent.auditSummary.totalChecks, 4); // Missing mandatory identities are failed checks, not discrepancies.
 });
 
 test('accepted server scores are rebuilt from the same final comparison that drives the banner', () => {

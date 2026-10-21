@@ -125,3 +125,19 @@ test('catalog reads report current edit permissions rather than a stale browser 
   assert.equal(body.canEdit, false);
   assert.deepEqual(body.accessRoles, ['cca']);
 });
+
+test('extension receiving hints batch both fields into one fresh catalog read', async () => {
+  let reads = 0, status = 200, body: any;
+  const catalog = { revision: 1, products: [{ ...seed.products.find(p => p.scope === 'general')!, receivingDetails: 'Verified receiving instructions' }] };
+  const handlers = productCatalogHandlers({ read: async () => { reads++; return catalog; }, save: async () => catalog });
+  const response: any = { setHeader() {}, status(value: number) { status = value; return this; }, json(value: any) { body = value; } };
+  await handlers.hints({ body: { scope: 'general', texts: [catalog.products[0].name, catalog.products[0].name] } } as any, response, () => {});
+  assert.equal(reads, 1); assert.equal(body.groups.length, 2); assert.deepEqual(body.groups[0], body.groups[1]); assert.equal(body.groups[0].length, 1);
+  await handlers.hints({ body: { scope: 'general', text: catalog.products[0].name } } as any, response, () => {});
+  assert.equal(reads, 2); assert.equal(body.products.length, 1);
+  for (const texts of [[], ['a', 'b', 'c'], [null], ['x'.repeat(100001)]]) {
+    await handlers.hints({ body: { scope: 'general', texts } } as any, response, () => {});
+    assert.equal(status, 400);
+  }
+  assert.equal(reads, 2);
+});

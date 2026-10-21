@@ -1,0 +1,83 @@
+{
+  "scope": "Actual local General Auditor runs with AI unavailable; not deployed end-to-end performance",
+  "beforeCaptured": "2026-10-20, before edits",
+  "before": [
+    {
+      "name": "split_footer",
+      "allMatch": false,
+      "confidence": 75,
+      "issueCount": 0,
+      "reviews": 2,
+      "aiCalls": 1
+    },
+    {
+      "name": "combined_footer",
+      "allMatch": false,
+      "confidence": 86,
+      "issueCount": 0,
+      "reviews": 1,
+      "aiCalls": 1
+    },
+    {
+      "name": "service_phone",
+      "allMatch": false,
+      "confidence": 67,
+      "issueCount": 3,
+      "reviews": 1,
+      "aiCalls": 1
+    }
+  ],
+  "after": [
+    {
+      "name": "split_footer",
+      "allMatch": true,
+      "confidence": 100,
+      "issueCount": 0,
+      "reviews": 0,
+      "aiCalls": 0,
+      "ignored": 2,
+      "elapsedMs": 156.13164400000005,
+      "phone": {
+        "whatsappValue": "N/A",
+        "fulfillmentValue": "N/A",
+        "status": "missing from customer request"
+      }
+    },
+    {
+      "name": "combined_footer",
+      "allMatch": true,
+      "confidence": 100,
+      "issueCount": 0,
+      "reviews": 0,
+      "aiCalls": 0,
+      "ignored": 1,
+      "elapsedMs": 8.178738000000067,
+      "phone": {
+        "whatsappValue": "N/A",
+        "fulfillmentValue": "N/A",
+        "status": "missing from customer request"
+      }
+    },
+    {
+      "name": "service_phone",
+      "allMatch": true,
+      "confidence": 100,
+      "issueCount": 0,
+      "reviews": 0,
+      "aiCalls": 0,
+      "ignored": 1,
+      "elapsedMs": 14.79001200000016,
+      "phone": {
+        "whatsappValue": "0241234567",
+        "fulfillmentValue": "N/A",
+        "status": "not available in system entry"
+      }
+    }
+  ],
+  "deterministicTiming": {
+    "samples": 20,
+    "meanMs": 6.360520549999967,
+    "medianMs": 6.128987999999936,
+    "p95Ms": 8.106288999999833
+  }
+}

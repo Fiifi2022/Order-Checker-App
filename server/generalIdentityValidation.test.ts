@@ -54,8 +54,8 @@ test('semantic first/surname rewriting cannot erase different complete orderer n
   let calls = 0;
   const result = await runGeneralSemanticAudit(customer, fulfillment, {}, {}, () => ({ models: {
     async generateContent() { calls++; return { text: JSON.stringify(data) }; } } }));
-  assert.equal(calls, 1);
-  assert.equal(result.semanticAnalysis.status, 'used');
+  assert.equal(calls, 0);
+  assert.equal(result.semanticAnalysis.status, 'skipped');
   assert.equal(result.generalAudit.orderer.whatsappValue, 'Mary Abena Mensah');
   assert.equal(result.generalAudit.orderer.fulfillmentValue, 'Mary Akua Mensah');
   assert.equal(result.generalAudit.orderer.status, 'mismatch');
@@ -112,20 +112,23 @@ test('explicit greeting facilities accept bare names and Hosp abbreviations with
 test('missing requested identity fields require review and cannot be waived by an order limit', () => {
   for (const [identity, count] of [['', 2], ['Orderer: Isaac Awuyem', 1], ['Facility: Gbimsi CHPS', 1]] as const) {
     const result = runGeneralAuditor(requiredRequest, `${identity}\nParacetamol [3/5]`);
-    assert.equal(result.issueCount, count + 1);
+    assert.equal(result.issueCount, 1);
+    assert.equal(result.auditSummary.missingRequiredCount, count);
     const confirmed = applyGeneralOrderLimitDecision(result, result.items[0].fulfillment.key, true);
-    assert.equal(confirmed.issueCount, count);
+    assert.equal(confirmed.issueCount, 0);
+    assert.equal(confirmed.auditSummary.missingRequiredCount, count);
     assert.equal(confirmed.allMatch, false);
-    assert.equal(confirmed.generalAudit.finalStatus, 'DISCREPANCY DETECTED');
+    assert.equal(confirmed.generalAudit.finalStatus, 'MISSING REQUIRED INFORMATION');
     const html = renderToStaticMarkup(createElement(GeneralAuditDetails, { details: confirmed.generalAudit }));
     assert.match(html, /Review required/);
     assert.match(html, /Verify (?:the facility|the orderer&#x27;s name) before dispatch/);
-    assert.match(html, /text-red-700/);
+    assert.match(html, /text-amber-800/);
   }
   const stock = runGeneralAuditor(requiredRequest, 'Paracetamol [0/1]');
   assert.equal(stock.items[0].status, 'out of stock');
-  assert.equal(stock.issueCount, 2); // Only the two missing identity checks.
-  assert.deepEqual(stock.generalAudit.discrepancies, ['Orderer Name Not Found', 'Facility Not Found']);
+  assert.equal(stock.issueCount, 0);
+  assert.equal(stock.auditSummary.missingRequiredCount, 2); // Only the two missing identity checks.
+  assert.deepEqual(stock.generalAudit.discrepancies, []);
 });
 
 test('accepted server responses cannot invent absent identity fields to bypass required review', () => {
@@ -136,7 +139,8 @@ test('accepted server responses cannot invent absent identity fields to bypass r
   const response = { ...actual, allMatch: true, issueCount: 0, generalAudit: { ...actual.generalAudit, orderer, facility },
     auditEngine: 'general-deterministic-v1', whatsappMessage: requiredRequest, fulfillmentConfirmation: fulfillment };
   const result = completeGeneralAuditRun(createGeneralAuditRun({ whatsappMessage: requiredRequest, fulfillmentConfirmation: fulfillment }, 1, {}, {}, true), response);
-  assert.equal(result.issueCount, 2);
+  assert.equal(result.issueCount, 0);
+  assert.equal(result.auditSummary.missingRequiredCount, 2);
   assert.equal(result.allMatch, false);
   assert.equal(result.generalAudit.orderer.fulfillmentValue, 'N/A');
   assert.equal(result.generalAudit.facility.fulfillmentValue, 'N/A');

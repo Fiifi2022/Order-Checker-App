@@ -8,7 +8,7 @@ export interface GeneralAuditInputs {
 
 export function createGeneralAuditRun(inputs: GeneralAuditInputs, revision: number, orderLimitDecisions: Record<string, boolean> = {}, support: GeneralAuditSupport = {}, deferComparison = false) {
   const snapshot = { ...inputs };
-  return { inputs: snapshot, revision, orderLimitDecisions: { ...orderLimitDecisions }, support: { osuItems: [...(support.osuItems || [])] }, comparison: deferComparison ? null : runGeneralAuditor(snapshot.whatsappMessage, snapshot.fulfillmentConfirmation, { ...orderLimitDecisions }, { osuItems: [...(support.osuItems || [])] }) };
+  return { inputs: snapshot, revision, orderLimitDecisions: { ...orderLimitDecisions }, support: { ...support, osuItems: [...(support.osuItems || [])] }, comparison: deferComparison ? null : runGeneralAuditor(snapshot.whatsappMessage, snapshot.fulfillmentConfirmation, { ...orderLimitDecisions }, { ...support, osuItems: [...(support.osuItems || [])] }) };
 }
 
 export type GeneralAuditRun = ReturnType<typeof createGeneralAuditRun>;
@@ -48,7 +48,7 @@ export function completeGeneralAuditRun<T extends Record<string, unknown>>(run: 
     const foundCount = items.filter(item => item.provenance.some(product => product.source === 'fulfillment_confirmation') &&
       (item.fulfillment.supplied > 0 || item.provenance.some(product => product.source === 'customer_request'))).length;
     comparison = { ...comparison, ...summarizeGeneralProducts(items, comparison.generalAudit.facility,
-      comparison.generalAudit.orderer, comparison.generalAudit.phone, requestedCount, foundCount, reviews) };
+      comparison.generalAudit.orderer, comparison.generalAudit.phone, requestedCount, foundCount, reviews, comparison.generalAudit) };
   }
   // Current-engine responses can still carry contradictory missing/extra rows.
   // Reconcile only colliding identities; retain valid semantic products and all
@@ -79,13 +79,14 @@ export function completeGeneralAuditRun<T extends Record<string, unknown>>(run: 
     const foundCount = items.filter(item => item.provenance.some(product => product.source === 'fulfillment_confirmation') &&
       (item.fulfillment.supplied > 0 || item.provenance.some(product => product.source === 'customer_request'))).length;
     comparison = { ...comparison, ...summarizeGeneralProducts(items, comparison.generalAudit.facility,
-      comparison.generalAudit.orderer, comparison.generalAudit.phone, requestedCount, foundCount, comparison.generalAudit.semanticReviews) };
+      comparison.generalAudit.orderer, comparison.generalAudit.phone, requestedCount, foundCount, comparison.generalAudit.semanticReviews, comparison.generalAudit) };
   }
-  comparison = enforceGeneralIdentityMatches(comparison, run.inputs.whatsappMessage, run.inputs.fulfillmentConfirmation);
+  comparison = enforceGeneralIdentityMatches(comparison, run.inputs.whatsappMessage, run.inputs.fulfillmentConfirmation,
+    { ...run.support.facilityContext, ...(serverResult ? { records: comparison.generalAudit.facility.evidence || [], aiSuggestion: comparison.generalAudit.facility.aiSuggestion } : {}) });
   // Recalculate from the accepted final comparison, including older server scores.
   const details = comparison.generalAudit;
   comparison = { ...comparison, ...summarizeGeneralProducts(comparison.items, details.facility, details.orderer,
-    details.phone, details.productCount.requested, details.productCount.found, details.semanticReviews) };
+    details.phone, details.productCount.requested, details.productCount.found, details.semanticReviews, details) };
   const result = { ...record, ...comparison, ...run.inputs };
   traceGeneralAudit('beforeRendering', { generalAuditResult: result });
   return result;

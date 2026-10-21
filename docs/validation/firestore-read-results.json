@@ -1,0 +1,48 @@
+{
+  "scope": "In-memory query-shape measurements and modeled minimum document reads, NOT billed production Firestore reads.",
+  "assumptions": {
+    "districtSheetDocuments": 12,
+    "visibleBlueprintHours": 1,
+    "pollIntervalSeconds": 3,
+    "polls": 1200,
+    "authRoleDocumentsPerSuccessfulRequest": 1,
+    "previousRegistrationJoinReadsPerRequest": 1,
+    "previousUnneededCatalogueReadsPerPoll": 1,
+    "transactionRetries": 0,
+    "concurrentViewers": 1
+  },
+  "blueprint": {
+    "measuredNewSelectedDocumentReadCalls": 1200,
+    "estimatedBeforeDocumentReads": 18000,
+    "estimatedAfterDocumentReads": 2400,
+    "reductionPercent": 86.66666666666667
+  },
+  "concurrentReferenceReadBurst": {
+    "readers": 20,
+    "measuredBeforeReadCalls": 20,
+    "measuredAfterReadCalls": 1
+  },
+  "generalAudit": {
+    "estimatedBefore": 16,
+    "estimatedAfter": 15,
+    "includes": "role, old per-request registration join, product catalogue, managed directory, all fresh Blueprint identity sheets. Excludes image scans, optional AI, retries and confirmation transactions."
+  },
+  "extensionHintUpdateBothFields": {
+    "estimatedBefore": 6,
+    "estimatedAfter": 2,
+    "includes": "Before: 2 requests x (role + registration + catalogue). After: 1 batched request x (role + catalogue)."
+  },
+  "bundledFacilities": {
+    "records": 1509,
+    "firestoreReads": 0,
+    "fullFirestoreFacilityCatalogueLoadsPerAudit": 0
+  },
+  "listeners": {
+    "firestoreListeners": 0,
+    "listenerReads": 0
+  },
+  "coldStart": {
+    "before": "min(150, activity logs) + all activity logs + all vaccine transactions + all district sheets; empty queries still cost a minimum read",
+    "after": "min(150, activity logs), or minimum 1 for an empty query; history and sheets deferred until needed"
+  }
+}

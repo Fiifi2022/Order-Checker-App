@@ -11,11 +11,14 @@ export function canAccess(role: string | readonly string[], method: string, path
   if (!assignedRoles({ role: role as string }).length) return false;
   if (path === '/roles/switch') return false;
   if (role === 'admin') return true;
+  const reportPath = path.replace(/\/+$/, '').toLowerCase();
+  if (method === 'GET' && ['/kpis', '/audits', '/activity/logs', '/activity/usage', '/general-auditor/history'].includes(reportPath)) return false;
   if (path === '/admin' || path.startsWith('/admin/')) return false;
   if (path.startsWith('/roles') && method !== 'GET') return false;
   const blueprintPath = /^\/vaccine\/(?:blueprint(?:[/-]|$)|allocations\/(?:upload|clear|reset-demo|[^/]+\/topup)$|adjust$|aliases$|facilities\/)/.test(path);
   if (blueprintPath && ['warehouse', 'dco', 'auditor'].includes(role as string)) return true;
   if (blueprintPath && method !== 'GET') return false;
+  if (/^\/general\/facilities\/?$/.test(path)) return method === 'GET' || ['warehouse', 'dco', 'auditor'].includes(role as string);
   if (path === '/products/hints' && method === 'POST') return true;
   if (path === '/products' || path.startsWith('/products/')) return method === 'GET' || ['warehouse', 'dco', 'auditor'].includes(role as string);
   if (/clear|reset-demo/.test(path)) return false;
@@ -38,7 +41,7 @@ export function createAuthentication(
     if (!match) { res.status(401).json({ error: 'Sign in to continue.' }); return; }
     let identity: any;
     try { identity = await budget(req, () => verify(match[1])); }
-    catch (error: any) { res.status(error?.code === 'FS_CONTEXT_TIMEOUT' ? 503 : 401).json({ error: error?.code === 'FS_CONTEXT_TIMEOUT' ? 'Authentication service timed out. Please retry.' : 'Your session has expired. Please sign in again.' }); return; }
+    catch (error: any) { res.status(['FS_CONTEXT_TIMEOUT', 'AUDIT_TIMEOUT'].includes(error?.code) ? 503 : 401).json({ error: ['FS_CONTEXT_TIMEOUT', 'AUDIT_TIMEOUT'].includes(error?.code) ? 'Authentication service timed out. Please retry.' : 'Your session has expired. Please sign in again.' }); return; }
     const registrationRequest = (req.path === '/auth/register' && req.method === 'POST') || (req.path === '/auth/registration' && req.method === 'GET');
     if (registrationRequest) {
       if (!identity.uid || !identity.email || identity.firebase?.sign_in_provider === 'anonymous') {

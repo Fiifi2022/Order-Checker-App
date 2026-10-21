@@ -15,6 +15,10 @@ export function normalizeBackendUrl(value) {
 export async function fetchJson(url, options = {}, timeoutMs = 90000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const parent = options.signal;
+  const cancel = () => controller.abort();
+  parent?.addEventListener('abort', cancel, { once: true });
+  if (parent?.aborted) cancel();
   try {
     const response = await fetch(url, { ...options, signal: controller.signal, cache: 'no-store' });
     let data;
@@ -38,5 +42,6 @@ export async function fetchJson(url, options = {}, timeoutMs = 90000) {
     throw error;
   } finally {
     clearTimeout(timer);
+    parent?.removeEventListener('abort', cancel);
   }
 }

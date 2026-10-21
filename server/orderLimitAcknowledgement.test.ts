@@ -1,3 +1,4 @@
+import { withRequiredGeneralHeaders } from './generalProductTestFixtures';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runGeneralAuditor } from './generalAuditor';
@@ -34,7 +35,7 @@ test('acknowledgement endpoint updates the existing audit without starting anoth
   for (const role of ['cca', 'auditor', 'warehouse', 'admin']) assert.equal(canAccess(role, 'POST', '/audits/existing/order-limit'), true);
 });
 test('acknowledging the only pending limit confirms the result; declining restores its discrepancy', () => {
-  const record = { ...runGeneralAuditor('PCM - 10', 'PCM [5/10]'), id: 'limit' };
+  const record = { ...runGeneralAuditor(withRequiredGeneralHeaders('PCM - 10'), withRequiredGeneralHeaders('PCM [5/10]')), id: 'limit' };
   const key = record.items[0].fulfillment.key;
   const confirmed = acknowledgeOrderLimit(record, key, true);
   assert.equal(confirmed.allMatch, true); assert.equal('status' in confirmed ? confirmed.status : undefined, 'resolved');
@@ -43,7 +44,7 @@ test('acknowledging the only pending limit confirms the result; declining restor
 });
 
 test('quick acknowledgements for two products preserve both decisions in history', async () => {
-  let record: any = { ...runGeneralAuditor('PCM - 10\nORS - 10', 'PCM [5/10]\nORS [5/10]'), id: 'two' };
+  let record: any = { ...runGeneralAuditor(withRequiredGeneralHeaders('PCM - 10\nORS - 10'), withRequiredGeneralHeaders('PCM [5/10]\nORS [5/10]')), id: 'two' };
   const keys = record.items.map((item: any) => item.fulfillment.key);
   const handler = orderLimitAcknowledgementHandler({ read: async () => record, save: async value => { await new Promise(resolve => setImmediate(resolve)); record = value; } });
   const response = () => ({ status() { return this; }, json() {} });

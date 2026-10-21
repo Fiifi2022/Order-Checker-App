@@ -12,7 +12,7 @@ const empty = (): AuditSemantics => ({ facility: pair(), orderer: pair(), custom
 const product = (sourceText: string, name: string, normalizedName: string, quantityText: string, quantity: number, confidence = 0.99): SemanticProduct => ({ sourceText, name, normalizedName, quantityText, quantity, confidence });
 const client = (data: unknown, onCall = () => {}) => () => ({ models: { async generateContent(options: any) {
   onCall(); assert.equal(options.config.responseMimeType, 'application/json'); assert.ok(options.config.responseSchema);
-  assert.equal(options.config.httpOptions.timeout, 10000);
+  assert.equal(options.config.httpOptions.timeout, 4000);
   return { text: JSON.stringify(data) };
 } } });
 const headers = 'Facility: Kade HC\nOrderer: Isaac Awuyem\n';
@@ -127,7 +127,7 @@ test('missing orderer remains absent and requires review', async () => {
   const b = 'Facility: Missing Orderer HC\nPCM - 5';
   const result = await runGeneralSemanticAudit(a, b, {}, {}, client(empty()));
   assert.equal(result.generalAudit.orderer.fulfillmentValue, 'N/A');
-  assert.equal(result.allMatch, false); assert.equal(result.issueCount, 1);
+  assert.equal(result.allMatch, false); assert.equal(result.issueCount, 0); assert.equal(result.auditSummary.missingRequiredCount, 1);
   assert.ok(result.generalAudit.warnings?.includes('ORDERER NAME NOT FOUND'));
 });
 
@@ -178,11 +178,11 @@ test('stock, missing, extra and excess results remain controlled by deterministi
   assert.equal(result.issueCount, expected.issueCount);
 });
 
-test('Gemini unavailability still completes a parseable audit', async () => {
+test('known products and identity discrepancies complete without Gemini', async () => {
   const a = headers.replace('Kade', 'Fallback Rule') + 'PCM - 5';
   const b = a.replace('Isaac Awuyem', 'Evelyn Awuyem');
   const result = await runGeneralSemanticAudit(a, b, {}, {}, () => { throw new Error('unavailable'); });
-  assert.equal(result.semanticAnalysis.status, 'fallback');
+  assert.equal(result.semanticAnalysis.status, 'skipped');
   assert.equal(result.generalAudit.orderer.status, 'mismatch');
   assert.equal(result.items[0].status, 'match');
 });
@@ -215,8 +215,8 @@ test('valid interpreted vaccine pairs pass and exceeding allocation remains bloc
 test('quota failure makes one semantic request and falls back without any background retry', async () => {
   const { geminiUsage } = await import('./geminiUsage');
   let calls = 0;
-  const customer = headers.replace('Kade', 'Quota Fixture') + 'PCM - 5';
-  const fulfilment = customer.replace('Isaac Awuyem', 'Evelyn Awuyem');
+  const customer = headers.replace('Kade', 'Quota Fixture') + 'Paracetmol - 5';
+  const fulfilment = customer.replace('Isaac Awuyem', 'Evelyn Awuyem').replace('Paracetmol', 'Paracetamol');
   const getClient = () => ({ models: { async generateContent(options: any) {
     calls++; assert.equal(geminiUsage.getStatus().status, 'processing');
     assert.equal(options.config.httpOptions.retryOptions.attempts, 1);

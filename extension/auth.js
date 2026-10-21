@@ -41,14 +41,30 @@ export async function getToken() {
 }
 
 export async function backendRequest(baseUrl, endpoint, options = {}, timeoutMs) {
-  const token = await getToken();
+  const audit = ['/api/verify', '/api/vaccine/validate'].includes(endpoint);
+  const configured = Number(extensionConfig.auditTimeoutMs);
+  const auditLimit = Number.isFinite(configured) && configured >= 4000 && configured <= 60000 ? configured : 20000;
+  const limit = timeoutMs ?? (audit ? auditLimit : 90000);
+  const started = Date.now();
+  let tokenTimer;
+  let cancelToken;
+  const cancelled = new Promise((_, reject) => { cancelToken = () => reject(new Error('Audit cancelled.')); });
+  if (audit) options.signal?.addEventListener('abort', cancelToken, { once: true });
+  if (audit && options.signal?.aborted) cancelToken();
   try {
+    const token = audit ? await Promise.race([getToken(), cancelled, new Promise((_, reject) => {
+      tokenTimer = setTimeout(() => reject(new Error('The audit could not be completed within the available processing time. Please retry.')), limit);
+    })]) : await getToken();
+    clearTimeout(tokenTimer);
     return await fetchJson(`${baseUrl}${endpoint}`, {
       ...options,
       headers: { ...options.headers, Authorization: `Bearer ${token}` },
-    }, timeoutMs ?? (endpoint === '/api/verify' ? 180000 : 90000));
+    }, audit ? Math.max(1, limit - (Date.now() - started)) : limit);
   } catch (error) {
     if (error.status === 401) await signOut();
     throw error;
+  } finally {
+    clearTimeout(tokenTimer);
+    options.signal?.removeEventListener('abort', cancelToken);
   }
 }

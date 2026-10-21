@@ -1,3 +1,5 @@
+import { optionalAuditAi } from './auditBudget';
+import { AUDIT_AI_FALLBACK_MS } from '../shared/auditPerformance';
 import { isGeneralBiologic } from '../src/utils/generalMedicalTerminology';
 import { geminiUsage } from './geminiUsage';
 import { expandGeneralProductAcronyms, isGeneralBloodProduct, medicalProductAcronymReference } from '../src/utils/medicalProductAcronyms';
@@ -182,38 +184,39 @@ export function needsAuditSemantics(customer: string, fulfilment: string, scope:
   }
   try {
     const result = runGeneralAuditor(customer, fulfilment);
-    return result.items.some(item => item.status === 'missing item' || item.status === 'extra item' || /\b(please|need|want|send|supply|packed)\b/i.test(item.name)) ||
+    return result.items.length === 0 || result.items.some(item => item.status === 'missing item' || item.status === 'extra item' || /\b(please|need|want|send|supply|packed)\b/i.test(item.name)) ||
       [result.generalAudit.facility, result.generalAudit.orderer].some(field => field.status === 'mismatch' || field.status === 'not available in system entry' || field.status === 'missing from customer request');
   } catch { return true; }
 }
 
 // Only extraction is cached. Quantities, order-limit decisions, OSU and allocations are revalidated every time.
 const cache = new Map<string, { expires: number; result: Promise<AuditSemantics | null> }>();
-export async function analyzeAuditLanguage(customer: string, fulfilment: string, scope: AuditScope, getClient: () => any, logger: Pick<Console, 'info' | 'warn'> = console): Promise<InterpretedAudit> {
+export async function analyzeAuditLanguage(customer: string, fulfilment: string, scope: AuditScope, getClient: () => any, logger: Pick<Console, 'info' | 'warn'> = console, timeoutMs = AUDIT_AI_FALLBACK_MS, options: { signal?: AbortSignal; cacheScope?: string } = {}): Promise<InterpretedAudit> {
   const fallback = (status: InterpretedAudit['semanticAnalysis']['status'], reason: string): InterpretedAudit => ({ customerRequest: customer, fulfilmentConfirmation: fulfilment, semanticAnalysis: { status, reason } });
   if (!needsAuditSemantics(customer, fulfilment, scope)) return fallback('skipped', 'Deterministic extraction is sufficient');
   // Bound prompt size rather than sending arbitrarily large pasted logs to the model.
   if (customer.length + fulfilment.length > 40_000) { logger.warn('[Audit semantics] deterministic fallback used', { scope, reason: 'input size' }); return fallback('fallback', 'Input exceeds semantic analysis size limit'); }
-  const key = JSON.stringify([scope, customer, fulfilment, scope === 'vaccine' ? getAliases() : null]);
+  const key = JSON.stringify([options.cacheScope || 'local', scope, customer, fulfilment, scope === 'vaccine' ? getAliases() : null]);
   let entry = cache.get(key);
   if (!entry || entry.expires <= Date.now()) {
     logger.info('[Audit semantics] Gemini semantic analysis started', { scope, model: 'gemini-2.5-flash-lite' });
     const result = (async () => {
       try {
-        return await geminiUsage.run(async () => {
+        return await geminiUsage.run(() => optionalAuditAi(async signal => {
           const client = getClient();
           const response = await client.models.generateContent({
             model: 'gemini-2.5-flash-lite',
             contents: JSON.stringify({ customerRequest: customer, fulfilmentConfirmation: fulfilment, supportedVaccineAliases: getAliases() }),
-            config: { systemInstruction: scope === 'general' ? `${auditSemanticPrompt}\n\n${medicalProductAcronymReference}` : auditSemanticPrompt, responseMimeType: 'application/json', responseSchema: auditSemanticSchema, temperature: 0.1, httpOptions: { timeout: 10_000, retryOptions: { attempts: 1 } } }
+            config: { abortSignal: signal, systemInstruction: scope === 'general' ? `${auditSemanticPrompt}\n\n${medicalProductAcronymReference}` : auditSemanticPrompt, responseMimeType: 'application/json', responseSchema: auditSemanticSchema, temperature: 0.1, httpOptions: { timeout: Math.max(1, timeoutMs), retryOptions: { attempts: 1 } } }
           });
+          if (signal.aborted) throw new Error('AI fallback time budget exceeded');
           let data: unknown;
           try { data = JSON.parse(response.text || ''); } catch { logger.warn('[Audit semantics] Gemini response rejected due to invalid structure', { scope }); throw new Error('Invalid Gemini semantic response'); }
           const accepted = validateAuditSemantics(data, customer, fulfilment);
           if (!accepted) { logger.warn('[Audit semantics] Gemini response rejected due to invalid structure', { scope }); throw new Error('Invalid Gemini semantic response'); }
           logger.info('[Audit semantics] Gemini semantic analysis successful', { scope });
           return accepted;
-        });
+        }, timeoutMs, options.signal));
       } catch (error: any) {
         // Raw SDK errors can contain secrets and pasted medical text. Log only a numeric status.
         const code = Number(error?.status || error?.code);
@@ -224,7 +227,7 @@ export async function analyzeAuditLanguage(customer: string, fulfilment: string,
     if (cache.size >= 64) cache.delete(cache.keys().next().value!);
     entry = { expires: Date.now() + 60_000, result }; cache.set(key, entry);
   }
-  const semantics = await entry.result;
-  if (!semantics) { logger.warn('[Audit semantics] deterministic fallback used', { scope }); return fallback('fallback', 'Gemini semantic analysis unavailable or rejected'); }
+  const semantics = await optionalAuditAi(() => entry.result, timeoutMs, options.signal).catch(() => null);
+  if (!semantics) { if (cache.get(key) === entry) cache.delete(key); logger.warn('[Audit semantics] deterministic fallback used', { scope }); return fallback('fallback', 'Gemini semantic analysis unavailable or rejected'); }
   return { ...interpretAuditInputs(semantics, customer, fulfilment, scope), semanticAnalysis: { status: 'used', reason: 'Evidence-grounded semantic extraction; deterministic rules authoritative', evidence: semantics } };
 }

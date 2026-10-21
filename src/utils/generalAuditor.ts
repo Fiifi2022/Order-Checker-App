@@ -1,3 +1,6 @@
+import { classifyGeneralText, generalOrderRelevantText } from './generalTextClassification';
+import type { AuditTiming } from '../../shared/auditPerformance';
+import { compareGeneralFacilities, normalizeGeneralDistrictName, findGeneralFacilityNames, hasGeneralFacilityType, normalizeGeneralFacilityName, type GeneralFacilityContext, type GeneralFacilityResult } from './generalFacility';
 import { expandGeneralMedicalTerms, getGeneralMedicalAmbiguity, stripGeneralRepeatedAlias, resolveGeneralApprovedIdentity } from './generalMedicalTerminology';
 import { generalQuantityBasis } from './generalPackaging';
 import { expandGeneralProductAcronyms, isGeneralBloodProduct } from './medicalProductAcronyms';
@@ -12,7 +15,7 @@ import { calculateGeneralAuditSummary, getGeneralAuditorAction, normalizeAuditTe
 
 export type GeneralProductSource = 'customer_request' | 'fulfillment_confirmation';
 export interface GeneralProductEvidence {
-  name: string; // Clean display identity; originalText retains the untouched source line.
+  name: string; // Clean identity; originalText retains the relevant source clauses.
   canonicalId?: string;
   normalizedName: string;
   quantity: number;
@@ -103,15 +106,16 @@ const metadataLabels = [
   'requester', 'sender', 'recipient', 'fulfilment recipient', 'fulfillment recipient', 'customer', 'authorized contact',
   'contact', 'contact information', 'contact number', 'telephone', 'tel', 'phone', 'phone number', 'reference phone', 'ref phone', 'mobile', 'mobile number', 'notes',
   'facility', 'facility name', 'facility id', 'hospital', 'clinic', 'district',
-  'delivery drop area', 'drop area', 'delivery area', 'delivery time',
+  'delivery drop area', 'drop area', 'delivery area', 'drop location', 'drop off area', 'district name', 'delivery time',
   'preferred time for delivery', 'order id', 'order number', 'reference', 'ref',
   'quantity', 'total', 'products', 'products and quantities'
 ];
-const isMetadataLabel = (value: string) => metadataLabels.includes(normalizeAuditText(value));
+export const isMetadataLabel = (value: string) => metadataLabels.includes(normalizeAuditText(value));
 const GENERAL_STOCK_TEXT = '(?:currently\\s+out\\s+of\\s+stock|out\\s+of\\s+stock|not\\s+currently\\s+in\\s+stock|currently\\s+unavailable|unavailable|oos)';
 const GENERAL_STOCK_SECTION = new RegExp(`^(?:we\\s+are\\s+)?${GENERAL_STOCK_TEXT}(?:\\s+for\\s+(?:the\\s+)?following\\s+(?:items|products))?\\s*[:.!]?$`, 'i');
 const GENERAL_AVAILABLE_SECTION = /^(?:in\s+stock|available(?:\s+(?:items|products))?|(?:items|products)\s+(?:in\s+stock|available))\s*[:.!]?$/i;
 const GENERAL_STOCK_SUFFIX = new RegExp(`^(.+?)\\s*(?:[-–—:=]\\s*|\\s+)(${GENERAL_STOCK_TEXT})\\s*[.!]?$`, 'i');
+const GENERAL_INLINE_STOCK = new RegExp(`^(.+?)\\s+(?:(?:is|are)\\s+)?(${GENERAL_STOCK_TEXT})\\s*[,;:]\\s*(?=[[(]?\\d)(.+)$`, 'i');
 
 function trimGeneralProductName(value: string): string {
   const name = value.trim();
@@ -129,14 +133,16 @@ function extractGeneralOrderLimit(line: string) {
 }
 
 /** A fresh evidence list per call, extracted solely from explicit quantity lines. */
-export function parseGeneralProducts(text: string, source: GeneralProductSource): GeneralProductEvidence[] {
+export function parseGeneralProducts(text: string, source: GeneralProductSource, timing?: AuditTiming): GeneralProductEvidence[] {
   const result: GeneralProductEvidence[] = [];
   let stockSection: string | undefined;
   text.split(/\r?\n/).forEach((originalText, index) => {
-    const strippedLine = stripGeneralListPrefix(originalText);
+    if (classifyGeneralText(originalText).category === 'administrative' || classifyGeneralText(originalText).orderChange) return;
+    const relevantText = generalOrderRelevantText(originalText);
+    const strippedLine = stripGeneralListPrefix(relevantText);
     if (source === 'fulfillment_confirmation') {
       if (GENERAL_STOCK_SECTION.test(strippedLine)) {
-        stockSection = originalText.trim();
+        stockSection = relevantText.trim();
         return;
       }
       // An explicit new section ends the stock list. Positive quantities are
@@ -149,8 +155,13 @@ export function parseGeneralProducts(text: string, source: GeneralProductSource)
     if (source === 'fulfillment_confirmation' && (extractSentenceOrderer(line) !== 'N/A' || extractSentenceFacility(line) !== 'N/A')) return;
     let name = '', quantity = '', unit = '';
     let ratioRequestedQuantity: number | undefined;
+    // Keep explicit product/ratio evidence in prose such as "Paracetamol
+    // Tablets are out of stock, 0/10". Generic restocking footers never enter
+    // this path, and the ordinary quantity parser still validates the suffix.
+    const inlineStock = source === 'fulfillment_confirmation' && line.match(GENERAL_INLINE_STOCK);
+    if (inlineStock) line = `${inlineStock[1]} ${inlineStock[3]}`;
     const stockMarker = source === 'fulfillment_confirmation' && line.match(GENERAL_STOCK_SUFFIX);
-    const stockIndicator = stockMarker ? stockMarker[2] : undefined;
+    const stockIndicator = stockMarker ? stockMarker[2] : inlineStock ? inlineStock[2] : undefined;
     if (stockMarker) {
       line = trimGeneralProductName(stockMarker[1]);
     }
@@ -176,7 +187,7 @@ export function parseGeneralProducts(text: string, source: GeneralProductSource)
     const parsedQuantity = quantityValue(quantity);
     if (!Number.isFinite(parsedQuantity) || parsedQuantity < 0) return;
     const canonicalId = resolveGeneralApprovedIdentity(stripGeneralRepeatedAlias(name))?.canonicalId;
-    result.push({ name, ...(canonicalId ? { canonicalId } : {}), normalizedName: normalizeGeneralProductName(name), quantity: parsedQuantity, ...(ratioRequestedQuantity === undefined ? {} : { ratioRequestedQuantity }), ...(orderLimit.applied ? { orderLimitApplied: true } : {}), ...(stockIndicator ? { stockIndicator } : {}), ...(stockSection ? { stockSection } : {}), unit: normalizeUnit(unit), originalText, source, line: index + 1 });
+    result.push({ name, ...(canonicalId ? { canonicalId } : {}), normalizedName: timing ? timing.measure('productNormalization', () => normalizeGeneralProductName(name)) : normalizeGeneralProductName(name), quantity: parsedQuantity, ...(ratioRequestedQuantity === undefined ? {} : { ratioRequestedQuantity }), ...(orderLimit.applied ? { orderLimitApplied: true } : {}), ...(stockIndicator ? { stockIndicator } : {}), ...(stockSection ? { stockSection } : {}), unit: normalizeUnit(unit), originalText: relevantText, source, line: index + 1 });
   });
   return result;
 }
@@ -289,7 +300,7 @@ function compareExtractedGeneralProducts(customerProducts: GeneralProductEvidenc
 
 function parseGeneralMetadata(text: string): Map<string, string[]> {
   const fields = new Map<string, string[]>();
-  for (const originalLine of text.split(/\r?\n/)) {
+  for (const originalLine of generalOrderRelevantText(text).split(/\r?\n/)) {
     const line = stripGeneralListPrefix(originalLine);
     // Split at the first colon so colons in the value are retained.
     const colon = line.indexOf(':');
@@ -302,41 +313,42 @@ function parseGeneralMetadata(text: string): Map<string, string[]> {
   return fields;
 }
 
+const missingMetadata = /^(?:n\/?a|none|unknown|not provided|not available|not specified|missing|nil|tbd|-)?$/i;
 function extractMetadata(fields: Map<string, string[]>, labels: string[]) {
   for (const label of labels) {
-    const value = fields.get(label)?.find(value => !/^(?:n\/?a|none|unknown|not provided|-)?$/i.test(value));
+    const value = fields.get(label)?.find(value => !missingMetadata.test(value));
     if (value) return value;
   }
   return 'N/A';
 }
 
-function extractGeneralIdentity(text: string, source: GeneralProductSource, customerOrdererName = 'N/A', customerFacilityName = 'N/A') {
+function extractGeneralIdentity(text: string, source: GeneralProductSource, customerOrdererName = 'N/A', customerFacilityName = 'N/A', timing?: AuditTiming) {
+  text = generalOrderRelevantText(text);
   const fields = parseGeneralMetadata(text);
-  return {
-    ordererName: source === 'fulfillment_confirmation' ? locateGeneralSystemOrderer(text, customerOrdererName, fields) : extractMetadata(fields, ORDERER_LABELS),
-    facilityName: source === 'fulfillment_confirmation' ? locateGeneralSystemFacility(text, customerFacilityName, fields) : extractMetadata(fields, FACILITY_LABELS),
+  const measure = <T,>(stage: 'ordererIdentification' | 'facilityIdentification', task: () => T) => timing ? timing.measure(stage, task) : task();
+  const identity = {
+    ordererName: measure('ordererIdentification', () => source === 'fulfillment_confirmation' ? locateGeneralSystemOrderer(text, customerOrdererName, fields) : locateGeneralSystemOrderer(text, 'N/A', fields)),
+    facilityName: measure('facilityIdentification', () => source === 'fulfillment_confirmation' ? locateGeneralSystemFacility(text, customerFacilityName, fields) : locateGeneralCustomerFacility(text, fields)),
     phone: extractGeneralPhone(text, fields)
   };
+  if (identity.ordererName !== 'N/A' && identity.facilityName !== 'N/A' && normalizeAuditText(identity.ordererName) === normalizeAuditText(identity.facilityName)) {
+    identity.ordererName = 'N/A'; // A facility value cannot supply the required person's identity.
+  }
+  return identity;
 }
 
-export function extractGeneralInput(text: string, source: GeneralProductSource, customerOrdererName = 'N/A', customerFacilityName = 'N/A') {
-  return { ...extractGeneralIdentity(text, source, customerOrdererName, customerFacilityName), products: parseGeneralProducts(text, source) };
+export function extractGeneralInput(text: string, source: GeneralProductSource, customerOrdererName = 'N/A', customerFacilityName = 'N/A', timing?: AuditTiming) {
+  return { ...extractGeneralIdentity(text, source, customerOrdererName, customerFacilityName, timing), products: timing ? timing.measure('productExtraction', () => parseGeneralProducts(text, source, timing)) : parseGeneralProducts(text, source) };
 }
 
-// Accept spelling and abbreviation differences without discarding facility type.
-function formatGeneralFacility(value: string) {
-  return normalizeAuditText(value)
-    .replace(/\bc h p s\b/g, 'chps')
-    .replace(/\bh c\b/g, 'hc')
-    .replace(/\bhc\b/g, 'health center')
-    .replace(/\bhosp\b/g, 'hospital')
-    .replace(/\bcentre\b/g, 'center')
-    .replace(/\bchps compound\b/g, 'chps');
-}
-
-function normalizeGeneralFacility(value: string) {
-  const formatted = formatGeneralFacility(value);
-  return formatted.replace(/(?:\s+(?:chps|health center|clinic|hospital))+$/, '').trim() || formatted;
+// Facility types remain part of identity; no shared locality can erase them.
+const formatGeneralFacility = normalizeGeneralFacilityName;
+const normalizeGeneralFacility = normalizeGeneralFacilityName;
+export function locateGeneralCustomerFacility(text: string, fields = parseGeneralMetadata(text)) {
+  const labelled = extractMetadata(fields, FACILITY_LABELS);
+  if (labelled !== 'N/A') return labelled;
+  const names = findGeneralFacilityNames(text);
+  return names.length === 1 ? names[0] : 'N/A';
 }
 function normalizeOrderer(value: string) {
   const words = normalizeAuditText(value).replace(/^(?:(?:dr|doctor|nurse|mr|mrs|ms|prof|sir|madam)\s+)+/, '').split(' ');
@@ -357,6 +369,22 @@ function compareGeneralField(whatsappValue: string, fulfillmentValue: string, eq
     ? 'not available in system entry' : equivalent(whatsappValue, fulfillmentValue) ? 'match' : 'mismatch';
   return { whatsappValue, fulfillmentValue, status };
 }
+const DROP_AREA_LABELS = ['delivery drop area', 'drop area', 'delivery area', 'drop location', 'drop off area'];
+const DISTRICT_LABELS = ['district', 'district name'];
+export function compareGeneralOptionalFields(customer: string, fulfillment: string, context: GeneralFacilityContext = {}) {
+  const left = parseGeneralMetadata(customer), right = parseGeneralMetadata(fulfillment);
+  const compare = (labels: string[], normalize: (value: string) => string): GeneralFieldResult => {
+    const whatsappValue = extractMetadata(left, labels), fulfillmentValue = extractMetadata(right, labels);
+    const values = (fields: Map<string, string[]>) => labels.flatMap(label => fields.get(label) || [])
+      .filter(value => value && !missingMetadata.test(value)).map(normalize);
+    const status: GeneralFieldResult['status'] = whatsappValue === 'N/A' || fulfillmentValue === 'N/A' ? 'optional not provided'
+      : new Set(values(left)).size > 1 || new Set(values(right)).size > 1 ? 'review required'
+      : normalize(whatsappValue) === normalize(fulfillmentValue) ? 'match' : 'mismatch';
+    return { whatsappValue, fulfillmentValue, status };
+  };
+  return { dropArea: compare(DROP_AREA_LABELS, normalizeAuditText), district: compare(DISTRICT_LABELS, value => normalizeGeneralDistrictName(value, context)) };
+}
+
 const PHONE_LABELS = ['phone number', 'contact number', 'mobile number', 'reference phone', 'ref phone', 'phone', 'mobile', 'telephone', 'tel', 'contact', 'contact information'];
 function extractGeneralPhone(text: string, fields = parseGeneralMetadata(text)) {
   const labelled = extractMetadata(fields, PHONE_LABELS);
@@ -370,7 +398,7 @@ function normalizeGeneralPhone(value: string) {
   if (digits.length === 9) digits = '0' + digits;
   return digits;
 }
-export interface GeneralAuditSupport { osuItems?: string[]; allowEmptyProductsForReview?: boolean; }
+export interface GeneralAuditSupport { osuItems?: string[]; allowEmptyProductsForReview?: boolean; facilityContext?: GeneralFacilityContext; semanticTimeoutMs?: number; signal?: AbortSignal; semanticCacheScope?: string; timing?: AuditTiming; onExtraction?: (customer: ReturnType<typeof extractGeneralInput>, fulfillment: ReturnType<typeof extractGeneralInput>) => void; }
 
 
 /** Exact normalized words, retaining the original system-side spelling as evidence. */
@@ -395,7 +423,7 @@ function findCurrentOrdererMention(text: string, customerName: string) {
 function extractSentenceOrderer(text: string) {
   for (const originalLine of text.split(/\r?\n/)) {
     const line = stripGeneralListPrefix(originalLine);
-    const prefix = line.match(/\b(?:thank\s+you|thanks\s+to|dear|requested\s+by|order\s+received\s+(?:from|for)|(?:we\s+have\s+)?received\s+your\s+order\s+for)\s+(.+)$/i);
+    const prefix = line.match(/\b(?:thank\s+you|thanks\s+to|dear|requested\s+by|this\s+is|i\s+am|order\s+received\s+(?:from|for)|(?:we\s+have\s+)?received\s+your\s+order\s+for)\s+(.+)$/i);
     const suffix = line.match(/^(.+?)\s+placed\s+(?:this|the)\s+order\b/i);
     const rawName = prefix?.[1] ?? suffix?.[1];
     if (!rawName) continue;
@@ -403,7 +431,7 @@ function extractSentenceOrderer(text: string) {
     const words = name.split(/\s+/);
     // Two or more explicit name words avoids treating “you” or “delivery” as a person.
     if (words.length < 2 || words.length > 8 || !words.every(word => /^[\p{L}][\p{L}'’.-]*$/u.test(word))) continue;
-    if (/\b(?:your|our|the|this|order|delivery|tomorrow|today|facility|hospital|clinic|chps|customer|health|center|centre|pickup|collection|dispatch|stock|supplies|items|products)\b/i.test(name)) continue;
+    if (hasGeneralFacilityType(name) || /\brch$/i.test(name) || /\b(?:your|our|the|this|order|delivery|tomorrow|today|facility|hospital|clinic|chps|customer|health|center|centre|pickup|collection|dispatch|stock|supplies|items|products)\b/i.test(name)) continue;
     return name;
   }
   return 'N/A';
@@ -413,15 +441,13 @@ export function locateGeneralSystemOrderer(text: string, customerOrdererName: st
   // A named orderer field or phrase takes precedence over incidental mentions
   // (for example, a different contact in the footer).
   const labelled = extractMetadata(fields, ORDERER_LABELS);
-  if (labelled !== 'N/A') return labelled;
+  if (labelled !== 'N/A') return hasGeneralFacilityType(labelled) || /^.+\s+rch$/i.test(labelled) ? 'N/A' : labelled;
   const sentenceName = extractSentenceOrderer(text);
   if (sentenceName !== 'N/A') return sentenceName;
   return findCurrentOrdererMention(text, customerOrdererName);
 }
 
-function hasFacilityType(value: string) {
-  return /\b(?:chps|health center|hospital|clinic|polyclinic|medical center|health post)(?: compound)?$/.test(formatGeneralFacility(value));
-}
+const hasFacilityType = hasGeneralFacilityType;
 
 /** Formatting aliases and approved suffix differences are checked on complete words. */
 function findCurrentFacilityMention(text: string, customerFacilityName: string) {
@@ -473,20 +499,23 @@ export function locateGeneralSystemFacility(text: string, customerFacilityName: 
   }
   const sentenceFacility = extractSentenceFacility(text, customerFacilityName);
   if (sentenceFacility !== 'N/A') return sentenceFacility;
+  const names = findGeneralFacilityNames(text);
+  if (names.length === 1) return names[0];
   return findCurrentFacilityMention(text, customerFacilityName);
 }
 
 export function runGeneralAuditor(customerRequest: string, fulfillmentConfirmation: string, orderLimitDecisions: Record<string, boolean> = {}, support: GeneralAuditSupport = {}) {
+  const measure = <T,>(stage: import('../../shared/auditPerformance').AuditStage, task: () => T) => support.timing ? support.timing.measure(stage, task) : task();
   traceGeneralAudit('rawInputs', { customerRequestRaw: customerRequest, fulfillmentRaw: fulfillmentConfirmation });
-  const customerIdentity = extractGeneralIdentity(customerRequest, 'customer_request');
-  const systemIdentity = extractGeneralIdentity(fulfillmentConfirmation, 'fulfillment_confirmation', customerIdentity.ordererName, customerIdentity.facilityName);
+  const customerIdentity = extractGeneralIdentity(customerRequest, 'customer_request', 'N/A', 'N/A', support.timing);
+  const systemIdentity = extractGeneralIdentity(fulfillmentConfirmation, 'fulfillment_confirmation', customerIdentity.ordererName, customerIdentity.facilityName, support.timing);
   const ordererName = compareGeneralField(customerIdentity.ordererName, systemIdentity.ordererName, generalOrdererNamesMatch);
-  const facilityName = compareGeneralField(customerIdentity.facilityName, systemIdentity.facilityName,
-    (left, right) => normalizeGeneralFacility(left) === normalizeGeneralFacility(right));
+  const facilityName = measure('facilityIdentification', () => compareGeneralFacilities(customerIdentity.facilityName, systemIdentity.facilityName, customerRequest, fulfillmentConfirmation, support.facilityContext));
   const phone = compareGeneralField(customerIdentity.phone, systemIdentity.phone,
     (left, right) => normalizeGeneralPhone(left) === normalizeGeneralPhone(right));
-  const customerExtraction = { ...customerIdentity, products: parseGeneralProducts(customerRequest, 'customer_request') };
-  const systemExtraction = { ...systemIdentity, products: parseGeneralProducts(fulfillmentConfirmation, 'fulfillment_confirmation') };
+  const customerExtraction = { ...customerIdentity, products: measure('productExtraction', () => parseGeneralProducts(customerRequest, 'customer_request', support.timing)) };
+  const systemExtraction = { ...systemIdentity, products: measure('productExtraction', () => parseGeneralProducts(fulfillmentConfirmation, 'fulfillment_confirmation', support.timing)) };
+  support.onExtraction?.(customerExtraction, systemExtraction);
   traceGeneralAudit('parsedInputs', { parsedCustomerRequest: customerExtraction, parsedSystemEntry: systemExtraction });
   // Never silently omit an explicitly listed product with an unreadable quantity.
   for (const [text, source] of [[customerRequest, 'customer_request'], [fulfillmentConfirmation, 'fulfillment_confirmation']] as const) {
@@ -497,21 +526,25 @@ export function runGeneralAuditor(customerRequest: string, fulfillmentConfirmati
       const headerProse = listed && source === 'fulfillment_confirmation' &&
         (GENERAL_STOCK_SECTION.test(listed[1]) || GENERAL_AVAILABLE_SECTION.test(listed[1]) || extractSentenceOrderer(listed[1]) !== 'N/A' || findCurrentOrdererMention(listed[1], customerExtraction.ordererName) !== 'N/A' ||
           extractSentenceFacility(listed[1], customerIdentity.facilityName) !== 'N/A' || findCurrentFacilityMention(listed[1], customerExtraction.facilityName) !== 'N/A');
-      if (listed && !headerProse && /[a-z]/i.test(listed[1]) && !isMetadataLabel(listed[1].split(':')[0]) && !parsedLines.has(index + 1)) {
+      if (listed && !classifyGeneralText(line).orderChange && classifyGeneralText(line).category !== 'administrative' && !headerProse && /[a-z]/i.test(listed[1]) && !isMetadataLabel(listed[1].split(':')[0]) && !parsedLines.has(index + 1)) {
         throw new Error(`Unable to read the product quantity in ${source === 'customer_request' ? 'Customer Request' : 'System Entry'} line ${index + 1}: ${line.trim()}. Use “Product - 5” or “Product [5/5]”.`);
       }
     });
   }
   const ambiguity = new Map<string, GeneralSemanticReview>();
+  const changeReviews: GeneralSemanticReview[] = ([['customer_request', customerRequest], ['fulfillment_confirmation', fulfillmentConfirmation]] as const)
+    .flatMap(([source, text]) => text.split(/\r?\n/).filter(line => classifyGeneralText(line).orderChange).map(line => ({ kind: 'unparsed_text', source, originalText: generalOrderRelevantText(line).trim(), possibleMatches: [], reason: 'An explicit order or destination change needs verification before dispatch.' })));
+
+
   const productContext = [...customerExtraction.products, ...systemExtraction.products].map(product => product.name).join('\n');
   for (const product of [...customerExtraction.products, ...systemExtraction.products]) {
     const reason = getGeneralMedicalAmbiguity(product.name, productContext);
     if (reason && !ambiguity.has(product.normalizedName)) ambiguity.set(product.normalizedName,
       { originalText: product.originalText, source: product.source, possibleMatches: [], reason: `${reason} Verify before dispatch.` });
   }
-  const items = compareExtractedGeneralProducts(customerExtraction.products, systemExtraction.products, orderLimitDecisions, support)
+  const items = measure('quantityVerification', () => compareExtractedGeneralProducts(customerExtraction.products, systemExtraction.products, orderLimitDecisions, support))
     .filter(item => !item.provenance.some(product => ambiguity.has(product.normalizedName)));
-  if (!items.length && !ambiguity.size && !support.allowEmptyProductsForReview) {
+  if (!items.length && !ambiguity.size && !support.allowEmptyProductsForReview && customerIdentity.ordererName === 'N/A' && customerIdentity.facilityName === 'N/A') {
     throw new Error('No explicit product quantities could be read from one of the current inputs. Use “Product - 5” or “Product [5/5]” and try again.');
   }
   // Keep the response shape compatible; facility, orderer and available phone numbers are audited headers.
@@ -526,8 +559,7 @@ export function runGeneralAuditor(customerRequest: string, fulfillmentConfirmati
     customerName: ordererName, ordererName, facility: facilityName, facilityName,
     phone,
     date: { whatsappValue: 'N/A', fulfillmentValue: 'N/A', status: 'match' },
-    dropArea: unauditedField(['delivery drop area', 'drop area', 'delivery area']),
-    district: unauditedField(['district']),
+    ...compareGeneralOptionalFields(customerRequest, fulfillmentConfirmation, support.facilityContext),
     deliveryTime: unauditedField(['delivery time', 'preferred time for delivery'])
   };
   const requestedCount = groupProducts(customerExtraction.products).size;
@@ -535,7 +567,7 @@ export function runGeneralAuditor(customerRequest: string, fulfillmentConfirmati
   const systemCount = groupProducts(systemExtraction.products.filter(product =>
     product.quantity > 0 || customerExtraction.products.some(requested => requested.normalizedName === product.normalizedName))).size;
   const generalAuditResult = { meta,
-    ...summarizeGeneralProducts(items, facilityName, ordererName, phone, requestedCount, systemCount, [...ambiguity.values()]) };
+    ...measure('finalValidation', () => summarizeGeneralProducts(items, facilityName, ordererName, phone, requestedCount, systemCount, [...ambiguity.values(), ...changeReviews], meta)) };
   traceGeneralAudit('comparison', { generalAuditResult });
   return generalAuditResult;
 }
@@ -545,7 +577,7 @@ export function buildGeneralAuditCheckSummary(items: { status: string; requested
   let passedChecks = 0, failedChecks = 0;
   for (const field of [orderer, facility]) {
     if (field.status === 'match') passedChecks++;
-    else if (field.status === 'mismatch' || field.status === 'not available in system entry') failedChecks++;
+    else failedChecks++;
   }
   // Phone is optional, but when both sides supply it its comparison is audited.
   if (phone.status === 'mismatch') failedChecks++;
@@ -571,7 +603,14 @@ export function buildGeneralAuditCheckSummary(items: { status: string; requested
 }
 
 /** Rebuild every product-derived total while retaining authoritative header checks. */
-export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFieldResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = []) {
+export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFacilityResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = [], parameters: Pick<GeneralAuditDetails, 'dropArea' | 'district'> = {}) {
+  // Rebuilds and older semantic responses must obey the same classification.
+  // Strip routine clauses before review counts, confidence, and final status.
+  // Reconcile duplicate source reviews after stripping mixed notification text.
+  semanticReviews = [...new Map(semanticReviews.flatMap(review => {
+    const originalText = generalOrderRelevantText(review.originalText).trim();
+    return originalText ? [[`${review.source}:${originalText}`, { ...review, originalText }] as const] : [];
+  })).values()];
   items = applyGeneralVaccinePairing(items, normalizeGeneralProductName);
   items = items.map(item => {
     const category = generalProductCategory(item.name, normalizeGeneralProductName, item.category);
@@ -581,11 +620,20 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   requestedCount = Math.max(requestedCount, items.filter(item => item.fulfillment.vaccineCompanionFor ||
     item.provenance.some(product => product.source === 'customer_request')).length);
   const metadataIssues = [
-    ordererName.status === 'mismatch' ? 'Orderer Name Mismatch' : ordererName.status === 'not available in system entry' ? 'Orderer Name Not Found' : '',
-    facilityName.status === 'mismatch' ? 'Facility Name Mismatch' : facilityName.status === 'not available in system entry' ? 'Facility Not Found' : '',
+    ordererName.status === 'mismatch' ? 'Orderer Name Mismatch' : '',
+    facilityName.status === 'mismatch' ? 'Facility Name Mismatch' : '',
+    parameters.dropArea?.status === 'mismatch' ? 'Location Mismatch — Delivery/Drop Area' : '',
+    parameters.district?.status === 'mismatch' ? 'District Mismatch' : '',
     phone.status === 'mismatch' ? 'Phone Number Mismatch' : ''
   ].filter(Boolean);
-  metadataIssues.push(...semanticReviews.map(review => `Ambiguous Product — ${generalProductDisplayName(review.originalText)}`));
+  metadataIssues.push(...semanticReviews.filter(review => review.kind !== 'unparsed_text').map(review => `Ambiguous Product — ${generalProductDisplayName(review.originalText)}`));
+  const missingRequired = [
+    ordererName.status !== 'match' && ordererName.status !== 'mismatch' && ordererName.status !== 'review required' ? 'Name of Orderer' : '',
+    facilityName.status !== 'match' && facilityName.status !== 'mismatch' && facilityName.status !== 'review required' ? 'Name of Health Facility' : '',
+    requestedCount === 0 || systemCount === 0 ? 'Products and Quantities' : ''
+  ].filter(Boolean);
+  const optionalReviews = [parameters.dropArea, parameters.district].filter(field => field?.status === 'mismatch' || field?.status === 'review required');
+  const unresolvedTextCount = semanticReviews.filter(review => review.kind === 'unparsed_text').length;
   // Counts remain visible; missing/extra products already contribute one issue
   // each, so a count difference must not count the same problem again.
   const discrepancies = [...metadataIssues, ...items.filter(item => item.fulfillment.fulfillmentStatus === 'discrepancy').map(item =>
@@ -599,30 +647,41 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   const stockStatus: GeneralAuditDetails['stockStatus'] = requestedStockCount === 0 ? 'in stock' : requestedStockCount === requestedCount ? 'out of stock' : 'partially out of stock';
   const summary = calculateGeneralAuditSummary(items.filter(item => item.fulfillment.fulfillmentStatus !== 'pending order limit'), metadataIssues);
   const auditSummary = buildGeneralAuditCheckSummary(items, facilityName, ordererName, phone, summary.issueCount);
+  for (const field of [parameters.dropArea, parameters.district]) {
+    if (field?.status === 'match') auditSummary.passedChecks++;
+    else if (field?.status === 'mismatch' || field?.status === 'review required') auditSummary.failedChecks++;
+  }
+  if (!items.length && !semanticReviews.length && (requestedCount === 0 || systemCount === 0)) auditSummary.failedChecks++;
+  if (missingRequired.length) auditSummary.missingRequiredCount = missingRequired.length;
   auditSummary.failedChecks += semanticReviews.length;
-  auditSummary.totalChecks += semanticReviews.length;
+  auditSummary.totalChecks = auditSummary.passedChecks + auditSummary.failedChecks;
   auditSummary.confidence = auditSummary.totalChecks ? Math.round(auditSummary.passedChecks / auditSummary.totalChecks * 100) : 0;
-  if (summary.issueCount) auditSummary.confidence = Math.min(99, auditSummary.confidence);
-  const allMatch = summary.allMatch && pendingOrderLimitCount === 0;
-  const finalStatus = summary.issueCount > 0 ? 'DISCREPANCY DETECTED' : pendingOrderLimitCount > 0 ? 'ORDER LIMIT VALIDATION REQUIRED' :
+  if (summary.issueCount || auditSummary.failedChecks) auditSummary.confidence = Math.min(99, auditSummary.confidence);
+  const facilityReview = facilityName.status === 'review required';
+  const reviewRequiredCount = Number(facilityReview) + unresolvedTextCount + missingRequired.length + optionalReviews.length;
+  if (reviewRequiredCount) auditSummary.reviewRequiredCount = reviewRequiredCount;
+  const allMatch = summary.allMatch && pendingOrderLimitCount === 0 && !facilityReview && unresolvedTextCount === 0 && missingRequired.length === 0 && optionalReviews.length === 0;
+  const finalStatus = summary.issueCount > 0 ? 'DISCREPANCY DETECTED' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : optionalReviews.length ? 'MANUAL REVIEW REQUIRED' : facilityReview ? 'REVIEW REQUIRED — POSSIBLE FACILITY MATCH' : unresolvedTextCount ? 'MANUAL REVIEW REQUIRED — UNRESOLVED TEXT' : pendingOrderLimitCount > 0 ? 'ORDER LIMIT VALIDATION REQUIRED' :
     limitedCount && requestedStockCount ? 'PARTIALLY FULFILLED — CONFIRMED' : limitedCount ? 'ORDER LIMIT APPLIED — CONFIRMED' :
     stockStatus === 'out of stock' ? 'OUT OF STOCK — CONFIRMED' : stockStatus === 'partially out of stock' ? 'PARTIALLY OUT OF STOCK — CONFIRMED' : 'CONFIRMED — NO DISCREPANCY';
   const confirmedDecisions = Object.fromEntries(items.filter(item => item.fulfillment.orderLimitDecision !== undefined).map(item => [item.fulfillment.key, item.fulfillment.orderLimitDecision!]));
-  const message = summary.issueCount > 0 ? `${summary.issueCount} discrepanc${summary.issueCount === 1 ? 'y' : 'ies'} found — review before dispatch.${requestedStockCount ? ` ${requestedStockCount} requested product${requestedStockCount === 1 ? ' is' : 's are'} currently out of stock.` : ''}` :
+  const message = missingRequired.length ? `Missing required information: ${missingRequired.join(', ')}. Verify the current inputs before dispatch.` : optionalReviews.length ? 'Delivery/drop area or district information conflicts. Manually verify the highlighted locations before dispatch.' : unresolvedTextCount && !summary.issueCount ? 'Some text could not be verified automatically. Review the highlighted lines before dispatch; verified products retain their results.' : facilityReview && !summary.issueCount ? 'Possible facility match. Manually verify the facility before dispatch.' : summary.issueCount > 0 ? `${summary.issueCount} discrepanc${summary.issueCount === 1 ? 'y' : 'ies'} found — review before dispatch.${requestedStockCount ? ` ${requestedStockCount} requested product${requestedStockCount === 1 ? ' is' : 's are'} currently out of stock.` : ''}` :
     requestedStockCount && limitedCount ? `Order matches, with ${requestedStockCount} product${requestedStockCount === 1 ? '' : 's'} currently out of stock and some requested quantities affected by an order limit.` :
     requestedStockCount ? `Order matches, with ${requestedStockCount} product${requestedStockCount === 1 ? '' : 's'} currently out of stock.` :
     limitedCount ? 'Order matches, but some requested quantities were affected by an order limit.' : 'All audit checks passed — ready for dispatch.';
   const warnings = [
+    ...missingRequired.map(field => `MISSING REQUIRED INFORMATION — ${field}`),
+    unresolvedTextCount ? 'UNRESOLVED TEXT — MANUAL REVIEW REQUIRED' : '',
     ordererName.status !== 'match' && ordererName.status !== 'mismatch' ? 'ORDERER NAME NOT FOUND' : '',
-    facilityName.status !== 'match' && facilityName.status !== 'mismatch' ? 'FACILITY NOT FOUND' : ''
+    facilityName.status === 'review required' ? 'FACILITY REVIEW REQUIRED' : facilityName.status !== 'match' && facilityName.status !== 'mismatch' ? 'FACILITY NOT FOUND' : ''
   ].filter(Boolean);
-  const generalAudit: GeneralAuditDetails = { facility: facilityName, orderer: ordererName, phone,
+  const generalAudit: GeneralAuditDetails = { facility: facilityName, orderer: ordererName, phone, dropArea: parameters.dropArea, district: parameters.district,
     message, warnings, auditSummary, ...(semanticReviews.length ? { semanticReviews } : {}),
     productCount: { requested: requestedCount, found: systemCount, status: requestedCount === systemCount ? 'match' : 'mismatch' }, discrepancies,
     counts: { fullySupplied: items.filter(item => item.fulfillment.fulfillmentStatus === 'fully supplied').length, outOfStock: stockCount, orderLimited: limitedCount, pendingOrderLimits: pendingOrderLimitCount },
     products: items.map(item => item.fulfillment), orderLimitDecisions: confirmedDecisions, pendingOrderLimitCount, stockStatus, finalStatus };
   return { items, generalAudit, ...summary, allMatch, auditSummary, confidence: auditSummary.confidence,
-    verdict: summary.issueCount > 0 ? 'DISCREPANCY' : pendingOrderLimitCount ? 'ORDER LIMIT VALIDATION REQUIRED' : 'NO DISCREPANCY', insights: discrepancies };
+    verdict: summary.issueCount > 0 ? 'DISCREPANCY' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : facilityReview || unresolvedTextCount || optionalReviews.length ? 'REVIEW REQUIRED' : pendingOrderLimitCount ? 'ORDER LIMIT VALIDATION REQUIRED' : 'NO DISCREPANCY', insights: discrepancies };
 }
 
 /** Apply a user's answer immediately without reinterpreting products or headers. */
@@ -640,40 +699,45 @@ export function applyGeneralOrderLimitDecision<T extends ReturnType<typeof runGe
   });
   const details = result.generalAudit;
   return { ...result, ...summarizeGeneralProducts(items, details.facility, details.orderer, details.phone,
-    details.productCount.requested, details.productCount.found, details.semanticReviews) };
+    details.productCount.requested, details.productCount.found, details.semanticReviews, details) };
 }
 
 /** Original identity mismatches cannot be waived by semantic interpretation or a server response. */
-export function enforceGeneralIdentityMatches<T extends ReturnType<typeof runGeneralAuditor>>(result: T, customer: string, fulfillment: string) {
+export function enforceGeneralIdentityMatches<T extends ReturnType<typeof runGeneralAuditor>>(result: T, customer: string, fulfillment: string, facilityContext: GeneralFacilityContext = {}) {
   const requested = extractGeneralIdentity(customer, 'customer_request');
   const supplied = extractGeneralIdentity(fulfillment, 'fulfillment_confirmation', requested.ordererName, requested.facilityName);
   const original = {
     orderer: compareGeneralField(requested.ordererName, supplied.ordererName, generalOrdererNamesMatch),
-    facility: compareGeneralField(requested.facilityName, supplied.facilityName,
-      (left, right) => normalizeGeneralFacility(left) === normalizeGeneralFacility(right))
+    facility: compareGeneralFacilities(
+      requested.facilityName === 'N/A' && customer.includes(result.generalAudit.facility.whatsappValue) ? result.generalAudit.facility.whatsappValue : requested.facilityName,
+      supplied.facilityName === 'N/A' && fulfillment.includes(result.generalAudit.facility.fulfillmentValue) ? result.generalAudit.facility.fulfillmentValue : supplied.facilityName,
+      customer, fulfillment, facilityContext)
   };
-  const details = { ...result.generalAudit };
-  let changed = false;
-  for (const key of ['facility', 'orderer'] as const) {
-    // Preserve a semantic extraction only when its name is actually present in
-    // the fulfillment text. Missing fields cannot be invented to produce a pass.
-    if (original[key].status === 'not available in system entry') {
-      const value = details[key].fulfillmentValue;
-      if (value !== 'N/A' && (` ${normalizeAuditText(fulfillment)} `).includes(` ${normalizeAuditText(value)} `)) {
-        original[key] = compareGeneralField(original[key].whatsappValue, value,
-          key === 'orderer' ? generalOrdererNamesMatch : (left, right) => normalizeGeneralFacility(left) === normalizeGeneralFacility(right));
-      }
-    }
-    if (original[key].status !== 'missing from customer request' && (details[key].status !== original[key].status ||
-      details[key].whatsappValue !== original[key].whatsappValue || details[key].fulfillmentValue !== original[key].fulfillmentValue)) {
-      details[key] = original[key];
-      changed = true;
+  const optional = compareGeneralOptionalFields(customer, fulfillment, facilityContext);
+  const directiveReviews = ([['customer_request', customer], ['fulfillment_confirmation', fulfillment]] as const).flatMap(([source, text]) => text.split(/\r?\n/).filter(line => classifyGeneralText(line).orderChange)
+    .map(line => ({ kind: 'unparsed_text' as const, source, originalText: generalOrderRelevantText(line).trim(), possibleMatches: [], reason: 'An explicit order or destination change needs verification before dispatch.' })));
+  const reviews = [...(result.generalAudit.semanticReviews || [])];
+  for (const review of directiveReviews) if (!reviews.some(existing => existing.source === review.source && existing.originalText === review.originalText)) reviews.push(review);
+  const details = { ...result.generalAudit, ...optional, ...(reviews.length ? { semanticReviews: reviews } : {}) };
+  const orderer = original.orderer;
+  if (orderer.status === 'not available in system entry') {
+    const value = details.orderer.fulfillmentValue;
+    if (value !== 'N/A' && (` ${normalizeAuditText(fulfillment)} `).includes(` ${normalizeAuditText(value)} `)) {
+      original.orderer = compareGeneralField(orderer.whatsappValue, value, generalOrdererNamesMatch);
     }
   }
+  let changed = JSON.stringify(details.facility) !== JSON.stringify(original.facility) ||
+    JSON.stringify(optional.dropArea) !== JSON.stringify(result.generalAudit.dropArea) || JSON.stringify(optional.district) !== JSON.stringify(result.generalAudit.district) || reviews.length !== (result.generalAudit.semanticReviews?.length || 0);
+  if (changed) details.facility = original.facility;
+  if (JSON.stringify(details.orderer) !== JSON.stringify(original.orderer)) {
+    details.orderer = original.orderer;
+    changed = true;
+  }
   const nameMismatchCount = [details.facility, details.orderer].filter(field => field.status === 'mismatch' || field.status === 'not available in system entry').length;
-  if (!changed && (!nameMismatchCount || !result.allMatch && result.issueCount >= nameMismatchCount)) return result;
+  if (!changed && !details.auditSummary?.missingRequiredCount && (!nameMismatchCount || !result.allMatch && result.issueCount >= nameMismatchCount) &&
+    !(details.facility.status === 'review required' && result.allMatch)) return result;
   const meta = changed ? { ...result.meta, facility: details.facility, facilityName: details.facility,
-    customerName: details.orderer, ordererName: details.orderer } : result.meta;
+    customerName: details.orderer, ordererName: details.orderer, ...optional } : result.meta;
   return { ...result, meta, ...summarizeGeneralProducts(result.items, details.facility, details.orderer, details.phone,
-    details.productCount.requested, details.productCount.found, details.semanticReviews) };
+    details.productCount.requested, details.productCount.found, details.semanticReviews, details) };
 }

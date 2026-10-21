@@ -1,3 +1,4 @@
+import { AUDIT_TARGET_MS, AUDIT_DELAY_MESSAGE } from '../../shared/auditPerformance';
 import { authFetch } from '../utils/authFetch';
 /**
  * Vaccine Allocation Validation & Checker Component
@@ -141,6 +142,14 @@ export default function VaccineAllocationChecker({
 
   // Validation result states
   const [validating, setValidating] = useState(false);
+  const [auditDelayed, setAuditDelayed] = useState(false);
+  const auditRequest = useRef<AbortController | null>(null);
+  useEffect(() => {
+    setAuditDelayed(false);
+    if (!validating) return;
+    const timer = setTimeout(() => setAuditDelayed(true), AUDIT_TARGET_MS);
+    return () => clearTimeout(timer);
+  }, [validating]);
   const [validationResult, setValidationResult] = useState<VaccineValidationResult | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isStaleValidation, setIsStaleValidation] = useState(false);
@@ -161,6 +170,7 @@ export default function VaccineAllocationChecker({
   const auditInputKey = JSON.stringify([selectedFacilityId, orderSource, whatsappMessage, fulfillmentConfirmation, ccaName]);
   const latestAuditInputKey = useRef(auditInputKey);
   latestAuditInputKey.current = auditInputKey;
+  useEffect(() => () => auditRequest.current?.abort(), [auditInputKey]);
 
   // Unrelieved Top-Up Modal State
   const [topUpModalOpen, setTopUpModalOpen] = useState(false);
@@ -675,6 +685,9 @@ export default function VaccineAllocationChecker({
       if (manualAuditIdentity.current?.key !== inputKey) manualAuditIdentity.current = { key: inputKey, id: `VAC-${crypto.randomUUID()}` };
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     }
+    auditRequest.current?.abort();
+    const controller = new AbortController();
+    auditRequest.current = controller;
     setValidating(true);
     setValidationError(null);
     setIsStaleValidation(false);
@@ -684,6 +697,7 @@ export default function VaccineAllocationChecker({
 
     try {
       const res = await authFetch('/api/vaccine/validate', {
+        signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -712,11 +726,13 @@ export default function VaccineAllocationChecker({
       if (deductAfterAudit && data.isValid) await handleConfirmOrder(data, { ...snapshot, facilityId: data.facilityId || effectiveFacilityId });
       return data;
     } catch (err: any) {
-      setValidationError(err.message || 'Validation service communication failure.');
+      if (!controller.signal.aborted && latestAuditInputKey.current === inputKey) setValidationError(err.message || 'Validation service communication failure.');
       return null;
     } finally {
+      const ownsRequest = auditRequest.current === controller;
+      if (ownsRequest) auditRequest.current = null;
       if (deductAfterAudit) manualAuditInFlight.current = false;
-      if (!manualAuditInFlight.current) setValidating(false);
+      if (ownsRequest && !manualAuditInFlight.current) setValidating(false);
     }
   };
 
@@ -1197,6 +1213,7 @@ export default function VaccineAllocationChecker({
               </div>
             </div>
 
+            {validating && auditDelayed && <p role="status" className="text-sm text-slate-600">{AUDIT_DELAY_MESSAGE}</p>}
             {confirmationError && !showReviewModal && <p role="alert" className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs">{confirmationError}</p>}
 
             {/* General Communication / Validation Error */}
@@ -1658,13 +1675,13 @@ export default function VaccineAllocationChecker({
                       <FileSpreadsheet className="w-3.5 h-3.5 text-[#ED7D31]" />
                       View Updated Allocation Blueprint &rarr;
                     </button>
-                    <button
+                    {onNavigateToHistory && <button
                       onClick={onNavigateToHistory}
                       className="text-xs font-bold text-emerald-900 bg-emerald-200/70 hover:bg-emerald-200 px-3 py-1 rounded-xl transition-all cursor-pointer flex items-center gap-1"
                     >
                       <History className="w-3.5 h-3.5" />
                       View in Transaction History &rarr;
-                    </button>
+                    </button>}
                   </div>
                 </div>
               </div>

@@ -1,8 +1,6 @@
-/** Opt-in diagnostics for the General Auditor only. */
-export function traceGeneralAudit(stage: string, payload: unknown) {
+/** Opt-in, content-free diagnostics. Never log customer payloads. */
+export function traceGeneralAudit(stage: string, _payload: unknown) {
   let enabled = typeof process !== 'undefined' && process.env.GENERAL_AUDITOR_DEBUG === 'true';
-  try {
-    enabled ||= typeof window !== 'undefined' && window.localStorage.getItem('generalAuditorDebug') === 'true';
-  } catch { /* Storage may be disabled in the browser. */ }
-  if (enabled) console.debug(`[General Auditor] ${stage}`, payload);
+  try { enabled ||= typeof window !== 'undefined' && window.localStorage.getItem('generalAuditorDebug') === 'true'; } catch {}
+  if (enabled && ['rawInputs', 'parsedInputs', 'comparison', 'beforeRendering'].includes(stage)) console.debug('[General Auditor]', { stage });
 }

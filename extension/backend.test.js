@@ -90,3 +90,25 @@ test('catalog drafts preserve canonical keys, optional details, explicit unlinki
   assert.equal(initialLinkedProductId({ ...product, linkedProductId: '' }, [product, counterpart]), '');
   assert.equal(initialLinkedProductId(product, [product, counterpart, { ...counterpart, id: 'v2' }]), '');
 });
+
+
+test('the companion verification deadline includes a stalled token lookup', async () => {
+  const originalChrome = globalThis.chrome, originalFetch = globalThis.fetch;
+  const originalTimeout = globalThis.setTimeout, originalClear = globalThis.clearTimeout;
+  let fetches = 0;
+  globalThis.chrome = { storage: { session: { get: () => new Promise(() => {}) } } };
+  globalThis.fetch = async () => { fetches++; return Response.json({}); };
+  globalThis.setTimeout = (callback, milliseconds) => {
+    assert.equal(milliseconds, 20000);
+    queueMicrotask(callback);
+    return 1;
+  };
+  globalThis.clearTimeout = () => {};
+  try {
+    await assert.rejects(backendRequest('https://example.com', '/api/verify', { method: 'POST' }), /could not be completed/);
+    assert.equal(fetches, 0);
+  } finally {
+    globalThis.chrome = originalChrome; globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalTimeout; globalThis.clearTimeout = originalClear;
+  }
+});

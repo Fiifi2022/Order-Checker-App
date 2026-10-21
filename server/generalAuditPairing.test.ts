@@ -1,7 +1,8 @@
+import { runGeneralProductFixture as runGeneralAuditor, createGeneralProductRun as createGeneralAuditRun, withRequiredGeneralHeaders } from './generalProductTestFixtures';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeGeneralProductName, parseGeneralProducts, runGeneralAuditor } from './generalAuditor';
-import { completeGeneralAuditRun, createGeneralAuditRun } from '../src/utils/generalAuditRun';
+import { normalizeGeneralProductName, parseGeneralProducts } from './generalAuditor';
+import { completeGeneralAuditRun } from '../src/utils/generalAuditRun';
 
 const adult = 'Simple Linctus 125mg/5ml Syrup (Adult)';
 const child = 'Simple Linctus 31.25mg/5ml Syrup (Paediatric)';

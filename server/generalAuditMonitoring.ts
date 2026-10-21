@@ -27,13 +27,14 @@ export function generalAuditAnalytics(records: any[]) {
 export function generalRuleDiagnostics() {
   const request = 'Facility: Vea Health Centre\nOrderer: Mary A. Mensah\nPhone: 0241234567\nORS - 1 box';
   const supplied = 'Facility: VEA HC\nOrderer: Mary Mensah\nPhone: +233241234567\nORS - 25 units';
-  const lower = runGeneralAuditor('Product A - 10', 'Product A - 5');
+  const headers = 'Facility: Vea HC\nOrderer: Mary Mensah\n';
+  const lower = runGeneralAuditor(headers + 'Product A - 10', headers + 'Product A - 5');
   const diagnostics = [
     { service: 'General audit rules', ok: runGeneralAuditor(request, supplied).allMatch },
     { service: 'Product normalization', ok: normalizeGeneralProductName('ACT/AL') === normalizeGeneralProductName('Coartem') && normalizeGeneralProductName('Amox') === normalizeGeneralProductName('Amoxicillin') },
     { service: 'Quantity conversion catalogue', ok: getGeneralPackagingFactor('ORS', normalizeGeneralProductName) === 25, detail: `${generalPackagingCatalogueSize} existing approved entries; ambiguous factors are declined.` },
-    { service: 'Order Limit workflow', ok: lower.items[0].status === 'quantity mismatch' && runGeneralAuditor('Product A - 10', 'Product A - 5 (order limit applied)').allMatch },
-    { service: 'Out-of-stock rules', ok: runGeneralAuditor('Product A - 1', 'Product A (0/1)').allMatch }
+    { service: 'Order Limit workflow', ok: lower.items[0].status === 'quantity mismatch' && runGeneralAuditor(headers + 'Product A - 10', headers + 'Product A - 5 (order limit applied)').allMatch },
+    { service: 'Out-of-stock rules', ok: runGeneralAuditor(headers + 'Product A - 1', headers + 'Product A (0/1)').allMatch }
   ];
   return diagnostics.map(row => ({ ...row, status: row.ok ? 'Passed' : 'Failed' }));
 }

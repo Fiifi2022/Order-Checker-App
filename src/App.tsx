@@ -1,3 +1,5 @@
+import { AUDIT_TARGET_MS, AUDIT_HARD_TIMEOUT_MS, AUDIT_DELAY_MESSAGE, AUDIT_TIMEOUT_MESSAGE, auditTimeoutSetting } from '../shared/auditPerformance';
+import GeneralFacilityManager from './components/GeneralFacilityManager';
 import { acknowledgeOrderLimit } from '../shared/orderLimitAcknowledgement';
 import ProductReceivingHints from './components/ProductReceivingHints';
 import ProductCatalog from './components/ProductCatalog';
@@ -47,7 +49,6 @@ import {
   XCircle,
   TrendingDown,
   Activity,
-  PlusCircle,
   Check,
   LogOut,
   Lock,
@@ -57,9 +58,7 @@ import {
   Image,
   Upload,
   Trash,
-  Download,
   Calendar,
-  Wrench,
   FileSpreadsheet,
   Users,
   UserCheck,
@@ -67,7 +66,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { OrderCheckResult, AuditRecord, AuditAnalytics, VerificationItem, UserRoleRecord, UserRegistration } from './types';
-import Troubleshooter from './components/Troubleshooter';
 import VaccineAllocationChecker from './components/VaccineAllocationChecker';
 import VaccineDashboard from './components/VaccineDashboard';
 import KpiDashboard from './components/KpiDashboard';
@@ -77,35 +75,9 @@ import RoleManagementModal, { ROLE_DEFINITIONS } from './components/RoleManageme
 import GeminiStatus from './components/GeminiStatus';
 
 export default function App({ authenticatedUser }: { authenticatedUser: UserRoleRecord }) {
-  const [extensionDownloading, setExtensionDownloading] = useState(false);
-  const [extensionDownloadError, setExtensionDownloadError] = useState('');
-  const downloadExtension = async () => {
-    setExtensionDownloading(true);
-    setExtensionDownloadError('');
-    try {
-      const response = await authFetch('/api/download-extension');
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Extension download failed.');
-      }
-      const url = URL.createObjectURL(await response.blob());
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'ordercheck-compliance-companion.zip';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (error) {
-      setExtensionDownloadError(error instanceof Error ? error.message : 'Extension download failed.');
-    } finally {
-      setExtensionDownloading(false);
-    }
-  };
-
   // Navigation tabs - Supports both existing Order Checker & new Vaccine Allocation Module
   const [activeTab, setActiveTab] = useState<
-    'vaccine_blueprint' | 'vaccine_checker' | 'vaccine_dashboard' | 'kpi_dashboard' | 'auditor' | 'extension' | 'history' | 'troubleshooter'
+    'vaccine_blueprint' | 'vaccine_checker' | 'vaccine_dashboard' | 'kpi_dashboard' | 'auditor' | 'history'
   >('vaccine_blueprint');
 
   const [checkerBlueprintSheetId, setCheckerBlueprintSheetId] = useState<string>();
@@ -116,6 +88,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   const [historyError, setHistoryError] = useState<string | null>(null);
 
   const fetchHistory = async () => {
+    if (!hasRole(activeUser, 'admin')) return;
     setHistoryLoading(true);
     setHistoryError(null);
     try {
@@ -157,6 +130,10 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   const [activeUser, setActiveUser] = useState<UserRoleRecord | null>(authenticatedUser);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+  const isAdministrator = hasRole(activeUser, 'admin');
+  useEffect(() => {
+    if (!isAdministrator && (activeTab === 'kpi_dashboard' || activeTab === 'history')) setActiveTab('vaccine_blueprint');
+  }, [activeTab, isAdministrator]);
   const [loadingRoles, setLoadingRoles] = useState(false);
 
   const fetchRoles = async () => {
@@ -183,10 +160,6 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
     }
   };
 
-  useEffect(() => {
-    fetchRoles();
-  }, []);
-
   useEffect(() => { if (isRoleModalOpen) void fetchRoles(); }, [isRoleModalOpen]);
 
   // Simulated out of stock (OSU) list
@@ -199,6 +172,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   const [fulfillmentConfirmation, setFulfillmentConfirmation] = useState('');
   
   const [generalImageReset, setGeneralImageReset] = useState(0);
+  const [generalAuditorSection, setGeneralAuditorSection] = useState<'check' | 'facilities'>('check');
   const [generalServiceWarning, setGeneralServiceWarning] = useState('');
   // These guards belong only to the General Auditor inputs and requests.
   const generalAuditRevision = useRef(0);
@@ -320,6 +294,8 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   // Active verify results (the client receives full AuditRecord back from server)
   const [result, setResult] = useState<AuditRecord | null>(null);
   const generalDetails = (result as (AuditRecord & { generalAudit?: GeneralAuditDetailsPayload }) | null)?.generalAudit;
+  const facilityReviewRequired = generalDetails?.facility.status === 'review required';
+  const generalReviewRequired = facilityReviewRequired || Boolean(generalDetails?.auditSummary?.reviewRequiredCount);
 
   // Order limit validation flows
   const [lastConfirmedItemName, setLastConfirmedItemName] = useState<string | null>(null);
@@ -440,6 +416,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   };
 
   const runGeneralVerification = async (orderLimitDecisions: Record<string, boolean> = {}, existingCheckId?: string, immediateResult?: AuditRecord) => {
+    if (generalAuditRequest.current) return; // Guard same-frame double clicks too.
     const previousResult = immediateResult ? result : null;
     const inputs = { whatsappMessage: currentGeneralInputs.current.whatsappMessage, fulfillmentConfirmation: currentGeneralInputs.current.fulfillmentConfirmation };
     if (!inputs.whatsappMessage.trim() || !inputs.fulfillmentConfirmation.trim()) {
@@ -460,20 +437,28 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
     setVerificationTime(0);
 
     const startTime = Date.now();
+    let timedOut = false;
+    const hardTimeoutMs = auditTimeoutSetting(import.meta.env.VITE_AUDIT_HARD_TIMEOUT_MS, AUDIT_HARD_TIMEOUT_MS);
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      if (revision === generalAuditRevision.current) {
+        setResult(null);
+        setError(AUDIT_TIMEOUT_MESSAGE);
+        setLoading(false);
+        setVerificationTime(hardTimeoutMs / 1000);
+      }
+    }, hardTimeoutMs);
     const interval = setInterval(() => {
-      if (!isCurrent()) return;
+      if (controller.signal.aborted || revision !== generalAuditRevision.current) return;
       const elapsed = Number(((Date.now() - startTime) / 1000).toFixed(1));
       setVerificationTime(elapsed);
-    }, 100);
+    }, 250);
 
     try {
-      const catalogResponse = await authFetch('/api/products', { signal: controller.signal });
-      if (!catalogResponse.ok) throw new Error('Product catalog unavailable. Reload and retry the audit.');
-      const catalog = await catalogResponse.json();
-      setCatalogRevision(catalog.revision);
-      applyGeneralCatalog(catalog.products);
-      let liveOsu: string[] = [];
-      try { const response = await authFetch('/api/osu', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]) }); if (!response.ok) throw new Error(); liveOsu = await response.json(); } catch { if (!controller.signal.aborted) setGeneralServiceWarning('OSU register unavailable. Confirmation quantities still determine stock status.'); }
+      // The server reads the authoritative catalog once and returns that exact
+      // vocabulary with its result; avoid a second authenticated catalog round trip.
+      const liveOsu: string[] = [];
       if (controller.signal.aborted || revision !== generalAuditRevision.current) return;
       run = createGeneralAuditRun(inputs, revision, orderLimitDecisions, { osuItems: liveOsu }, true);
       const response = await authFetch('/api/verify', {
@@ -485,7 +470,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
         body: JSON.stringify({
           ...run.inputs,
           auditScope: 'general_auditor',
-          productCatalogRevision: catalog.revision,
+          includeProductCatalog: true,
           checkSource: 'order_checker_app',
           checkId: existingCheckId || `AUD-${crypto.randomUUID()}`,
           generalOrderLimitDecisions: { ...orderLimitDecisions },
@@ -503,7 +488,12 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
 
       const json = await response.json();
       if (!isCurrent()) return;
+      if (!json.productCatalog?.products || !Number.isSafeInteger(json.productCatalog.revision)) throw new Error('The audit service must be updated to return the verified product catalog. Please retry after deployment.');
+      setCatalogRevision(json.productCatalog.revision);
+      applyGeneralCatalog(json.productCatalog.products);
+      delete json.productCatalog;
       setResult(completeGeneralAuditRun(run, json) as unknown as AuditRecord);
+      if (json.semanticAnalysis?.status === 'fallback') setGeneralServiceWarning('AI verification is temporarily unavailable. Available checks have been completed using the standard verification engine. Review highlighted details before dispatch.');
       if (json.generalStorageWarning) setGeneralServiceWarning(previous => [previous, json.generalStorageWarning].filter(Boolean).join(' '));
       
       const finalTime = Number(((Date.now() - startTime) / 1000).toFixed(2));
@@ -511,13 +501,16 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
       setLoading(false);
     } catch (err: any) {
       clearInterval(interval);
-      if (controller.signal.aborted || revision !== generalAuditRevision.current) return;
+      if (revision !== generalAuditRevision.current) return;
+      if (timedOut) { setResult(null); setError(AUDIT_TIMEOUT_MESSAGE); setLoading(false); setVerificationTime(hardTimeoutMs / 1000); return; }
+      if (controller.signal.aborted) return;
       if (immediateResult) setResult(previousResult);
       console.error(err);
       setError(err.message || 'An unexpected error occurred while communicating with the audit service.');
       setLoading(false);
     } finally {
       clearInterval(interval);
+      clearTimeout(timeout);
       if (generalAuditRequest.current === controller) generalAuditRequest.current = null;
     }
   };
@@ -797,9 +790,9 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
             Vaccine Dashboard
           </button>
 
-          <button onClick={() => setActiveTab('kpi_dashboard')} className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all ${activeTab === 'kpi_dashboard' ? 'border-[#5C2D91] text-[#5C2D91]' : 'border-transparent text-slate-500 hover:text-[#5C2D91]'}`}>
+          {isAdministrator && <button onClick={() => setActiveTab('kpi_dashboard')} className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all ${activeTab === 'kpi_dashboard' ? 'border-[#5C2D91] text-[#5C2D91]' : 'border-transparent text-slate-500 hover:text-[#5C2D91]'}`}>
             <Activity className="mr-2 inline h-4 w-4" />KPI Dashboard
-          </button>
+          </button>}
 
           {/* Divider */}
           <div className="h-6 w-px bg-slate-200 self-center my-auto"></div>
@@ -817,19 +810,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
             General Auditor
           </button>
           
-          <button
-            onClick={() => setActiveTab('extension')}
-            className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
-              activeTab === 'extension'
-                ? 'border-[#5C2D91] text-[#5C2D91]'
-                : 'border-transparent text-slate-500 hover:text-[#5C2D91]'
-            }`}
-          >
-            <PlusCircle className="w-4 h-4" />
-            Companion Chrome Extension
-          </button>
-
-          <button
+          {isAdministrator && <button
             onClick={() => setActiveTab('history')}
             className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'history'
@@ -840,22 +821,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
             <History className="w-4 h-4" />
             <span>Audit & Activity Log</span>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('troubleshooter')}
-            className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
-              activeTab === 'troubleshooter'
-                ? 'border-[#5C2D91] text-[#5C2D91]'
-                : 'border-transparent text-slate-500 hover:text-[#5C2D91]'
-            }`}
-          >
-            <Wrench className="w-4 h-4 text-amber-500" />
-            Troubleshooter & Diagnostics
-            {result && !result.allMatch && (
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
-            )}
-          </button>
+          </button>}
 
           {/* Team Roles & Access Control modal trigger */}
           {hasRole(activeUser, 'admin') && <button
@@ -886,9 +852,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
               onNavigateToChecker={() => {
                 setActiveTab('vaccine_checker');
               }}
-              onNavigateToAuditLog={() => {
-                setActiveTab('history');
-              }}
+              onNavigateToAuditLog={isAdministrator ? () => setActiveTab('history') : undefined}
             />
           </div>
         )}
@@ -900,7 +864,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
               onBlueprintSheetSelected={setCheckerBlueprintSheetId}
               onNavigateToBlueprint={() => setActiveTab('vaccine_blueprint')}
               onNavigateToTracker={() => setActiveTab('vaccine_dashboard')}
-              onNavigateToHistory={() => setActiveTab('history')}
+              onNavigateToHistory={isAdministrator ? () => setActiveTab('history') : undefined}
               currentUser={activeUser}
             />
           </div>
@@ -923,11 +887,22 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
           </div>
         )}
 
-        {activeTab === 'kpi_dashboard' && <div className="animate-in fade-in duration-300"><KpiDashboard /></div>}
+        {isAdministrator && activeTab === 'kpi_dashboard' && <div className="animate-in fade-in duration-300"><KpiDashboard /></div>}
 
         {/* COMPLIANCE AUDITOR ACTIVE TAB VIEW */}
         {activeTab === 'auditor' && (
           <div className="space-y-6 animate-in fade-in duration-300">
+            <div role="tablist" aria-label="General Auditor sections" className="inline-flex rounded-xl border border-purple-100 bg-purple-50 p-1 gap-1" onKeyDown={event => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+              event.preventDefault();
+              const next = event.key === 'Home' ? 'check' : event.key === 'End' ? 'facilities' : generalAuditorSection === 'check' ? 'facilities' : 'check';
+              setGeneralAuditorSection(next); document.getElementById(`general-${next}-tab`)?.focus();
+            }}>
+              {(['check', 'facilities'] as const).map(section => <button key={section} type="button" role="tab" id={`general-${section}-tab`} aria-controls={`general-${section}-panel`} aria-selected={generalAuditorSection === section} tabIndex={generalAuditorSection === section ? 0 : -1} onClick={() => setGeneralAuditorSection(section)}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${generalAuditorSection === section ? 'bg-white text-purple-900 shadow-sm' : 'text-purple-700 hover:bg-purple-100'}`}>{section === 'check' ? 'Order check' : 'Facilities'}</button>)}
+            </div>
+            {generalAuditorSection === 'facilities' && <div role="tabpanel" id="general-facilities-panel" aria-labelledby="general-facilities-tab"><GeneralFacilityManager key={activeUser.id} onUpdated={invalidateGeneralAudit} /></div>}
+            <div role="tabpanel" id="general-check-panel" aria-labelledby="general-check-tab" hidden={generalAuditorSection !== 'check'} className="space-y-6">
 
             <p className="text-sm text-slate-600">
               Compares facility name, name of orderer, products, and quantities between the current WhatsApp Message (Customer Request) and Fulfilment Confirmation (System Entry). Stock shortages, confirmed Order Limits, and approved packaging conversions are valid. Genuine product, quantity, or identity errors require correction.
@@ -978,7 +953,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
               </div>
             </div>
 
-            <GeneralMonitoring />
+            {isAdministrator && <GeneralMonitoring />}
             {generalServiceWarning && <p role="status" className="text-xs text-amber-800">{generalServiceWarning}</p>}
             {/* Inputs Layout */}
             <div id="editor-grid" className="grid md:grid-cols-2 gap-6">
@@ -1081,6 +1056,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                   {speedLoading ? 'Testing API...' : 'Check Speed'}
                 </button>
               </div>
+              {loading && (verificationTime || 0) * 1000 >= AUDIT_TARGET_MS && <p role="status" className="mt-3 text-sm text-slate-600">{AUDIT_DELAY_MESSAGE}</p>}
 
               {/* Speed Test results visual badge */}
               {speedResult && (
@@ -1149,11 +1125,11 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                     <div className={`p-5 rounded-2xl border-l-8 border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm bg-white ${
                       result.allMatch 
                         ? 'border-green-200 border-l-green-600' 
-                        : generalDetails?.pendingOrderLimitCount && result.issueCount === 0 ? 'border-amber-200 border-l-amber-500' : 'border-rose-200 border-l-rose-500'
+                        : (generalDetails?.pendingOrderLimitCount || generalReviewRequired) && result.issueCount === 0 ? 'border-amber-200 border-l-amber-500' : 'border-rose-200 border-l-rose-500'
                     }`}>
                       <div className="flex items-start gap-4">
                         <div className={`p-2.5 rounded-full shrink-0 flex items-center justify-center ${
-                          result.allMatch ? 'bg-green-100 text-green-700' : generalDetails?.pendingOrderLimitCount && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700'
+                          result.allMatch ? 'bg-green-100 text-green-700' : (generalDetails?.pendingOrderLimitCount || generalReviewRequired) && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700'
                         }`}>
                           {result.allMatch ? <CheckCircle className="w-7 h-7" /> : <AlertCircle className="w-7 h-7" />}
                         </div>
@@ -1182,9 +1158,9 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                       </div>
                       <div className="text-right shrink-0 flex items-center gap-3 flex-wrap sm:flex-nowrap">
                         <span className={`text-[10px] font-mono px-3 py-1.5 rounded-full font-bold shadow-sm uppercase ${
-                          result.allMatch ? 'bg-green-100 text-green-805' : 'bg-red-100 text-red-800'
+                          result.allMatch ? 'bg-green-100 text-green-805' : generalReviewRequired && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
                         }`}>
-                          {result.allMatch ? 'CONFIRMED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
+                          {result.allMatch ? 'VERIFIED MATCH' : result.issueCount > 0 ? 'DISCREPANCY' : generalDetails?.auditSummary?.missingRequiredCount ? 'MISSING REQUIRED INFORMATION' : generalReviewRequired && result.issueCount === 0 ? 'REVIEW REQUIRED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
                         </span>
                         {result.allMatch ? (
                           <button
@@ -1196,18 +1172,12 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                             <CheckSquare className="w-4 h-4" />
                             Confirm & Clear
                           </button>
+                        ) : generalReviewRequired && !generalDetails?.pendingOrderLimitCount ? (
+                          <span className="text-xs font-semibold text-amber-800">{facilityReviewRequired ? 'Verify the facility before dispatch' : 'Review the highlighted fields before dispatch'}</span>
                         ) : generalDetails?.pendingOrderLimitCount ? (
                           <span className="text-xs font-semibold text-amber-800">Order Limit answers required</span>
                         ) : (
                           <div className="flex gap-2 w-full sm:w-auto">
-                            <button
-                              type="button"
-                              onClick={() => setActiveTab('troubleshooter')}
-                              className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all shadow cursor-pointer flex items-center gap-1.5 justify-center flex-1 sm:flex-initial"
-                            >
-                              <Wrench className="w-3.5 h-3.5" />
-                              Troubleshoot Issue
-                            </button>
                             <button
                               type="button"
                               onClick={() => {
@@ -1402,7 +1372,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                           </h4>
 
                           <ul className="text-xs space-y-2.5 opacity-90 leading-relaxed font-sans relative z-10">
-                            {result.insights.length === 0 && <li>{generalDetails?.pendingOrderLimitCount ? 'Order Limit validation is pending; no quantity discrepancy has been declared for those products.' : 'No discrepancy in the current inputs.'}</li>}
+                            {result.insights.length === 0 && <li>{generalReviewRequired ? 'Unverified details require manual review before dispatch.' : generalDetails?.pendingOrderLimitCount ? 'Order Limit validation is pending; no quantity discrepancy has been declared for those products.' : 'No discrepancy in the current inputs.'}</li>}
                             {result.insights.map((note, idx) => (
                               <li key={`insight-${idx}`} className="flex gap-2.5 items-start">
                                 <ArrowRight className="w-3.5 h-3.5 text-purple-300 shrink-0 mt-0.5" />
@@ -1419,115 +1389,13 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                   </motion.div>
                 )}
               </AnimatePresence>
+            </div>
           </div>
         )}
 
 
-        {/* CHROME COMPANION EXTENSION TERMINAL DOWNLOAD VIEW */}
-        {activeTab === 'extension' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="bg-white rounded-2xl p-6 border border-purple-100 shadow-sm space-y-6 animate-in fade-in duration-300"
-          >
-            <div className="border-b border-purple-50 pb-4">
-              <h2 className="text-lg font-extrabold text-[#3B1A5E] flex items-center gap-2">
-                <PlusCircle className="text-indigo-500 w-5 h-5 animate-pulse" />
-                OrderCheck Chrome Extension Companion
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Optimize your workflow! Install our custom packed extension to scan active messages straight from your WhatsApp Web screen contents and sync them with system entries.
-              </p>
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-6">
-              
-              {/* Left Column (Main instructions & Download Card) */}
-              <div className="md:col-span-2 space-y-6">
-                
-                {/* Visual Download Card */}
-                <div className="bg-[#3B1A5E] text-white p-6 rounded-2xl border border-[#2C1349] relative overflow-hidden flex flex-col sm:flex-row justify-between items-center gap-6 shadow-md shadow-purple-900/10">
-                  <div className="absolute right-0 top-0 translate-x-6 -translate-y-6 opacity-10 bg-purple-200 w-32 h-32 rounded-full"></div>
-                  <div className="space-y-1 text-center sm:text-left">
-                    <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-purple-300">PRE-CONFIGURED PLUG-IN PACKAGE</span>
-                    <h3 className="text-lg font-bold text-white">Compliance Companion v1.5.5</h3>
-                    <p className="text-xs text-purple-100 select-none pb-0.5">
-                      Shared catalog, screenshot scanning, Fulfilment Only audits, and confirmed allocation deductions.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={downloadExtension}
-                    disabled={extensionDownloading}
-                    className="bg-white text-[#3B1A5E] hover:bg-[#F3E8FF] px-5 py-3 rounded-xl font-bold shadow transition-transform hover:-translate-y-0.5 whitespace-nowrap text-xs cursor-pointer shrink-0 z-10 flex items-center gap-2"
-                  >
-                    <Download className="w-4 h-4 text-[#5C2D91]" />
-                    {extensionDownloading ? 'Preparing ZIP…' : 'Download Packed ZIP'}
-                  </button>
-                </div>
-
-                {extensionDownloadError && <p role="alert" className="text-xs text-red-700">{extensionDownloadError}</p>}
-                {/* Direct Instruction Steps */}
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold text-[#3B1A5E] uppercase tracking-wider flex items-center gap-1.5">
-                    <CheckSquare className="w-4 h-4 text-purple-600" />
-                    How to Install in 2 Minutes:
-                  </h3>
-                  <div className="divide-y divide-purple-50 text-xs text-slate-600 font-sans leading-relaxed border border-purple-50 rounded-xl bg-slate-50/40 p-4 space-y-2">
-                    <p className="pb-2"><b>1. Download:</b> Click the download button to grab your unique pre-assembled ZIP packet.</p>
-                    <p className="py-2"><b>2. Unzip:</b> Extract the ZIP folder contents to a directory on your desk.</p>
-                    <p className="py-2"><b>3. Extensions Dashboard:</b> Open Google Chrome and enter <code>chrome://extensions/</code> as the URL.</p>
-                    <p className="py-2"><b>4. Developer Switch:</b> In the top-right corner, check the <b>"Developer mode"</b> toggle switch.</p>
-                    <p className="pt-2"><b>5. Unpacked Upload:</b> Click the <b>"Load unpacked"</b> button in the top-left, and pick the extracted folder containing <code>manifest.json</code>.</p>
-                    <p className="pt-2"><b>6. Sign in:</b> Open the extension and sign in with your verified, approved portal email/password account. If you use Google only, ask an administrator for a password reset link to set a password on the same account.</p>
-                    <p className="pt-2"><b>Updating an installed copy:</b> In chrome://extensions, check OrderCheck Details for the loaded folder. Replace the files in that exact folder, click Reload, and reopen the popup. Its header must show v1.5.5. Refresh the pages used for capture.</p>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Right Column (Code highlight representation) */}
-              <div className="space-y-4">
-                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
-                  <h3 className="font-bold text-[10px] text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
-                    Extension Source Core Map
-                  </h3>
-                  
-                  <div className="bg-slate-900 text-slate-300 font-mono text-[9px] p-3 rounded-lg overflow-x-auto leading-relaxed max-h-56">
-                    <pre>{`{
-  "manifest_version": 3,
-  "name": "OrderCheck Companion",
-  "version": "1.5.5",
-  "permissions": [
-    "activeTab",
-    "scripting",
-    "storage"
-  ],
-  "content_scripts": [
-    {
-      "matches": [
-        "http://*/*",
-        "https://*/*"
-      ],
-      "js": ["content.js"]
-    }
-  ]
-}`}</pre>
-                  </div>
-                  <span className="text-[10px] text-slate-400 mt-2 block text-center italic">
-                    Synchronized automatically with portal endpoints.
-                  </span>
-                </div>
-              </div>
-
-            </div>
-          </motion.div>
-        )}
-
         {/* SYSTEM ACTIVITY & AUDIT LOG VIEW */}
-        {activeTab === 'history' && (
+        {isAdministrator && activeTab === 'history' && (
           <div className="animate-in fade-in duration-300">
             <SystemAuditLogView
               currentUser={activeUser}
@@ -1535,16 +1403,6 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
               onNavigateToChecker={() => setActiveTab('vaccine_checker')}
             />
           </div>
-        )}
-
-        {/* TROUBLESHOOTER & SYSTEM DIAGNOSTICS ACTIVE TAB VIEW */}
-        {activeTab === 'troubleshooter' && (
-          <Troubleshooter 
-            currentAudit={result}
-            onUpdateAudit={(updatedAudit) => setResult(updatedAudit)}
-            onRunTest={verifyOrder}
-            onNavigateAuditor={() => setActiveTab('auditor')}
-          />
         )}
 
       </main>

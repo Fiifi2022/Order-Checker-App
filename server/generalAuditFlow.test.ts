@@ -39,8 +39,9 @@ test('current raw inputs survive parsing, a legacy API response, and actual fiel
   assert.equal(record.id, 'current-audit');
   assert.equal(record.whatsappMessage, customerRequestRaw);
   assert.equal(record.fulfillmentConfirmation, fulfillmentRaw);
-  assert.equal(record.verdict, 'DISCREPANCY');
-  assert.equal(record.issueCount, 2);
+  assert.equal(record.verdict, 'MISSING REQUIRED INFORMATION');
+  assert.equal(record.issueCount, 0);
+  assert.equal(record.auditSummary.missingRequiredCount, 2);
   assert.deepEqual(record.items.map(item => item.name), ['Multivitamin Syrup', 'Paracetamol 120mg/5mL Syrup, 100mL']);
   const html = renderDetails(record);
   assert.match(html, /Customer Request: Isaac Awuyem/);
@@ -117,7 +118,8 @@ test('orderer found in fulfillment sentence survives API completion and renders 
 
 test('different sentence orderer renders the current name and an orderer discrepancy', () => {
   const record = completeGeneralAuditRun(createGeneralAuditRun({ ...inputs, fulfillmentConfirmation: 'Order received for John Mensah.\n' + fulfillmentRaw }, 8), {});
-  assert.equal(record.issueCount, 2);
+  assert.equal(record.issueCount, 1);
+  assert.equal(record.auditSummary.missingRequiredCount, 1);
   assert.equal(record.verdict, 'DISCREPANCY');
   const html = renderDetails(record);
   assert.match(html, /System Entry: John Mensah/);

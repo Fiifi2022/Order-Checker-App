@@ -1,3 +1,4 @@
+import { auditReadBudget } from './auditBudget';
 import { createHash } from 'node:crypto';
 import type { RequestHandler } from 'express';
 import * as vaccines from './vaccineService';
@@ -45,9 +46,9 @@ export function companionVaccineHandlers(deps: {
       const fs = body.fulfillmentConfirmation;
       const wa = orderSource === 'fs_only' ? '' : body.whatsappMessage;
       if (typeof fs !== 'string' || !fs.trim() || (orderSource === 'whatsapp' && (typeof wa !== 'string' || !wa.trim()))) fail(400, 'Fulfilment confirmation is required; customer comparison also requires a customer request.');
-      await deps.refresh();
+      await auditReadBudget(req, deps.refresh);
       const facility = resolveCompanionFacility(body, fs);
-      await deps.verifyFacility?.(facility);
+      await auditReadBudget(req, async () => deps.verifyFacility?.(facility));
       const orderId = companionOrderId(facility.id, fs);
       let auditRecord: vaccines.VaccineAuditLogRecord | undefined;
       const audit = vaccines.validateVaccineOrder({ facilityId: facility.id, orderSource, whatsappMessage: wa, fulfillmentConfirmation: fs,
@@ -69,7 +70,7 @@ export function companionVaccineHandlers(deps: {
       const storage = deps.storage();
       const activity = deps.activity?.('verified', { ...audit, isValid: audit.isValid && !needsReview, orderId, facilityId: facility.id }, res.locals.authUser);
       let sameEvidence = false;
-      const previous = await storage.runTransaction(storage.db, async tx => {
+      const previous = await auditReadBudget(req, () => storage.runTransaction(storage.db, async tx => {
         const saved = await tx.get(storage.doc(storage.db, 'vaccine_transactions', orderId));
         const approved = await tx.get(storage.doc(storage.db, 'vaccine_verified_orders', orderId));
         if (saved.exists()) {
@@ -85,7 +86,7 @@ export function companionVaccineHandlers(deps: {
         }
         if (activity) tx.set(storage.doc(storage.db, 'activity_logs', activity.id), storage.clean(activity));
         return null;
-      });
+      }));
       if (!previous && activity) deps.publishActivity?.(activity);
       if (!previous && auditRecord) vaccines.publishVaccineAudit({ ...auditRecord, ccaUser: res.locals.authUser.name,
         auditResult: checksPassed ? 'GREEN_LIGHT' : 'DO_NOT_PROCESS', errorsDetected: [...audit.errors] });

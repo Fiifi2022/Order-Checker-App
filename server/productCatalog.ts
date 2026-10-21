@@ -104,14 +104,16 @@ export function productCatalogHandlers(deps: {
   };
   const hints: RequestHandler = async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    if (!['general', 'vaccine'].includes(req.body?.scope) || typeof req.body?.text !== 'string' || req.body.text.length > 100000) {
-      res.status(400).json({ error: 'Choose a checker and provide at most 100,000 characters of order text.' }); return;
+    const texts = req.body?.texts === undefined ? [req.body?.text] : req.body.texts;
+    if (!['general', 'vaccine'].includes(req.body?.scope) || !Array.isArray(texts) || texts.length < 1 || texts.length > 2 || texts.some(text => typeof text !== 'string' || text.length > 100000)) {
+      res.status(400).json({ error: 'Choose a checker and provide one or two order texts of at most 100,000 characters each.' }); return;
     }
     try {
       const catalog = await deps.read();
-      res.json({ revision: catalog.revision, products: productReceivingHints(req.body.text, req.body.scope, catalog.products).map(product => ({
+      const groups = texts.map(text => productReceivingHints(text, req.body.scope, catalog.products).map(product => ({
         id: product.id, name: product.displayName || product.name, fulfillmentSystemName: product.fulfillmentSystemName || '', receivingDetails: product.receivingDetails || '',
-      })) });
+      })));
+      res.json(req.body.texts === undefined ? { revision: catalog.revision, products: groups[0] } : { revision: catalog.revision, groups });
     } catch { res.status(503).json({ error: 'Product receiving reminders unavailable. Please retry.' }); }
   };
   return { read, save, hints };

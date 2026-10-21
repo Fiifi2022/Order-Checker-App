@@ -1,4 +1,11 @@
-import { fsContextHandlers, fsReadBudget, startFsReadBudget, isFsCompanionRead } from './server/fsContext';
+import { needsProductCatalog } from './server/catalogReadPolicy';
+import { currentBlueprintHandler } from './server/currentBlueprint';
+import { coalesceFreshRead, readSnapshot, firestoreReadContext, firestoreReadReport } from './server/firestoreReads';
+import { auditReadBudget, auditRemainingMs, startAuditBudget, optionalAuditAi, auditSignal, auditTiming } from './server/auditBudget';
+import { AUDIT_AI_FALLBACK_MS, auditTimeoutSetting } from './shared/auditPerformance';
+import { activeGeneralFacilities, excludedGeneralFacilities, changeGeneralFacilityDirectory, emptyGeneralFacilityDirectory, generalFacilityDirectoryHandlers } from './server/generalFacilityDirectory';
+import type { GeneralFacilityDirectoryState } from './shared/generalFacilityDirectory';
+import { fsContextHandlers, fsReadBudget, startFsReadBudget } from './server/fsContext';
 import { orderLimitAcknowledgementHandler } from './server/orderLimitAcknowledgement';
 import { catalogAliasAssistant } from './server/catalogAliasAssistant';
 import { defaultProducts, applyCatalog, saveCatalogProduct, productCatalogHandlers } from './server/productCatalog';
@@ -21,7 +28,7 @@ import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import { buildExtensionPackage, resolveExtensionBackendUrl } from './server/extensionPackage';
-import { adminAuth, adminDb, collection, getDocs, doc, setDoc, getDoc, deleteDoc, query, orderBy, limit, writeBatch, runTransaction } from './server/firebaseAdmin';
+import { adminAuth, adminDb, collection, getDocs, doc, setDoc, getDoc, deleteDoc, query, orderBy, limit, writeBatch, runTransaction, runAdminTransaction } from './server/firebaseAdmin';
 import { actorContext, createAuthentication } from './server/auth';
 import * as vaccineService from './server/vaccineService';
 import { resolveBlueprintFacility, normalizeFacilityName, assertBlueprintActive, FACILITY_NOT_FOUND, FACILITY_AMBIGUOUS } from './server/blueprintFacility';
@@ -34,6 +41,7 @@ import * as activityService from './server/activityService';
 import { analyzeAuditLanguage } from './server/auditSemantics';
 import { geminiUsage } from './server/geminiUsage';
 import { medicalProductAcronymReference } from './src/utils/medicalProductAcronyms';
+import { readGeneralFacilityContext } from './server/generalFacilityRecords';
 import { runGeneralSemanticAudit } from './server/generalSemanticAudit';
 import { runDeterministicAuditFallback } from './server/deterministicAudit';
 import { getBlueprintProgressStatus } from './src/utils/blueprintProgress';
@@ -110,17 +118,17 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use('/api', firestoreReadContext);
+app.use('/api', startAuditBudget);
 app.use('/api', startFsReadBudget);
 app.use('/api', createAuthentication(
   token => adminAuth.verifyIdToken(token, true),
   async email => {
-    const snapshot = await adminDb.collection('user_roles').where('email', '==', email).limit(1).get();
+    const snapshot = await readSnapshot(adminDb.collection('user_roles').where('email', '==', email).limit(1), 'user_roles');
     if (!snapshot.empty) {
-      const registration = await adminDb.collection('user_profiles').where('email', '==', email).limit(1).get();
-      const details = registration.docs[0]?.data();
-      return { ...snapshot.docs[0].data(), id: snapshot.docs[0].id,
-        position: details?.position || snapshot.docs[0].data().position || '',
-        nest: details?.nest || snapshot.docs[0].data().nest || '' } as UserRoleItem;
+      // Role authorization stays fresh on every request. Registration metadata
+      // is presentation data and is loaded only by /auth/me.
+      return { ...snapshot.docs[0].data(), id: snapshot.docs[0].id } as UserRoleItem;
     }
     if (email === process.env.AUTH_BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase()) {
       return { id: email.replace(/[^a-zA-Z0-9]/g, '_'), email, name: email,
@@ -128,56 +136,92 @@ app.use('/api', createAuthentication(
     }
     return null;
   },
-  fsReadBudget,
+  (req, task) => auditTiming(req)?.measureAsync('authentication', () => auditReadBudget(req, () => fsReadBudget(req, task))) ?? auditReadBudget(req, () => fsReadBudget(req, task)),
 ));
 // One versioned catalog document: transactional updates prevent lost edits.
 const catalogReference = adminDb.collection('product_catalog').doc('current');
 const catalogSeed: ProductCatalog = { revision: 1, products: defaultProducts() };
-async function readProductCatalog(): Promise<ProductCatalog> {
-  return adminDb.runTransaction(async transaction => {
+const readProductCatalog = coalesceFreshRead(async (): Promise<ProductCatalog> => {
+  return runAdminTransaction(async transaction => {
     const snapshot = await transaction.get(catalogReference);
     if (snapshot.exists) return snapshot.data() as ProductCatalog;
     transaction.set(catalogReference, catalogSeed);
     return catalogSeed;
   });
-}
+});
 const catalogHandlers = productCatalogHandlers({
   read: readProductCatalog,
-  save: (input, actor) => adminDb.runTransaction(async transaction => {
-    const snapshot = await transaction.get(catalogReference);
-    const updated = saveCatalogProduct(snapshot.exists ? snapshot.data() as ProductCatalog : catalogSeed, input, actor);
-    transaction.set(catalogReference, updated);
-    return updated;
-  }),
+  save: async (input, actor) => {
+    const saved = await runAdminTransaction(async transaction => {
+      const snapshot = await transaction.get(catalogReference);
+      const updated = saveCatalogProduct(snapshot.exists ? snapshot.data() as ProductCatalog : catalogSeed, input, actor);
+      transaction.set(catalogReference, updated);
+      return updated;
+    });
+    readProductCatalog.invalidate();
+    return saved;
+  },
 });
+// General Auditor reference edits are stored separately from vaccine/Blueprint data.
+const generalDirectoryReference = adminDb.collection('general_facility_directory').doc('current');
+const readManagedGeneralDirectory = coalesceFreshRead(async (): Promise<GeneralFacilityDirectoryState> => {
+  const snapshot = await readSnapshot(generalDirectoryReference);
+  return snapshot.exists ? snapshot.data() as GeneralFacilityDirectoryState : emptyGeneralFacilityDirectory();
+});
+const generalDirectoryHandlers = generalFacilityDirectoryHandlers({
+  read: readManagedGeneralDirectory,
+  change: async (action, input, actor) => {
+    const saved = await runAdminTransaction(async transaction => {
+      const snapshot = await transaction.get(generalDirectoryReference);
+      const state = snapshot.exists ? snapshot.data() as GeneralFacilityDirectoryState : emptyGeneralFacilityDirectory();
+      const updated = changeGeneralFacilityDirectory(state, action, input, actor);
+      transaction.set(generalDirectoryReference, updated);
+      return updated;
+    });
+    readManagedGeneralDirectory.invalidate();
+    return saved;
+  },
+});
+app.get('/api/general/facilities', generalDirectoryHandlers.list);
+app.post('/api/general/facilities', generalDirectoryHandlers.save);
+app.delete('/api/general/facilities', generalDirectoryHandlers.remove);
 app.get('/api/products', catalogHandlers.read);
 app.post('/api/products/hints', catalogHandlers.hints);
 app.post('/api/products', catalogHandlers.save);
 app.post('/api/products/suggest-aliases', catalogAliasAssistant({ read: readProductCatalog, getClient: getGeminiClient }));
 // Refresh the same persisted vocabulary before text matching and allocation parsing.
 app.use('/api', async (req, res, next) => {
-  if (req.method === 'GET' && isFsCompanionRead(req.path)) { next(); return; }
-  if (req.path !== '/verify' && !req.path.startsWith('/vaccine/')) { next(); return; }
+  if (!needsProductCatalog(req.method, req.path)) { next(); return; }
   try {
-    const catalog = await readProductCatalog();
+    const catalog = await (auditTiming(req)?.measureAsync('catalogRead', () => auditReadBudget(req, readProductCatalog)) ?? auditReadBudget(req, readProductCatalog));
+    res.locals.auditCatalog = catalog;
     if (req.path === '/verify' && req.body?.productCatalogRevision !== undefined && req.body.productCatalogRevision !== catalog.revision) {
       res.status(409).json({ error: 'Product aliases changed during this audit. Run verification again.' }); return;
     }
-    applyCatalog(catalog); next();
+    if (auditTiming(req)) auditTiming(req)!.measure('catalogApply', () => applyCatalog(catalog)); else applyCatalog(catalog);
+    next();
   }
   catch { res.status(503).json({ error: 'Product catalog unavailable. Please retry before auditing.' }); }
 });
 
-app.get('/api/auth/me', (_req, res) => res.json(res.locals.authUser));
+app.get('/api/auth/me', async (_req, res) => {
+  try {
+    const profile = res.locals.authUser;
+    const registration = await readSnapshot(adminDb.collection('user_profiles').where('email', '==', profile.email).limit(1), 'user_profiles');
+    const details = registration.docs[0]?.data();
+    res.json({ ...profile, position: details?.position || profile.position || '', nest: details?.nest || profile.nest || '' });
+  } catch { res.status(503).json({ error: 'Could not load your profile. Please retry.' }); }
+});
+app.get('/api/admin/firestore-reads', (_req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json(firestoreReadReport()); });
 
 const registration = registrationHandlers({
   async get(uid) {
-    const document = await adminDb.collection('user_profiles').doc(uid).get();
+    const document = await readSnapshot(adminDb.collection('user_profiles').doc(uid));
     return document.exists ? document.data() as any : null;
   },
   async save(uid, fields, email) {
     const reference = adminDb.collection('user_profiles').doc(uid);
-    return adminDb.runTransaction(async transaction => {
+    return runAdminTransaction(async transaction => {
       const existing = await transaction.get(reference);
       const now = new Date().toISOString();
       const profile = { ...fields, uid, email, createdAt: existing.data()?.createdAt || now, updatedAt: now };
@@ -192,7 +236,7 @@ app.post('/api/auth/register', registration.save);
 const adminAccounts = adminAccountHandlers({
   async list(cursor) {
     const [page, profiles, roles] = await Promise.all([
-      adminAuth.listUsers(100, cursor), adminDb.collection('user_profiles').get(), adminDb.collection('user_roles').get(),
+      adminAuth.listUsers(100, cursor), readSnapshot(adminDb.collection('user_profiles')), readSnapshot(adminDb.collection('user_roles')),
     ]);
     const profileByUid = new Map(profiles.docs.map(document => [document.id, document.data()]));
     const roleByEmail = new Map(roles.docs.map(document => [String(document.data().email || '').toLowerCase(), document.data()]));
@@ -203,7 +247,7 @@ const adminAccounts = adminAccountHandlers({
     const user = await adminAuth.getUser(uid);
     if (!user.email) throw new Error('Account has no email');
     const reference = adminDb.collection('user_profiles').doc(uid);
-    const [existing, roles] = await Promise.all([reference.get(), adminDb.collection('user_roles').where('email', '==', user.email.toLowerCase()).get()]);
+    const [existing, roles] = await Promise.all([readSnapshot(reference), readSnapshot(adminDb.collection('user_roles').where('email', '==', user.email.toLowerCase()), 'user_roles')]);
     const batch = adminDb.batch();
     const now = new Date().toISOString();
     batch.set(reference, { ...fields, uid, email: user.email.toLowerCase(), createdAt: existing.data()?.createdAt || now, updatedAt: now });
@@ -333,6 +377,8 @@ const VACCINE_GROUPS_CONFIG = [
     vaccineName: 'Rotavirus Vaccine'
   }
 ];
+
+const readCurrentBlueprintSheets = async () => (await getDocs(collection(getFirestoreDb(), 'vaccine_districts'))).docs.map(row => ({ ...row.data(), id: row.id }));
 
 async function getAudits(): Promise<any[]> {
   try {
@@ -758,17 +804,17 @@ ADDITIONAL AUDIT CONSTRAINTS:
   `;
 
 // One attempt per user-triggered request. Errors return to the existing fallback.
-async function generateAuditContent(ai: any, options: any): Promise<any> {
+async function generateAuditContent(ai: any, options: any, timeoutMs = 10_000): Promise<any> {
   const { generalAuditorFast, ...requestOptions } = options;
   const model = generalAuditorFast ? 'gemini-2.5-flash-lite'
     : ['gemini-3.5-flash', 'gemini-3.1-flash-lite'].includes(options.model) ? 'gemini-2.5-flash' : options.model;
-  const config = { ...requestOptions.config, httpOptions: { ...requestOptions.config?.httpOptions, timeout: 10_000, retryOptions: { attempts: 1 } } };
+  const config = { ...requestOptions.config, httpOptions: { ...requestOptions.config?.httpOptions, timeout: Math.max(1, timeoutMs), retryOptions: { attempts: 1 } } };
   if (model !== 'gemini-3.5-flash') delete config.thinkingConfig;
-  return geminiUsage.run(async () => {
-    const response = await ai.models.generateContent({ ...requestOptions, model, config });
+  return geminiUsage.run(() => optionalAuditAi(async signal => {
+    const response = await ai.models.generateContent({ ...requestOptions, model, config: { ...config, abortSignal: signal } });
     if (!response.text?.trim()) throw new Error('Gemini returned an empty response');
     return response;
-  });
+  }, timeoutMs));
 }
 
 // Health-check endpoint for client/extension pings
@@ -814,7 +860,7 @@ app.post('/api/verify', async (req, res) => {
         body = parsed;
       }
     } catch (e) {
-      console.warn('[API POST /api/verify] Text body received but is not JSON:', body);
+      console.warn('[Audit] Non-JSON request body rejected');
     }
   }
 
@@ -833,11 +879,10 @@ app.post('/api/verify', async (req, res) => {
         }
       }
     } catch (e) {
-      console.warn('[API POST /api/verify] Stream fallback parse failed:', e);
+      console.warn('[Audit] Invalid request body');
     }
   }
 
-  console.log('[API POST /api/verify] Keys received in body:', typeof body === 'object' ? Object.keys(body) : 'primitive/none');
   const companionMode = normalizeCompanionAuditMode(body.auditMode);
   if (body.auditMode !== undefined && !companionMode) return res.status(400).json({ error: 'Unsupported audit mode. Use whatsapp_and_fulfillment or fulfillment_only.', allMatch: false, items: [] });
   if (companionMode === 'fulfillment_only' || body.auditScope === 'vaccine_checker' || (body.auditMode === 'customer_fulfillment' && body.auditScope !== 'general_auditor')) {
@@ -879,8 +924,6 @@ app.post('/api/verify', async (req, res) => {
   // Defensive validation with log on failure (Task 5, 2 & 6)
   if (!whatsappMessage || !fulfillmentConfirmation || (isGeneralAuditor && (typeof whatsappMessage !== 'string' || typeof fulfillmentConfirmation !== 'string'))) {
     console.error('*** [API POST /api/verify] Validation FAILED! ***');
-    console.error('Request received Headers:', req.headers);
-    console.error('Request received Body payload:', JSON.stringify(body, null, 2));
 
     const missingFields = [];
     if (!whatsappMessage) {
@@ -911,7 +954,7 @@ app.post('/api/verify', async (req, res) => {
   try {
     let selectedCompanionFacility: vaccineService.FacilityAllocationRecord | undefined;
     if (isGeneralAuditor && companionMode) {
-      try { await loadDistrictsFromFirestore(); }
+      try { await auditReadBudget(req, loadDistrictsFromFirestore); }
       catch { throw new CompanionFacilityError(503, 'Could not read the current Allocation Blueprint. Retry before dispatch.'); }
       selectedCompanionFacility = resolveCompanionFacility(body, fulfillmentConfirmation);
       resolveBlueprintFacility(Object.values(blueprintDistricts), { facilityName: selectedCompanionFacility.facilityName,
@@ -922,8 +965,28 @@ app.post('/api/verify', async (req, res) => {
     }
     let response: any;
     if (isGeneralAuditor) {
-      response = { text: JSON.stringify(await runGeneralSemanticAudit(whatsappMessage, fulfillmentConfirmation, body.generalOrderLimitDecisions || {}, { osuItems }, getGeminiClient)) };
+      // Do not silently resurrect removed facilities if the saved reference cannot be read.
+      const readFacilityContext = async () => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const optionalSheets = Promise.race([
+          readCurrentBlueprintSheets(),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Identity reference unavailable')), Math.min(1200, auditRemainingMs(req))); })
+        ]).then(sheets => ({ sheets }), () => ({ sheets: null })).finally(() => clearTimeout(timer));
+        const [managedDirectory, identity] = await Promise.all([
+          auditReadBudget(req, readManagedGeneralDirectory).catch(() => { throw Object.assign(new Error('Facility list unavailable. Retry before dispatch.'), { status: 503 }); }), optionalSheets
+        ]);
+        return readGeneralFacilityContext(async () => { if (!identity.sheets) throw new Error('Identity reference unavailable'); return identity.sheets; },
+          Math.max(1, auditRemainingMs(req)), activeGeneralFacilities(managedDirectory), excludedGeneralFacilities(managedDirectory));
+      };
+      const facilityContext = await (auditTiming(req)?.measureAsync('facilityRecords', () => auditReadBudget(req, readFacilityContext)) ?? auditReadBudget(req, readFacilityContext));
+      response = { text: JSON.stringify(await auditReadBudget(req, () => runGeneralSemanticAudit(whatsappMessage, fulfillmentConfirmation, body.generalOrderLimitDecisions || {}, {
+        osuItems, facilityContext, semanticTimeoutMs: Math.max(0, Math.min(auditTimeoutSetting(process.env.AUDIT_AI_TIMEOUT_MS, AUDIT_AI_FALLBACK_MS, 100, 15_000), auditRemainingMs(req) - 250)),
+        signal: auditSignal(req), timing: auditTiming(req), semanticCacheScope: res.locals.authUser?.id,
+      }, getGeminiClient))) };
     } else {
+      const deterministic = runDeterministicAuditFallback(whatsappMessage, fulfillmentConfirmation);
+      if (deterministic.items.length) response = { text: JSON.stringify(deterministic) };
+      else {
       const ai = getGeminiClient();
       response = await generateAuditContent(ai, {
       model: 'gemini-3.1-flash-lite',
@@ -1098,7 +1161,8 @@ app.post('/api/verify', async (req, res) => {
           required: ['confidence', 'verdict', 'allMatch', 'issueCount', 'items', 'meta', 'insights']
         }
       }
-      });
+      }, Math.max(1, Math.min(AUDIT_AI_FALLBACK_MS, auditRemainingMs(req) - 250)));
+      }
     }
 
     if (!response.text) {
@@ -2003,23 +2067,24 @@ app.post('/api/verify', async (req, res) => {
       if (cleanRecord.resolvedAt === undefined) delete cleanRecord.resolvedAt;
       
       const saveAudit = setDoc(doc(db, 'audits', auditRecord.id), cleanFirestorePayload(cleanRecord))
-        .then(() => console.log(`Successfully recorded audit log ${auditRecord.id} to Firestore.`))
-        .catch(dbErr => { console.error('Failed to write audit log to Firestore:', dbErr); if (isGeneralAuditor) (auditRecord as any).generalStorageWarning = 'Firestore logging failed. This audit is retained in session memory only.'; });
-      if (isGeneralAuditor) {
+        .then(() => console.log('[Audit] History saved'))
+        .catch(dbErr => { console.error('[Audit] History storage unavailable'); if (isGeneralAuditor) (auditRecord as any).generalStorageWarning = 'Firestore logging failed. This audit is retained in session memory only.'; });
+      {
         let timer: ReturnType<typeof setTimeout> | undefined;
-        try { await Promise.race([saveAudit, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Firestore logging timed out')), 8000); })]); }
+        const waitForHistory = () => Promise.race([saveAudit, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Firestore logging timed out')), Math.max(1, Math.min(200, auditRemainingMs(req)))); })]);
+        try { if (auditTiming(req)) await auditTiming(req)!.measureAsync('historyWrite', waitForHistory); else await waitForHistory(); }
         finally { clearTimeout(timer); }
-      } else await saveAudit;
+      }
     } catch (dbErr) {
-      console.error('Failed to write audit log to Firestore:', dbErr);
+      console.error('[Audit] History storage unavailable');
       if (isGeneralAuditor) (auditRecord as any).generalStorageWarning = 'Firestore logging failed. This audit is retained in session memory only.';
     }
 
-    return res.json(auditRecord);
+    return res.json(isGeneralAuditor && body.includeProductCatalog === true ? { ...auditRecord, productCatalog: res.locals.auditCatalog } : auditRecord);
   } catch (error: any) {
-    console.warn('Gemini verification encountered an issue, seamlessly switching to Deterministic Compliance Engine:', error?.message);
+    console.warn('[Audit] Verification unavailable', { code: Number(error?.status) || 0 });
     if (isGeneralAuditor) {
-      return res.status(error instanceof CompanionFacilityError ? error.status : error.message === FACILITY_NOT_FOUND ? 404 : error.message === FACILITY_AMBIGUOUS ? 409 : companionMode && /Could not load saved Allocation Blueprint/.test(error.message) ? 503 : 422)
+      return res.status(error instanceof CompanionFacilityError || error.status === 503 ? error.status : error.message === FACILITY_NOT_FOUND ? 404 : error.message === FACILITY_AMBIGUOUS ? 409 : companionMode && /Could not load saved Allocation Blueprint/.test(error.message) ? 503 : 422)
         .json({ error: error.message || 'Unable to read the current audit inputs.', allMatch: false, items: [], auditStatus: 'requires_review' });
     }
     try {
@@ -2055,15 +2120,15 @@ app.post('/api/verify', async (req, res) => {
         const cleanRecord = { ...auditRecord };
         if (cleanRecord.resolutionNotes === undefined) cleanRecord.resolutionNotes = '';
         if (cleanRecord.resolvedAt === undefined) delete cleanRecord.resolvedAt;
-        await setDoc(doc(db, 'audits', auditRecord.id), cleanFirestorePayload(cleanRecord));
-        console.log(`Successfully recorded deterministic audit log ${auditRecord.id} to Firestore.`);
+        await auditReadBudget(req, () => setDoc(doc(db, 'audits', auditRecord.id), cleanFirestorePayload(cleanRecord)));
+        console.log('[Audit] History saved');
       } catch (dbErr) {
-        console.error('Failed to write deterministic audit log to Firestore:', dbErr);
+        console.error('[Audit] History storage unavailable');
       }
 
       return res.json(auditRecord);
     } catch (fallbackErr: any) {
-      console.error('Deterministic fallback error:', fallbackErr);
+      console.error('[Audit] Deterministic verification failed');
       return res.status(500).json({ error: error.message || 'An error occurred during order audits verification.' });
     }
   }
@@ -2785,7 +2850,7 @@ async function loadVaccineKpiRecords() {
   }
 }
 const ensureVaccineHistoryLoaded = createRetryableLoader(loadVaccineKpiRecords);
-void ensureVaccineHistoryLoaded().catch(() => {});
+// History is hydrated on demand, not on every Render cold start.
 
 async function loadDistrictsFromFirestore() {
   try {
@@ -2813,7 +2878,7 @@ async function loadDistrictsFromFirestore() {
   }
 }
 const ensureBlueprintLoaded = createRetryableLoader(loadDistrictsFromFirestore);
-void ensureBlueprintLoaded().catch(() => {});
+// Allocation data is loaded by the requested feature, not on every cold start.
 
 const companionVaccine = companionVaccineHandlers({
   refresh: async () => { await loadDistrictsFromFirestore(); syncAllBlueprintDistrictsToService(); },
@@ -2852,8 +2917,8 @@ app.post('/api/vaccine/allocations/commit', companionVaccine.commit);
 app.get('/api/vaccine/allocations/commit/:orderId', companionVaccine.status);
 // These advisory reads bypass catalog seeding and unrelated history/service syncs.
 const fsContext = fsContextHandlers({
-  readSheets: async () => (await getDocs(collection(getFirestoreDb(), 'vaccine_districts'))).docs.map(snapshot => ({ ...snapshot.data(), id: snapshot.id })),
-  readCatalog: async () => { const snapshot = await catalogReference.get(); return snapshot.exists ? snapshot.data() : catalogSeed; },
+  readSheets: readCurrentBlueprintSheets,
+  readCatalog: readProductCatalog,
   applyCatalog,
   listFacilities: sheets => {
     blueprintDistricts = Object.fromEntries(sheets.map(sheet => [sheet.id, sheet]));
@@ -2877,6 +2942,12 @@ app.get('/api/vaccine/blueprint-districts', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
+// Active-sheet polling reads exactly one current document, not every district.
+app.get('/api/vaccine/blueprint-districts/:id/current', currentBlueprintHandler(async id => {
+  const snapshot = await getDoc(doc(getFirestoreDb(), 'vaccine_districts', id));
+  return snapshot.exists() ? snapshot.data() : null;
+}));
 
 // District-level DHD stock inventory is shared across all monthly allocation sheets.
 app.get('/api/vaccine/dhd-inventory', async (req, res) => {
@@ -3692,7 +3763,7 @@ interface UserRoleItem {
 let userRolesList: UserRoleItem[] = [];
 
 async function initUserRolesFromFirestore() {
-  const snapshot = await adminDb.collection('user_roles').get();
+  const snapshot = await readSnapshot(adminDb.collection('user_roles'));
   userRolesList = snapshot.docs.map(document => ({ ...document.data(), id: document.id } as UserRoleItem));
 }
 
@@ -3728,7 +3799,7 @@ app.get('/api/roles', async (_req, res) => {
   const activeUser = res.locals.authUser;
   try {
     if (hasRole(activeUser, 'admin')) await initUserRolesFromFirestore();
-    const profiles = hasRole(activeUser, 'admin') ? await adminDb.collection('user_profiles').get() : null;
+    const profiles = hasRole(activeUser, 'admin') ? await readSnapshot(adminDb.collection('user_profiles')) : null;
     const registrations = profiles ? profiles.docs.map(document => document.data()).filter(profile => !userRolesList.some(role => role.email.toLowerCase() === profile.email)) : [];
     res.json({ roles: hasRole(activeUser, 'admin') ? userRolesList : [activeUser], registrations, activeRoleId: activeUser.id, activeUser });
   } catch { res.status(503).json({ error: 'Could not load team roles.' }); }
@@ -3755,7 +3826,7 @@ app.post('/api/roles', async (req, res) => {
     const existingIndex = userRolesList.findIndex(r => r.email.toLowerCase() === cleanEmail);
     const docId = existingIndex >= 0 ? userRolesList[existingIndex].id : createHash('sha256').update(cleanEmail).digest('hex');
 
-    const registrationSnapshot = await adminDb.collection('user_profiles').where('email', '==', cleanEmail).limit(1).get();
+    const registrationSnapshot = await readSnapshot(adminDb.collection('user_profiles').where('email', '==', cleanEmail).limit(1), 'user_profiles');
     const registrationProfile = registrationSnapshot.docs[0]?.data();
     const roleDoc: UserRoleItem = {
       id: docId,
@@ -3884,7 +3955,7 @@ app.post('/api/vaccine/validate', async (req, res) => {
 
     const interpreted = directItems?.length
       ? { customerRequest: whatsappMessage || '', fulfilmentConfirmation: fulfillmentConfirmation || '', semanticAnalysis: { status: 'skipped', reason: 'Structured vaccine quantities supplied directly' } }
-      : await analyzeAuditLanguage(orderSource === 'fs_only' ? '' : (whatsappMessage || ''), fulfillmentConfirmation || '', 'vaccine', getGeminiClient);
+      : await analyzeAuditLanguage(orderSource === 'fs_only' ? '' : (whatsappMessage || ''), fulfillmentConfirmation || '', 'vaccine', getGeminiClient, console, Math.max(0, Math.min(AUDIT_AI_FALLBACK_MS, auditRemainingMs(req) - 250)), { signal: auditSignal(req), cacheScope: res.locals.authUser?.id });
 
     // Auto-detect facility if not provided or set to auto
     if (!facilityId || facilityId === 'auto') {
@@ -3959,7 +4030,7 @@ app.post('/api/vaccine/validate', async (req, res) => {
           items: result.items
         }
       });
-      await persistActivityLogToFirestore(rec);
+      await auditReadBudget(req, () => persistActivityLogToFirestore(rec));
     } catch (actErr) {
       console.warn('Activity log for validate error:', actErr);
     }
@@ -4153,6 +4224,7 @@ app.post('/api/vaccine/aliases', (_req, res) => {
 // Vaccine Dashboard Metrics - synchronized with Allocation Blueprint
 app.get('/api/vaccine/dashboard', async (req, res) => {
   try {
+    await Promise.all([loadDistrictsFromFirestore(), ensureVaccineHistoryLoaded()]);
     const metrics = vaccineService.getDashboardMetrics();
 
     // Enrich with Blueprint multi-district metadata
@@ -4268,6 +4340,7 @@ app.get('/api/vaccine/dashboard', async (req, res) => {
 // Fetch vaccine audit logs history
 app.get('/api/vaccine/audit-logs', async (req, res) => {
   try {
+    await ensureVaccineHistoryLoaded();
     const logs = vaccineService.getAuditLogs();
     return res.json(logs);
   } catch (err: any) {
