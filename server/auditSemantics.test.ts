@@ -128,7 +128,7 @@ test('missing orderer remains absent and requires review', async () => {
   const result = await runGeneralSemanticAudit(a, b, {}, {}, client(empty()));
   assert.equal(result.generalAudit.orderer.fulfillmentValue, 'N/A');
   assert.equal(result.allMatch, false); assert.equal(result.issueCount, 0); assert.equal(result.auditSummary.missingRequiredCount, 1);
-  assert.ok(result.generalAudit.warnings?.includes('ORDERER NAME NOT FOUND'));
+  assert.ok(result.generalAudit.warnings?.includes('Orderer: Confirm the name of the person placing the order.'));
 });
 
 test('current server semantic results render; old or stale input results are still recomputed', () => {

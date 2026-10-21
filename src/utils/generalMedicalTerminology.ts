@@ -127,6 +127,11 @@ function rebuildTerminology() {
 }
 rebuildTerminology();
 
+/** Recognition only: retain the complete specification for actual comparison. */
+export function stripGeneralLeadingSpecification(name: string): string {
+  return name.replace(/^(?:\d+(?:\.\d+)?\s*(?:mcg|mg|g|ml|l|iu)\b[ ,]*)+/i, '').trim();
+}
+
 /** General-only identity normalization. No quantities or final statuses are set here. */
 export function expandGeneralMedicalTerms(value: string): string {
   const original = generalTerminologyKey(resolveGeneralApprovedIdentity(value)?.resolvedName ?? value);

@@ -1135,7 +1135,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         </div>
                         <div>
                           <h3 className="font-black text-[#3B1A5E] text-lg leading-tight md:text-xl flex items-center gap-2 flex-wrap">
-                            {generalDetails?.finalStatus || result.verdict}
+                            {generalDetails && result.allMatch ? 'ORDER VERIFIED' : generalDetails?.finalStatus || result.verdict}
                             <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-mono font-medium">Session Log</span>
                             {verificationTime !== null && (
                               <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded font-mono font-semibold flex items-center gap-1">
@@ -1160,7 +1160,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         <span className={`text-[10px] font-mono px-3 py-1.5 rounded-full font-bold shadow-sm uppercase ${
                           result.allMatch ? 'bg-green-100 text-green-805' : generalReviewRequired && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
                         }`}>
-                          {result.allMatch ? 'VERIFIED MATCH' : result.issueCount > 0 ? 'DISCREPANCY' : generalDetails?.auditSummary?.missingRequiredCount ? 'MISSING REQUIRED INFORMATION' : generalReviewRequired && result.issueCount === 0 ? 'REVIEW REQUIRED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
+                          {result.allMatch ? generalDetails ? 'MATCH — CLEARED' : 'VERIFIED MATCH' : result.issueCount > 0 ? 'DISCREPANCY' : generalDetails?.auditSummary?.missingRequiredCount ? 'MISSING REQUIRED INFORMATION' : generalReviewRequired && result.issueCount === 0 ? 'CLARIFICATION REQUIRED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
                         </span>
                         {result.allMatch ? (
                           <button
@@ -1173,7 +1173,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                             Confirm & Clear
                           </button>
                         ) : generalReviewRequired && !generalDetails?.pendingOrderLimitCount ? (
-                          <span className="text-xs font-semibold text-amber-800">{facilityReviewRequired ? 'Order checks incomplete' : 'Review the highlighted fields before dispatch'}</span>
+                          <span className="text-xs font-semibold text-amber-800">{facilityReviewRequired ? 'Order checks incomplete' : 'Confirm the highlighted order details'}</span>
                         ) : generalDetails?.pendingOrderLimitCount ? (
                           <span className="text-xs font-semibold text-amber-800">Order Limit answers required</span>
                         ) : (
@@ -1318,6 +1318,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         {generalDetails ? <GeneralVerificationConfidence
                           summary={generalDetails.auditSummary ?? buildGeneralAuditCheckSummary(result.items, generalDetails.facility, generalDetails.orderer, generalDetails.phone, result.issueCount)}
                           pendingOrderLimits={generalDetails.pendingOrderLimitCount}
+                          allMatch={result.allMatch}
                         /> : (
                         <div className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm flex flex-col items-center text-center">
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Verification Confidence</span>

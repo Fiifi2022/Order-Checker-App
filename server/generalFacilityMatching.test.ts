@@ -95,7 +95,7 @@ test('matching names pass the audit without exposing identity warnings or changi
   const result = audit();
   assert.equal(result.allMatch, true);
   assert.equal(result.issueCount, 0);
-  assert.equal(result.verdict, 'NO DISCREPANCY');
+  assert.equal(result.verdict, 'MATCH');
   assert.equal(result.auditSummary.reviewRequiredCount || 0, 0);
   assert.equal(result.confidence, 100);
   assert.equal(result.canDispatchAutomatically, false);

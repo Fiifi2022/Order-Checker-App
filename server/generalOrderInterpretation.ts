@@ -12,7 +12,7 @@ import { extractGeneralInput, parseGeneralProducts, normalizeGeneralProductName,
 import { auditSemanticSchema, validateAuditSemantics, interpretAuditInputs, approvedProductName, type SemanticPair, type InterpretedAudit } from './auditSemantics';
 import { getAliases, matchVaccineName } from './vaccineService';
 import { geminiUsage } from './geminiUsage';
-import { getGeneralTerminologyAliases, generalCombinationTerminology, relevantGeneralAbbreviations, getGeneralMedicalAmbiguity, isGeneralBiologic, generalApprovedProductIdentities, resolveGeneralApprovedIdentity } from '../src/utils/generalMedicalTerminology';
+import { getGeneralTerminologyAliases, generalCombinationTerminology, relevantGeneralAbbreviations, getGeneralMedicalAmbiguity, isGeneralBiologic, generalApprovedProductIdentities, resolveGeneralApprovedIdentity, stripGeneralLeadingSpecification } from '../src/utils/generalMedicalTerminology';
 import { selectGeneralSemanticContext } from './generalSemanticContext';
 import type { GeneralSemanticReview } from '../src/utils/generalAuditTypes';
 
@@ -92,7 +92,7 @@ const interpretationIntent = /\b(?:need|send|give|please|pls|children|child)\b/i
 // routing only. The complete name, strength, form, unit and quantity are still
 // compared by the unchanged deterministic engine; specifications are never erased.
 function knownSpecifiedIdentity(name: string, normalizedName: string, known: Set<string>) {
-  if (known.has(normalizedName)) return true;
+  if (known.has(normalizedName) || known.has(normalizeGeneralProductName(stripGeneralLeadingSpecification(name)))) return true;
   const plain = key(name);
   for (const base of knownVocabulary!.plainNames) {
     if (!plain.startsWith(base + ' ')) continue;
@@ -127,6 +127,7 @@ export function generalInterpretationGaps(customer: string, fulfilment: string, 
       const line = stripGeneralListPrefix(generalOrderRelevantText(raw)), product = parsed.get(index + 1);
       const classification = classifyGeneralText(raw);
       if (classification.category === 'administrative') continue;
+      if ([input.facilityName, input.ordererName].some(value => value !== 'N/A' && line === value)) continue;
       if (classification.orderChange) {
         gaps.push({ kind: 'unparsed_text', originalText: generalOrderRelevantText(raw).trim(), source, possibleMatches: [], reason: 'An explicit order or destination change needs verification before dispatch.' });
         continue;

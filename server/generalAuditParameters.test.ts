@@ -137,6 +137,6 @@ test('an unclear additional product keeps verified items while the product field
   const result = await runGeneralSemanticAudit(headers + products + '\nInclude something unusual.', headers + products, {}, support, () => { throw Error('Unavailable'); });
   assert.equal(result.allMatch, false);
   const markup = html(result);
-  assert.match(markup, /Products and Quantities \(mandatory\)<\/span><span class="text-amber-800">MANUAL REVIEW REQUIRED/);
+  assert.match(markup, /Products and Quantities \(mandatory\)<\/span><span class="text-amber-800">CLARIFICATION REQUIRED/);
   assert.ok(result.items.every(item => item.status === 'match'));
 });

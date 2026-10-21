@@ -22,12 +22,15 @@ export function isGeneralNonOrderInformation(value: string): boolean {
   if (/^(?:(?:patient|client)\s+(?:is|has|presents|presented|reports|reported|complains|complained)\b|(?:a\s+)?\d{1,3}\s*[- ]?(?:years?\s*[- ]?old|y\/?o)\b|(?:male|female)(?:\s*[,;/ -]\s*\d{1,3}(?:\s*years?)?)?$|(?:age|sex|gender)\s+(?:\d{1,3}|male|female)\b)/i.test(text)) return true;
   if (/^(?:bsct|wbct|hb|haemoglobin|hemoglobin|bp|blood pressure|pulse|temperature|spo2|blood glucose|rbs|fbs)\s*(?::|;|=|>|<|is\b|of\b|greater\b|less\b|\d)/i.test(text)) return true;
   if (/^(?:(?:heavy|severe|mild|moderate|profuse|persistent|generalised|generalized|localised|localized|no|with|without)\s+)*(?:swelling|bleeding|clotting|pain|fever|vomiting|diarrhoea|diarrhea|dizziness|sweating|snake\s*bite|snakebite|bite wound)\b/i.test(text) && !/\b(?:vials?|boxes?|packs?|doses?|tablets?|syrup|medicine|drug|vaccine)\b/i.test(text)) return true;
+  if (/^(?:patient|client)\s+(?:needs?|requires?)\s+(?:close\s+|further\s+|urgent\s+)?(?:monitoring|observation|admission|review|referral|assessment)[.!]?$/i.test(text)) return true;
   if (/^(?:stable|unstable|critical|conscious|unconscious|alert|recovering|improving|deteriorating)(?:\s+(?:patient|client))?$/i.test(text)) return true;
   return /^(?:(?:contact|phone|telephone|tel|mobile)(?:\s+number)?\s*)?(?:\+?\d[\d ().-]{6,}\d)$/.test(text);
 }
 /** Preserve offsets, including values following a patient/clinical heading. */
 export function stripGeneralNonOrderInformation(text: string): string {
   let valueFollows = false;
+  // WhatsApp emphasis is presentation, never part of an identity or product.
+  text = text.replace(/(\*{1,2}|_{1,2}|`)(?=\S)([^\n]+?\S|\S)\1/g, '$2');
   return text.split(/\r?\n/).map(line => {
     const filtered = line.split(/(;|(?<=[.!?])\s+(?=[a-z])|,\s*(?=(?:please|pls|kindly|we need|i need|patient|client|age|sex|gender|status|symptoms?|bsct|wbct|contact|phone)\b))/i).map(part => {
       if (part === ';' || !part.trim()) return part;
@@ -73,6 +76,9 @@ function administrativeClause(value: string): boolean {
   if (isGeneralNonOrderInformation(text)) return true;
   if (genericStockCommunication(text)) return true;
   if (clinical.test(text)) return false;
+  if (/^(?:(?:i|we) )?hope (?:you (?:are|have been) (?:doing )?well|all is well|you are having a (?:good|great|nice) day)[.!]?$/i.test(text)) return true;
+  if (/^(?:how are you(?: doing)?|have a (?:good|great|nice) (?:day|weekend)|sorry for (?:the )?(?:delay|late reply)|thank you (?:very much|so much)|thanks (?:again|in advance))[.!?]?$/i.test(text)) return true;
+  if (/^(?:our|the) (?:nurse|doctor|staff|team|officer)(?: member)? (?:is|are) (?:on leave|off duty|on duty|away|unavailable|in a meeting)(?: (?:today|tomorrow|this (?:morning|afternoon|evening)))?$/i.test(text)) return true;
   if (temporalNotification(text)) return true;
   // Whole-sentence templates, never a keyword match: an unrecognized tail or
   // actual order instruction must remain available to the auditor.
@@ -93,14 +99,26 @@ function administrativeClause(value: string): boolean {
 function sentences(text: string) {
   return text.split(/(?<=[.!?])\s+(?=[a-z])/i).filter(Boolean);
 }
+/** Only a complete calendar date is metadata; ratios and product quantities
+ * with extra words remain available for extraction and validation. */
+function standaloneOrderDate(text: string): boolean {
+  const match = text.match(/^(?:(\d{4})[-/]([0-9]{1,2})[-/]([0-9]{1,2})|([0-9]{1,2})([/-])([0-9]{1,2})\5([0-9]{2}|[0-9]{4}))$/);
+  if (!match) return false;
+  const year = Number(match[1] || (match[7].length === 2 ? `20${match[7]}` : match[7]));
+  const month = Number(match[2] || match[6]), day = Number(match[3] || match[4]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 export function classifyGeneralText(raw: string): GeneralTextClassification {
   const text = raw.trim().replace(/^(?:[-*•]\s+|\d+[.)]\s+)/, '');
   if (isGeneralNonOrderInformation(text)) return { category: 'administrative', reason: 'Patient, clinical, status or contact information; excluded from order checks.' };
   // Specific operational directives take precedence over greetings, dates and
   // metadata prefixes, even when embedded in an otherwise routine footer.
   if (change.test(text) || revisedIdentity.test(text) || changedDestination.test(text) || revisedQuantity.test(text)) return { category: 'unresolved_order', reason: 'Explicit order or destination change requires verification.', orderChange: true };
+  if (standaloneOrderDate(text)) return { category: 'administrative', reason: 'Standalone order date; excluded from essential order checks.' };
   if (/^(?:delivery\s*\/\s*drop area|delivery drop area|drop area|delivery area|drop location|drop off area|district(?: name)?)\s*[:=]/i.test(text)) return { category: 'optional_order', reason: 'Explicit optional location information.' };
-  if (/^(?:name of orderer|orderer(?: name)?|requested by|requester|recipient|customer name|name of health facility|health facility|facility(?: name| id)?|hospital|clinic|products(?: and quantities)?|out of stock|available(?: products| items)?|in stock)\s*[:=.!]?$/i.test(text) || /^(?:name of orderer|orderer(?: name)?|requested by|requester|recipient|customer name|name of health facility|health facility|facility(?: name| id)?|hospital|clinic)\s*[:=]/i.test(text)) return { category: 'mandatory_order', reason: 'Explicit identity or order section.' };
+  if (/^(?:name of orderer|orderer(?: name)?|requested by|requester|recipient|customer name|name of health facility|health facility|facility(?: name| id)?|hospital|clinic|products?(?: and quantities)?|out of stock|available(?: products| items)?|in stock)\s*[:=.!]?$/i.test(text) || /^(?:name of orderer|orderer(?: name)?|requested by|requester|recipient|customer name|name of health facility|health facility|facility(?: name| id)?|hospital|clinic)\s*[:=]/i.test(text)) return { category: 'mandatory_order', reason: 'Explicit identity or order section.' };
   if (/^(?:(?:we are )?(?:currently )?out of stock(?: for (?:the )?following (?:items|products))?|we can prepare the following items we have in stock for delivery|available(?: products| items)?|no fulfilled products)[:.!]?$/i.test(text)) return { category: 'mandatory_order', reason: 'Stock or product section; quantities still require validation.' };
   // Check every sentence; an accepted prefix cannot hide an unrecognized tail.
   const clauses = sentences(text);

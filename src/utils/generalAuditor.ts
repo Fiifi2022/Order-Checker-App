@@ -1,7 +1,7 @@
-import { generalEssentialReviewNotices } from './generalAuditReviews';
+import { generalAuditClarifications, generalEssentialReviewNotices } from './generalAuditReviews';
 import { classifyGeneralText, generalOrderRelevantText } from './generalTextClassification';
 import type { AuditTiming } from '../../shared/auditPerformance';
-import { compareGeneralFacilities, normalizeGeneralDistrictName, findGeneralFacilityNames, hasGeneralFacilityType, normalizeGeneralFacilityName, type GeneralFacilityContext, type GeneralFacilityResult } from './generalFacility';
+import { compareGeneralFacilities, generalFacilityNamesMatch, normalizeGeneralDistrictName, findGeneralFacilityNames, hasGeneralFacilityType, normalizeGeneralFacilityName, type GeneralFacilityContext, type GeneralFacilityResult } from './generalFacility';
 import { expandGeneralMedicalTerms, getGeneralMedicalAmbiguity, stripGeneralRepeatedAlias, resolveGeneralApprovedIdentity } from './generalMedicalTerminology';
 import { generalQuantityBasis } from './generalPackaging';
 import { expandGeneralProductAcronyms, isGeneralBloodProduct } from './medicalProductAcronyms';
@@ -141,7 +141,7 @@ export function parseGeneralProducts(text: string, source: GeneralProductSource,
   text.split(/\r?\n/).forEach((originalText, index) => {
     if (classifyGeneralText(originalText).category === 'administrative' || classifyGeneralText(originalText).orderChange) return;
     const relevantText = generalOrderRelevantText(originalText);
-    const strippedLine = stripGeneralListPrefix(relevantText);
+    const strippedLine = stripGeneralListPrefix(relevantText).replace(/\\+\s*$/, '').trim();
     if (source === 'fulfillment_confirmation') {
       if (GENERAL_STOCK_SECTION.test(strippedLine)) {
         stockSection = relevantText.trim();
@@ -171,9 +171,12 @@ export function parseGeneralProducts(text: string, source: GeneralProductSource,
     if (match && ((match[2] === '[' && match[6] === ']') || (match[2] === '(' && match[6] === ')'))) { name = match[1]; quantity = match[3]; ratioRequestedQuantity = quantityValue(match[4]); unit = match[5] || match[7] || ''; }
     else {
       match = line.match(new RegExp(`^(${NUMBER})\\s*(${UNIT})?\\s+(?:of\\s+)?(.+?)\\s*[.!]?$`, 'i'));
-      if (match) { quantity = match[1]; unit = match[2] || ''; name = match[3]; }
+      // A leading strength or capacity belongs to the product, including when
+      // separated by a space (0.5 ml syringe, 250 mg tablets, 0.9% saline).
+      const startsWithSpecification = new RegExp(`^${NUMBER}\\s*(?:(?:mcg|mg|g|ml|l|iu)\\b|%)`, 'i').test(line);
+      if (match && !startsWithSpecification) { quantity = match[1]; unit = match[2] || ''; name = match[3]; }
       else {
-        match = line.match(new RegExp(`^(.+?)\\s*(?:[-–—:=]\\s*|\\s+)(?:\\[)?(${NUMBER})(?:\\s*/\\s*(${NUMBER}))?\\s*(${UNIT})?\\s*(?:\\])?\\s*[.!]?$`, 'i'));
+        match = line.match(new RegExp(`^(.+?)\\s*(?:[-–—:=·•]+\\s*|[.\u2026]+\\s*|\\s+)(?:\\[)?(${NUMBER})(?:\\s*/\\s*(${NUMBER}))?\\s*(${UNIT})?\\s*(?:\\])?\\s*[.!]?$`, 'i'));
         if (match) { name = match[1]; quantity = match[2]; ratioRequestedQuantity = match[3] === undefined ? undefined : quantityValue(match[3]); unit = match[4] || ''; }
       }
     }
@@ -446,6 +449,23 @@ export function locateGeneralSystemOrderer(text: string, customerOrdererName: st
   if (labelled !== 'N/A') return hasGeneralFacilityType(labelled) || /^.+\s+rch$/i.test(labelled) ? 'N/A' : labelled;
   const sentenceName = extractSentenceOrderer(text);
   if (sentenceName !== 'N/A') return sentenceName;
+  // A compact header may list the facility followed by the orderer without labels.
+  // Require one complete facility line and one person-shaped header before products;
+  // multiple names, patient context, directives and catalogue products remain unclear.
+  const lines = text.split(/\r?\n/).map(stripGeneralListPrefix).filter(Boolean);
+  const firstProduct = lines.findIndex(line => parseGeneralProducts(line, 'customer_request').length > 0);
+  if (firstProduct > 1 && !ORDERER_LABELS.some(label => fields.has(label))) {
+    const header = lines.slice(0, firstProduct);
+    const facilityLines = header.filter(line => {
+      const names = findGeneralFacilityNames(line);
+      return names.length === 1 && normalizeGeneralFacilityName(names[0]) === normalizeGeneralFacilityName(line);
+    });
+    const candidates = header.filter(line => !facilityLines.includes(line));
+    if (facilityLines.length === 1 && candidates.length === 1 && header.indexOf(candidates[0]) === header.indexOf(facilityLines[0]) + 1 &&
+        /^[\p{Lu}][\p{L}'’.-]*(?:\s+[\p{Lu}][\p{L}'’.-]*){1,4}$/u.test(candidates[0]) &&
+        !hasGeneralFacilityType(candidates[0]) && !getGeneralMedicalAmbiguity(candidates[0]) &&
+        !/\b(?:patient|client|name|clinical|request|order|product|urgent|please|vaccine|syringe|needle|tablet|injection|syrup|stock|quantity|network|status)\b/i.test(candidates[0])) return candidates[0];
+  }
   return findCurrentOrdererMention(text, customerOrdererName);
 }
 
@@ -527,7 +547,8 @@ export function runGeneralAuditor(customerRequest: string, fulfillmentConfirmati
     const parsedLines = new Set(extraction.products.map(product => product.line));
     text.split(/\r?\n/).forEach((line, index) => {
       const listed = line.trim().match(/^(?:(?:[-*•]\s*|\d+(?:\.(?!\d)|\))\s*|\d+\s+[-–—]\s*))+(.+)$/);
-      const headerProse = listed && source === 'fulfillment_confirmation' &&
+      const identifiedHeader = listed && [extraction.ordererName, extraction.facilityName].some(value => value !== 'N/A' && normalizeAuditText(listed[1]) === normalizeAuditText(value));
+      const headerProse = identifiedHeader || listed && source === 'fulfillment_confirmation' &&
         (GENERAL_STOCK_SECTION.test(listed[1]) || GENERAL_AVAILABLE_SECTION.test(listed[1]) || extractSentenceOrderer(listed[1]) !== 'N/A' || findCurrentOrdererMention(listed[1], customerExtraction.ordererName) !== 'N/A' ||
           extractSentenceFacility(listed[1], customerIdentity.facilityName) !== 'N/A' || findCurrentFacilityMention(listed[1], customerExtraction.facilityName) !== 'N/A');
       if (listed && !classifyGeneralText(line).orderChange && classifyGeneralText(line).category !== 'administrative' && !headerProse && /[a-z]/i.test(listed[1]) && !isMetadataLabel(listed[1].split(':')[0]) && !parsedLines.has(index + 1)) {
@@ -606,12 +627,43 @@ export function buildGeneralAuditCheckSummary(items: { status: string; requested
   return { totalChecks, passedChecks, failedChecks, discrepancyCount, confidence };
 }
 
+/** Clear an intermediate product review only when this source's complete identity
+ * and numeric evidence are accounted for by a final, paired comparison. */
+export function reconcileGeneralProductReviews(items: GeneralComparisonItem[], reviews: GeneralSemanticReview[], fields?: { facility: GeneralFacilityResult; orderer: GeneralFieldResult }): GeneralSemanticReview[] {
+  return reviews.filter(review => {
+    const text = generalOrderRelevantText(review.originalText).trim();
+    if (!text || /^products?(?: and quantities)?\s*[:=.!]?$/i.test(text)) return false;
+    if (classifyGeneralText(text).orderChange) return true;
+    const reviewedField = review.field || generalEssentialReviewNotices([review])[0]?.field;
+    if (reviewedField === 'ordererName' || reviewedField === 'facilityName') {
+      if (!fields || text.includes('\n')) return true;
+      const detail = reviewedField === 'ordererName' ? fields.orderer : fields.facility;
+      if (detail.status !== 'match') return true;
+      const expected = detail[review.source === 'customer_request' ? 'whatsappValue' : 'fulfillmentValue'];
+      const extracted = extractGeneralIdentity(text, review.source);
+      const actual = reviewedField === 'ordererName' ? extracted.ordererName : extracted.facilityName;
+      if (actual === 'N/A') return true;
+      return !(reviewedField === 'ordererName' ? generalOrdererNamesMatch(actual, expected) : generalFacilityNamesMatch(actual, expected));
+    }
+    const parsed = parseGeneralProducts(text, review.source);
+    if (!parsed.length || parsed.some(product => getGeneralMedicalAmbiguity(product.name) ||
+      /\b(?:need|want|request|send|give|please|pls|children|child)\b/i.test(product.name))) return true;
+    const parsedLines = new Set(parsed.map(product => product.line));
+    if (text.split('\n').some((line, index) => line.trim() && !parsedLines.has(index + 1))) return true;
+    return !parsed.every(product => items.some(item =>
+      !['missing item', 'extra item'].includes(item.status) &&
+      item.provenance.some(evidence => evidence.source === review.source &&
+        evidence.normalizedName === product.normalizedName && evidence.quantity === product.quantity && evidence.unit === product.unit &&
+        evidence.ratioRequestedQuantity === product.ratioRequestedQuantity)));
+  });
+}
+
 /** Rebuild every product-derived total while retaining authoritative header checks. */
 export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFacilityResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = [], parameters: Pick<GeneralAuditDetails, 'dropArea' | 'district'> = {}) {
   // Rebuilds and older semantic responses must obey the same classification.
   // Strip routine clauses before review counts, confidence, and final status.
   // Reconcile duplicate source reviews after stripping mixed notification text.
-  semanticReviews = [...new Map(semanticReviews.flatMap(review => {
+  semanticReviews = [...new Map(reconcileGeneralProductReviews(items, semanticReviews, { facility: facilityName, orderer: ordererName }).flatMap(review => {
     const originalText = generalOrderRelevantText(review.originalText).trim();
     return originalText ? [[`${review.source}:${originalText}`, { ...review, originalText }] as const] : [];
   })).values()];
@@ -667,20 +719,16 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   const reviewRequiredCount = Number(facilityReview) + essentialReviewCount + missingRequired.length + optionalReviews.length;
   if (reviewRequiredCount) auditSummary.reviewRequiredCount = reviewRequiredCount;
   const allMatch = summary.allMatch && pendingOrderLimitCount === 0 && !facilityReview && essentialReviewCount === 0 && missingRequired.length === 0 && optionalReviews.length === 0;
-  const finalStatus = summary.issueCount > 0 ? 'DISCREPANCY DETECTED' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : optionalReviews.length ? 'MANUAL REVIEW REQUIRED' : facilityReview ? 'ORDER CHECKS INCOMPLETE' : essentialReviewCount ? 'ORDER DETAILS REQUIRED' : pendingOrderLimitCount > 0 ? 'ORDER LIMIT VALIDATION REQUIRED' :
+  const finalStatus = summary.issueCount > 0 ? 'DISCREPANCY DETECTED' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : optionalReviews.length ? 'LOCATION CLARIFICATION REQUIRED' : facilityReview ? 'ORDER CHECKS INCOMPLETE' : essentialReviewCount ? 'ORDER DETAILS REQUIRED' : pendingOrderLimitCount > 0 ? 'ORDER LIMIT VALIDATION REQUIRED' :
     limitedCount && requestedStockCount ? 'PARTIALLY FULFILLED — CONFIRMED' : limitedCount ? 'ORDER LIMIT APPLIED — CONFIRMED' :
-    stockStatus === 'out of stock' ? 'OUT OF STOCK — CONFIRMED' : stockStatus === 'partially out of stock' ? 'PARTIALLY OUT OF STOCK — CONFIRMED' : 'CONFIRMED — NO DISCREPANCY';
+    stockStatus === 'out of stock' ? 'OUT OF STOCK — CONFIRMED' : stockStatus === 'partially out of stock' ? 'PARTIALLY OUT OF STOCK — CONFIRMED' : 'MATCH — ORDER VERIFIED';
   const confirmedDecisions = Object.fromEntries(items.filter(item => item.fulfillment.orderLimitDecision !== undefined).map(item => [item.fulfillment.key, item.fulfillment.orderLimitDecision!]));
-  const message = missingRequired.length ? `Missing required information: ${missingRequired.join(', ')}. Verify the current inputs before dispatch.` : optionalReviews.length ? 'Delivery/drop area or district information conflicts. Manually verify the highlighted locations before dispatch.' : essentialReviewCount && !summary.issueCount ? 'Confirm the highlighted essential order fields.' : facilityReview && !summary.issueCount ? 'Order comparison completed.' : summary.issueCount > 0 ? `${summary.issueCount} discrepanc${summary.issueCount === 1 ? 'y' : 'ies'} found — review before dispatch.${requestedStockCount ? ` ${requestedStockCount} requested product${requestedStockCount === 1 ? ' is' : 's are'} currently out of stock.` : ''}` :
+  const message = missingRequired.length ? 'Essential order details are incomplete.' : optionalReviews.length ? 'Delivery/drop area or district information conflicts. Manually verify the highlighted locations before dispatch.' : essentialReviewCount && !summary.issueCount ? 'Confirm the highlighted essential order fields.' : facilityReview && !summary.issueCount ? 'Order comparison completed.' : summary.issueCount > 0 ? `${summary.issueCount} discrepanc${summary.issueCount === 1 ? 'y' : 'ies'} found — review before dispatch.${requestedStockCount ? ` ${requestedStockCount} requested product${requestedStockCount === 1 ? ' is' : 's are'} currently out of stock.` : ''}` :
     requestedStockCount && limitedCount ? `Order matches, with ${requestedStockCount} product${requestedStockCount === 1 ? '' : 's'} currently out of stock and some requested quantities affected by an order limit.` :
     requestedStockCount ? `Order matches, with ${requestedStockCount} product${requestedStockCount === 1 ? '' : 's'} currently out of stock.` :
-    limitedCount ? 'Order matches, but some requested quantities were affected by an order limit.' : facilityName.requiresDispatchConfirmation !== false ? 'All order details match.' : 'All audit checks passed — ready for dispatch.';
-  const warnings = [
-    ...missingRequired.map(field => `MISSING REQUIRED INFORMATION — ${field}`),
-    ...reviewNotices.map(notice => notice.message),
-    ordererName.status !== 'match' && ordererName.status !== 'mismatch' ? 'ORDERER NAME NOT FOUND' : '',
-    facilityName.status !== 'review required' && facilityName.status !== 'match' && facilityName.status !== 'mismatch' ? 'FACILITY NOT FOUND' : ''
-  ].filter(Boolean);
+    limitedCount ? 'Order matches, but some requested quantities were affected by an order limit.' : facilityName.requiresDispatchConfirmation !== false ? 'Order verified. Audit clearance granted.' : 'All audit checks passed — ready for dispatch.';
+  const warnings = generalAuditClarifications({ facility: facilityName, orderer: ordererName,
+    productCount: { requested: requestedCount, found: systemCount, status: requestedCount === systemCount ? 'match' : 'mismatch' }, semanticReviews }).map(notice => notice.message);
   const requiresFacilityConfirmation = facilityName.requiresDispatchConfirmation !== false || facilityName.identityStatus !== 'resolved';
   const dispatchReadiness = { requiresFacilityConfirmation, canDispatchAutomatically: allMatch && !requiresFacilityConfirmation };
   const generalAudit: GeneralAuditDetails = { dispatchReadiness, facility: facilityName, orderer: ordererName, phone, dropArea: parameters.dropArea, district: parameters.district,
@@ -688,8 +736,8 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
     productCount: { requested: requestedCount, found: systemCount, status: requestedCount === systemCount ? 'match' : 'mismatch' }, discrepancies,
     counts: { fullySupplied: items.filter(item => item.fulfillment.fulfillmentStatus === 'fully supplied').length, outOfStock: stockCount, orderLimited: limitedCount, pendingOrderLimits: pendingOrderLimitCount },
     products: items.map(item => item.fulfillment), orderLimitDecisions: confirmedDecisions, pendingOrderLimitCount, stockStatus, finalStatus };
-  return { items, generalAudit, ...summary, allMatch, auditSummary, ...dispatchReadiness, confidence: auditSummary.confidence,
-    verdict: summary.issueCount > 0 ? 'DISCREPANCY' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : facilityReview || essentialReviewCount || optionalReviews.length ? 'REVIEW REQUIRED' : pendingOrderLimitCount ? 'ORDER LIMIT VALIDATION REQUIRED' : 'NO DISCREPANCY', insights: discrepancies };
+  return { items, generalAudit, ...summary, allMatch, status: allMatch ? 'resolved' as const : 'pending' as const, auditSummary, ...dispatchReadiness, confidence: auditSummary.confidence,
+    verdict: summary.issueCount > 0 ? 'DISCREPANCY' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : facilityReview || essentialReviewCount || optionalReviews.length ? 'CLARIFICATION REQUIRED' : pendingOrderLimitCount ? 'ORDER LIMIT VALIDATION REQUIRED' : 'MATCH', insights: discrepancies };
 }
 
 /** Apply a user's answer immediately without reinterpreting products or headers. */

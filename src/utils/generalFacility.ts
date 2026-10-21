@@ -189,7 +189,8 @@ export function compareGeneralFacilities(customer: string, fulfillment: string, 
     for (const name of vocabulary(record).names) names.set(name, [...(names.get(name) || []), record]);
     if (record.id) ids.set(record.id, [...(ids.get(record.id) || []), record]);
   }
-  const byName = (name: string) => names.get(name) || [];
+  const byName = (name: string) => names.get(name) || records.filter(record =>
+    vocabulary(record).names.some(alias => generalFacilityNamesMatch(alias, name)));
   const candidates = (name: string, text: string, id: string) => {
     const district = normalizeGeneralDistrictName(metadata(text, 'district'), context), region = clean(metadata(text, 'region'));
     return byName(name).filter(record => (!id || record.id === id) &&

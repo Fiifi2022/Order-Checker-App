@@ -110,7 +110,7 @@ test('explicit zero fulfillment records out of stock without a discrepancy', () 
   assert.equal(result.items[0].status, 'out of stock');
   assert.equal(result.issueCount, 0);
   assert.equal(result.allMatch, true);
-  assert.equal(result.verdict, 'NO DISCREPANCY');
+  assert.equal(result.verdict, 'MATCH');
   assert.deepEqual(result.generalAudit.discrepancies, []);
 });
 
@@ -182,7 +182,7 @@ test('different or omitted dates never raise a General Auditor discrepancy', () 
     const result = runGeneralAuditor('Date: 2026-10-03\n' + completeRequest, systemDate + completeSystem);
     assert.equal(result.allMatch, true);
     assert.equal(result.issueCount, 0);
-    assert.equal(result.verdict, 'NO DISCREPANCY');
+    assert.equal(result.verdict, 'MATCH');
     assert.deepEqual(result.items.map(item => item.name), ['ORS']);
   }
 });

@@ -98,7 +98,7 @@ export async function resolveGeneralOrderExtraction(customer: DeterministicGener
             text = text.split('\n').map(raw => raw === line ? `${product.name} - ${product.quantity} ${product.unit}` : raw).join('\n');
           }
         }
-        return extractGeneralOrderDeterministically(text, source, support.facilityContext);
+        return extractGeneralOrderDeterministically(text, source, support.facilityContext, undefined, input.order.products.map(product => product.name));
       };
       const a = merge('customer', customer), b = merge('fulfillment', fulfillment);
       return { customer: a, fulfillment: b, reviews: reviewUnresolved(a, b), semanticAnalysis: { status: 'used' as const, reason: 'Validated unresolved-field extraction; deterministic evidence retained' } };

@@ -1,9 +1,9 @@
 import { generalFacilityDisplayStatus } from '../utils/generalFacility';
-import { generalEssentialReviewNotices } from '../utils/generalAuditReviews';
+import { generalAuditClarifications } from '../utils/generalAuditReviews';
 import type { GeneralAuditDetails as Details } from '../utils/generalAuditTypes';
 
 export default function GeneralAuditDetails({ details }: { details: Details }) {
-  const reviewNotices = generalEssentialReviewNotices(details.semanticReviews).filter(notice => notice.field !== 'facilityName');
+  const reviewNotices = generalAuditClarifications(details);
   const optionalAbsent = { whatsappValue: 'N/A', fulfillmentValue: 'N/A', status: 'optional not provided' as const };
   const productStatus = details.productCount.requested === 0 || details.productCount.found === 0 ? 'missing from customer request'
     : details.products.some(product => product.fulfillmentStatus === 'discrepancy') ? 'mismatch'
@@ -17,11 +17,11 @@ export default function GeneralAuditDetails({ details }: { details: Details }) {
   const statusText = (field: typeof fields[number]) => {
     if (field.status === 'optional not provided' || !field.required && (field.status === 'missing from customer request' || field.status === 'not available in system entry')) return field.customer === 'N/A' && field.system === 'N/A' ? 'OPTIONAL — NOT PROVIDED'
       : `OPTIONAL — NOT PROVIDED IN ${field.customer === 'N/A' ? 'CUSTOMER REQUEST' : 'FULFILMENT'}`;
-    if (field.required && (field.status === 'missing from customer request' || field.status === 'not available in system entry')) return 'MISSING REQUIRED INFORMATION';
-    if (field.status === 'review required') return field.label === 'Facility Name' ? 'NOT COMPARED' : 'MANUAL REVIEW REQUIRED';
-    if (field.status === 'match') return field.label === 'Facility Name' ? 'MATCH' : 'VERIFIED MATCH';
-    if (field.label === 'Delivery/Drop Area') return 'LOCATION MISMATCH — MANUAL REVIEW REQUIRED';
-    if (field.label === 'District') return 'DISTRICT MISMATCH — MANUAL REVIEW REQUIRED';
+    if (field.required && (field.status === 'missing from customer request' || field.status === 'not available in system entry')) return field.label === 'Name of Orderer' ? 'ORDERER NAME NOT FOUND — MISSING REQUIRED INFORMATION' : field.label === 'Facility Name' ? 'FACILITY NOT FOUND — MISSING REQUIRED INFORMATION' : 'MISSING REQUIRED INFORMATION';
+    if (field.status === 'review required') return field.label === 'Facility Name' ? 'NOT COMPARED' : 'CLARIFICATION REQUIRED';
+    if (field.status === 'match') return field.label === 'Facility Name' ? 'MATCH' : field.label === 'Products and Quantities' ? 'ALL MATCHED' : 'VERIFIED MATCH';
+    if (field.label === 'Delivery/Drop Area') return 'LOCATION MISMATCH';
+    if (field.label === 'District') return 'DISTRICT MISMATCH';
     return 'DISCREPANCY';
   };
   return <section className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm space-y-4" aria-label="General audit field results">
@@ -32,13 +32,9 @@ export default function GeneralAuditDetails({ details }: { details: Details }) {
         <span>{field.label}{field.required ? ' (mandatory)' : field.label === 'Delivery/Drop Area' || field.label === 'District' ? ' (optional)' : ''}</span>
         <span className={field.status === 'match' ? 'text-green-700' : field.status === 'mismatch' ? 'text-red-700' : field.status === 'optional not provided' || field.label === 'Facility Name' && field.status === 'review required' ? 'text-slate-600' : 'text-amber-800'}>{statusText(field)}</span>
       </div>
-      {(field.label === 'Name of Orderer' || field.label === 'Facility Name') && (field.status === 'mismatch' || field.status === 'not available in system entry' || field.status === 'missing from customer request') && <div className="text-red-800 space-y-1">
-        {field.status !== 'mismatch' && <p>{field.label === 'Name of Orderer' ? 'ORDERER NAME NOT FOUND' : 'FACILITY NOT FOUND'}</p>}
-        <p>{field.status === 'mismatch'
-          ? `${field.label === 'Name of Orderer' ? 'Orderer name' : 'Facility name'} does not match between the Customer Request and Fulfilment Confirmation.`
-          : `${field.label === 'Name of Orderer' ? 'Orderer name' : 'Facility name'} was not found in the ${field.status === 'missing from customer request' ? 'Customer Request' : 'Fulfilment Confirmation'}. Missing required information. Review required.`}</p>
-        <p className="font-semibold">{field.label === 'Name of Orderer' ? "Verify the orderer's name before dispatch." : 'Enter the facility name.'}</p>
-      </div>}
+      {(field.label === 'Name of Orderer' || field.label === 'Facility Name') && field.status === 'mismatch' && <p className="text-red-800">
+        {field.label === 'Name of Orderer' ? 'Orderer name' : 'Facility name'} does not match between the Customer Request and Fulfilment Confirmation.
+      </p>}
       {field.status === 'mismatch' && <p>{field.label === 'Name of Orderer' ? 'ORDERER NAME MISMATCH' : field.label === 'Facility Name' ? 'FACILITY NAME MISMATCH' : ''}</p>}
       <div className="bg-slate-50 p-2 rounded-lg space-y-1">
         <p>Customer Request: {field.customer === 'N/A' ? 'Not available' : field.customer}</p>

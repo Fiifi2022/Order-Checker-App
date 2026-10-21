@@ -1,5 +1,5 @@
 import { generalFacilityDisplayStatus } from '../utils/generalFacility';
-import { generalEssentialReviewNotices } from '../utils/generalAuditReviews';
+import { generalAuditClarifications } from '../utils/generalAuditReviews';
 import type { GeneralAuditDetails, GeneralProductResult } from '../utils/generalAuditTypes';
 import { generalProductDisplayName } from '../utils/generalAuditor';
 import GeneralProductCategoryBadge from './GeneralProductCategoryBadge';
@@ -32,9 +32,9 @@ export function GeneralOrderLimitPrompt({ product, onDecision, disabled = false 
 }
 
 export default function GeneralFulfillmentSummary({ details }: { details: GeneralAuditDetails }) {
-  const notices = generalEssentialReviewNotices(details.semanticReviews);
+  const notices = generalAuditClarifications(details);
   const fieldWarnings = new Set(notices.map(notice => notice.message));
-  const obsoleteWarning = /UNRESOLVED TEXT|Product or quantity remains unresolved|Some text could not be verified automatically|FACILITY REVIEW REQUIRED|multiple facility records|Verify the facility ID|Manually verify the facility|Possible facility match|Facility: Confirm/i;
+  const obsoleteWarning = /ORDERER NAME NOT FOUND|FACILITY NOT FOUND|MISSING REQUIRED INFORMATION —|UNRESOLVED TEXT|Product or quantity remains unresolved|Some text could not be verified automatically|FACILITY REVIEW REQUIRED|multiple facility records|Verify the facility ID|Manually verify the facility|Possible facility match|Facility: Confirm/i;
   const facilityNameMatched = generalFacilityDisplayStatus(details.facility) === 'match';
   const reviewCount = Math.max(0, (details.auditSummary?.reviewRequiredCount || 0) - Number(details.facility.status === 'review required' && facilityNameMatched));
   const status = /POSSIBLE FACILITY MATCH/i.test(details.finalStatus) ? 'ORDER CHECKS' : /UNRESOLVED TEXT/i.test(details.finalStatus) ? notices.length ? 'ORDER DETAILS REQUIRED' : 'ORDER CHECKS' : details.finalStatus;
@@ -69,6 +69,6 @@ export default function GeneralFulfillmentSummary({ details }: { details: Genera
         </li>)}</ul>
       </div> : null;
     })}
-    <p className="text-xs font-semibold">Audit Result: {details.discrepancies.length ? 'Discrepancy Detected' : details.auditSummary?.missingRequiredCount ? 'Missing Required Information' : reviewCount ? 'Manual Review Required' : details.pendingOrderLimitCount ? 'Awaiting Order Limit Validation' : 'VERIFIED MATCH'}</p>
+    <p className="text-xs font-semibold">Audit Result: {details.discrepancies.length ? 'Discrepancy Detected' : details.auditSummary?.missingRequiredCount ? 'Missing Required Information' : reviewCount ? 'Clarification Required' : details.pendingOrderLimitCount ? 'Awaiting Order Limit Validation' : 'MATCH — CLEARED'}</p>
   </section>;
 }

@@ -1,11 +1,11 @@
 import { getCatalogRevision } from '../shared/productCatalog';
 import { getGeneralVaccineCatalogVersion } from '../shared/generalVaccineCatalog';
 import { Type } from '@google/genai';
-import { extractGeneralInput, parseGeneralProducts, normalizeGeneralProductName, isMetadataLabel, type GeneralProductSource } from './generalAuditor';
+import { extractGeneralInput, parseGeneralProducts, normalizeGeneralProductName, stripGeneralListPrefix, isMetadataLabel, type GeneralProductSource } from './generalAuditor';
 import { findGeneralFacilityNames, normalizeGeneralFacilityName, type GeneralFacilityContext } from '../src/utils/generalFacility';
 import { classifyGeneralText, stripGeneralNonOrderInformation } from '../src/utils/generalTextClassification';
 import { medicalProductAcronyms } from '../src/utils/medicalProductAcronyms';
-import { getGeneralTerminologyAliases, generalApprovedProductIdentities, resolveGeneralApprovedIdentity, getGeneralMedicalAmbiguity } from '../src/utils/generalMedicalTerminology';
+import { getGeneralTerminologyAliases, generalApprovedProductIdentities, resolveGeneralApprovedIdentity, getGeneralMedicalAmbiguity, stripGeneralLeadingSpecification } from '../src/utils/generalMedicalTerminology';
 import packaging from '../src/utils/generalPackagingCatalogue.json';
 
 export interface StructuredGeneralOrder {
@@ -73,10 +73,14 @@ export function redactGeneralClinicalText(text: string) {
   }).join('\n');
 }
 
-export function extractGeneralOrderDeterministically(raw: string, source: GeneralProductSource, context: GeneralFacilityContext = {}, reference?: StructuredGeneralOrder): DeterministicGeneralOrder {
+export function extractGeneralOrderDeterministically(raw: string, source: GeneralProductSource, context: GeneralFacilityContext = {}, reference?: StructuredGeneralOrder, explicitProductNames: string[] = []): DeterministicGeneralOrder {
   const { entries, normalized: vocabulary } = currentVocabulary();
   const plain = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const knownName = (name: string) => vocabulary.has(normalizeGeneralProductName(name)) || entries.some(entry => {
+  const explicitNames = new Set(explicitProductNames.map(normalizeGeneralProductName));
+  // Specifications can precede the catalogue label as well as follow it.
+  // Remove them only for recognition; the original specification reaches comparison.
+  const knownName = (name: string) => explicitNames.has(normalizeGeneralProductName(name)) || vocabulary.has(normalizeGeneralProductName(name)) ||
+    vocabulary.has(normalizeGeneralProductName(stripGeneralLeadingSpecification(name))) || entries.some(entry => {
     const candidate = plain(name), base = plain(entry);
     if (!candidate.startsWith(base + ' ')) return false;
     const suffix = candidate.slice(base.length).replace(/(?<![a-z])(?:mcg|mg|g|ml|l|iu|units?|adult|paediatric|pediatric|oral|iv|im|sc|syrup|suspension|tablets?|capsules?|injection|infusion|solution|cream|ointment|gel|powder|bottles?)(?![a-z])/gi, '');
@@ -94,7 +98,13 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
     improved = true;
     return `\nOrderer: ${name.trim()}\nFacility: ${facility.trim()}\n`;
   });
-  text = text.replace(labelBoundary, (_, boundary, field) => `\n${/^ordered by$/i.test(field) ? 'Orderer' : field}: `);
+  text = text.split('\n').map(line => {
+    const products = parseGeneralProducts(line, source);
+    // A word such as "Vaccine" inside a complete catalogue product name is
+    // not a metadata label, even when its quantity follows an equals sign.
+    return products.length === 1 && knownName(products[0].name) ? line
+      : line.replace(labelBoundary, (_, boundary, field) => `\n${/^ordered by$/i.test(field) ? 'Orderer' : field}: `);
+  }).join('\n');
   text = text.replace(/;\s*/g, '\n').replace(/([.!?])\s+(?=[a-z])/gi, (match, mark, offset, input) => /(?:\b(?:dr|mr|mrs|ms|prof)|\d)$/i.test(input.slice(0, offset)) ? match : `${mark}\n`);
   const prepared = text.split(/\r?\n/).map(line => {
     const plain = line.trim();
@@ -163,6 +173,7 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
   const evidenceByLine = new Map(extracted.products.map(product => [product.line, product]));
   const unresolvedText = text.split('\n').filter((line, index) => {
     if (!line.trim() || classifyGeneralText(line).category === 'administrative') return false;
+    if ([extracted.facilityName, extracted.ordererName].some(value => value !== 'N/A' && stripGeneralListPrefix(line) === value)) return false;
     if (isMetadataLabel(line.split(/[:=]/)[0]) && !/^(?:quantity|qty|amount)\b/i.test(line)) return false;
     // Section-derived zero quantities are explicit stock evidence from the whole message.
     const evidence = evidenceByLine.get(index + 1);

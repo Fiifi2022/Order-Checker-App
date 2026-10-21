@@ -163,6 +163,6 @@ test('API completion preserves an out-of-stock record without reviving a legacy 
   assert.equal(record.items[0].found, '0');
   assert.equal(record.hasOutOfStockItems, true);
   assert.equal(record.issueCount, 0);
-  assert.equal(record.verdict, 'NO DISCREPANCY');
+  assert.equal(record.verdict, 'MATCH');
   assert.doesNotMatch(renderDetails(record), /DISCREPANCY FOUND|MISMATCH/);
 });

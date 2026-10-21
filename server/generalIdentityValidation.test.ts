@@ -86,7 +86,7 @@ test('greetings independently identify the orderer and facility even when produc
     assert.equal(result.generalAudit.facility.status, facilityStatus);
     assert.equal(result.issueCount, issues);
     assert.equal(result.allMatch, issues === 0);
-    assert.equal(result.generalAudit.message, issues === 0 ? 'All order details match.' :
+    assert.equal(result.generalAudit.message, issues === 0 ? 'Order verified. Audit clearance granted.' :
       `${issues} discrepanc${issues === 1 ? 'y' : 'ies'} found — review before dispatch.`);
   }
 });
@@ -120,8 +120,8 @@ test('missing requested identity fields require review and cannot be waived by a
     assert.equal(confirmed.allMatch, false);
     assert.equal(confirmed.generalAudit.finalStatus, 'MISSING REQUIRED INFORMATION');
     const html = renderToStaticMarkup(createElement(GeneralAuditDetails, { details: confirmed.generalAudit }));
-    assert.match(html, /Review required/);
-    assert.match(html, /Enter the facility name|Verify the orderer&#x27;s name before dispatch/);
+    assert.match(html, /MISSING REQUIRED INFORMATION/);
+    assert.match(html, /Facility: Confirm the requesting health facility|Orderer: Confirm the name of the person placing the order/);
     assert.match(html, /text-amber-800/);
   }
   const stock = runGeneralAuditor(requiredRequest, 'Paracetamol [0/1]');
