@@ -1,3 +1,4 @@
+import { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 import { getCatalogRevision } from '../shared/productCatalog';
 import { getGeneralVaccineCatalogVersion } from '../shared/generalVaccineCatalog';
 import { Type } from '@google/genai';
@@ -33,6 +34,7 @@ const request = /\b(?:need|request|send|supply|order|quantity|qty|vials?|vails?|
 const label = '(?:name of orderer|orderer name|ordered by|requested by|orderer|name of health facility|health facility|facility name|name of facility|facility|hospital|delivery\\s*\\/\\s*drop area|delivery drop area|delivery area|drop area|district(?: name)?|product|item|vaccine|medicine|drug|quantity|qty|amount)';
 const labelBoundary = new RegExp(`(^|[;\\n]|[.!?]\\s+|\\s+(?=${label}\\s*[:;=]))(${label})\\s*[:;=]\\s*`, 'gi');
 const lexicon = () => [...new Set([
+  ...Object.entries(CLINICAL_PAIRINGS).flatMap(([name, pairing]) => [name, pairing.accessoryCanonical]),
   ...packaging.map(row => row.name), ...medicalProductAcronyms.flatMap(row => [row.name, ...row.aliases]),
   ...getGeneralTerminologyAliases().flatMap(row => [row.name, ...row.aliases]),
   ...generalApprovedProductIdentities.flatMap(row => [row.canonicalName, ...row.aliases]),

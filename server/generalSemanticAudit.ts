@@ -1,3 +1,4 @@
+import { resolveGeneralOrdererName } from './generalOrdererFallback';
 import { getGeneralMedicalAmbiguity, resolveGeneralApprovedIdentity } from '../src/utils/generalMedicalTerminology';
 import { generalEssentialReviewNotices } from '../src/utils/generalAuditReviews';
 import { extractGeneralOrderDeterministically, type StructuredGeneralOrder } from './generalOrderExtraction';
@@ -135,7 +136,8 @@ export async function runGeneralSemanticAudit(customer: string, fulfilment: stri
   if (!hybrid) {
     const audited = await auditGeneralExtractedText(customer, fulfilment, decisions, support, getClient);
     const reviews = audited.generalAudit.semanticReviews || [];
-    const result = deferUncertainProducts(audited, reviews.some(review => review.source === 'customer_request'), reviews.some(review => review.source === 'fulfillment_confirmation'));
+    let result = deferUncertainProducts(audited, reviews.some(review => review.source === 'customer_request'), reviews.some(review => review.source === 'fulfillment_confirmation'));
+    result = await resolveGeneralOrdererName(result, support, getClient);
     return { ...result, extractedOrder: finalStructuredOrder(a.order, 'customer_request', result), fulfilledOrder: finalStructuredOrder(b.order, 'fulfillment_confirmation', result) };
   }
   const extraction = await resolveGeneralOrderExtraction(a, b, getClient, support);
@@ -150,5 +152,6 @@ export async function runGeneralSemanticAudit(customer: string, fulfilment: stri
   const customerUncertain = extraction.customer.order.unresolvedFields.includes('products');
   const fulfillmentUncertain = extraction.fulfillment.order.unresolvedFields.includes('products');
   result = deferUncertainProducts(result, customerUncertain, fulfillmentUncertain);
+  result = await resolveGeneralOrdererName(result, support, getClient);
   return { ...result, extractedOrder: finalStructuredOrder(extraction.customer.order, 'customer_request', result), fulfilledOrder: finalStructuredOrder(extraction.fulfillment.order, 'fulfillment_confirmation', result) };
 }

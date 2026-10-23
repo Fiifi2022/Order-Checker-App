@@ -48,7 +48,7 @@ test('current raw inputs survive parsing, a legacy API response, and actual fiel
   assert.match(html, /Customer Request: Gbimsi CHPS/);
   assert.match(html, /ORDERER NAME NOT FOUND/);
   assert.match(html, /FACILITY NOT FOUND/);
-  assert.match(html, /System Entry: Not found/);
+  assert.match(html, /Fulfilment Confirmation: Not found/);
   assert.match(html, /System Entry: Not available/);
   assert.doesNotMatch(JSON.stringify(record) + html, /Orderer Name Missing|Facility Name Missing|Unrelated old product/);
 });
@@ -71,7 +71,7 @@ test('different system names render mismatches rather than missing customer fiel
   assert.match(html, /ORDERER NAME MISMATCH/);
   assert.match(html, /FACILITY NAME MISMATCH/);
   assert.match(html, /Customer Request: Isaac Awuyem/);
-  assert.match(html, /System Entry: John Mensah/);
+  assert.match(html, /Fulfilment Confirmation: John Mensah/);
   assert.doesNotMatch(html, /MISSING/);
 });
 
@@ -111,7 +111,7 @@ test('orderer found in fulfillment sentence survives API completion and renders 
   const record = completeGeneralAuditRun(run, legacyResponse);
   assert.equal(record.generalAudit.orderer.status, 'match');
   const html = renderDetails(record);
-  assert.match(html, /System Entry: Isaac Awuyem/);
+  assert.match(html, /Fulfilment Confirmation: Isaac Awuyem/);
   assert.match(html, /FACILITY NOT FOUND/);
   assert.doesNotMatch(html, /ORDERER NAME MISMATCH|ORDERER NAME MISSING/);
 });
@@ -122,7 +122,7 @@ test('different sentence orderer renders the current name and an orderer discrep
   assert.equal(record.auditSummary.missingRequiredCount, 1);
   assert.equal(record.verdict, 'DISCREPANCY');
   const html = renderDetails(record);
-  assert.match(html, /System Entry: John Mensah/);
+  assert.match(html, /Fulfilment Confirmation: John Mensah/);
   assert.match(html, /ORDERER NAME MISMATCH/);
   assert.match(html, /Orderer Name Mismatch/);
 });

@@ -1,3 +1,4 @@
+import { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 import { classifyGeneralText, generalOrderRelevantText } from '../src/utils/generalTextClassification';
 import { getGeneralVaccineCatalogVersion } from '../shared/generalVaccineCatalog';
 import { optionalAuditAi } from './auditBudget';
@@ -18,7 +19,7 @@ import type { GeneralSemanticReview } from '../src/utils/generalAuditTypes';
 
 // Explicit identities already supplied in OrderCheck requirements, not guessed strengths.
 
-const currentGeneralProductCatalog = () => [...new Set([...getGeneralTerminologyAliases().map(row => row.name), ...packaging.map(row => row.name), ...medicalProductAcronyms.map(row => row.name), ...intentAliases.map(row => row.name), ...generalApprovedProductIdentities.map(row => row.canonicalName)])];
+const currentGeneralProductCatalog = () => [...new Set([...Object.entries(CLINICAL_PAIRINGS).flatMap(([name, pairing]) => [name, pairing.accessoryCanonical]), ...getGeneralTerminologyAliases().map(row => row.name), ...packaging.map(row => row.name), ...medicalProductAcronyms.map(row => row.name), ...intentAliases.map(row => row.name), ...generalApprovedProductIdentities.map(row => row.canonicalName)])];
 const currentGeneralProductAliases = () => [...medicalProductAcronyms.map(row => ({ name: row.name, aliases: row.aliases, contextual: !!row.contextual, note: row.note })), ...(getCatalogRevision() ? [] : intentAliases), ...getGeneralTerminologyAliases(), generalCombinationTerminology, ...generalApprovedProductIdentities.map(row => ({ name: row.canonicalName, canonicalId: row.canonicalId, aliases: [...row.aliases], contextual: false }))];
 export const generalProductCatalog = currentGeneralProductCatalog();
 export const generalProductAliases = currentGeneralProductAliases();

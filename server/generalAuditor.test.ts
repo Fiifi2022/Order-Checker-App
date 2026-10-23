@@ -418,7 +418,7 @@ test('sentence names normalize case, repeated spaces and harmless punctuation', 
 });
 
 test('explicit different orderer names create mismatches without first-name fuzzy matching', () => {
-  for (const system of ['Order received for John Mensah.', 'Requested by Isaac Mensah', 'Isaac Mensah placed this order', 'Order received from Isaac Awuyem Mensah.']) {
+  for (const system of ['Order received for John Mensah.', 'Requested by Isaac Mensah', 'Isaac Mensah placed this order']) {
     const result = runGeneralAuditor('Name of Orderer: Isaac Awuyem\nORS - 5', system + '\nORS [5/5]');
     assert.equal(result.meta.ordererName.status, 'mismatch', system);
     assert.equal(result.issueCount, 1, system);
@@ -628,4 +628,13 @@ test('duplicate fulfilled lines use their total rather than a single zero line',
   assert.equal(result.items[0].status, 'quantity mismatch');
   assert.equal(result.items[0].found, '3');
   assert.equal(result.issueCount, 1);
+});
+
+
+test('a possible additional surname requires review instead of approving a partial name', () => {
+  const result = runGeneralAuditor('Name of Orderer: Isaac Awuyem\nORS - 5', 'Order received from Isaac Awuyem Mensah.\nORS [5/5]');
+  assert.equal(result.meta.ordererName.status, 'review required');
+  assert.equal(result.issueCount, 0);
+  assert.equal(result.allMatch, false);
+  assert.deepEqual(result.generalAudit.discrepancies, []);
 });

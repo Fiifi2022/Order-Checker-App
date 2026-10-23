@@ -5,19 +5,51 @@ import { classifyGeneralText, generalOrderRelevantText } from './generalTextClas
 export type GeneralEssentialField = 'ordererName' | 'facilityName' | 'products' | 'quantity';
 export interface GeneralEssentialNotice { field: GeneralEssentialField; message: string }
 
+/** Explicit metadata labels take priority over a generic extraction category. */
+export function generalReviewField(review: GeneralSemanticReview): GeneralEssentialField {
+  const text = generalOrderRelevantText(review.originalText).trim();
+  const amendment = classifyGeneralText(text).orderChange;
+  if (!text.includes('\n')) {
+    if (/^(?:name of orderer|orderer name|orderer|ordered by|requested by|requester|customer name|sender|recipient|fulfilment recipient|fulfillment recipient|customer|authorized contact|name)\s*[:;=]/i.test(text)) return 'ordererName';
+    if (/^(?:name of health facility|health facility|facility name|name of facility|facility|hospital|clinic|destination|delivery facility|delivery site|deliver to|order for)\s*[:;=]/i.test(text)) return 'facilityName';
+  }
+  return review.field || (/^(?:quantity|qty|amount)\b/i.test(text) || /(?:quantity (?:was not specified|is missing|cannot be read)|missing (?:requested )?quantity)/i.test(review.reason) ? 'quantity'
+    : review.kind === 'product' ? 'products'
+    : amendment && /\b(?:orderer|recipient)\b/i.test(text) ? 'ordererName'
+    : amendment && /\b(?:facility|hospital|clinic|chps|destination|district|drop area)\b/i.test(text) ? 'facilityName'
+    : amendment && /\b(?:quantity|qty|amount)\b/i.test(text) ? 'quantity' : 'products');
+}
+
+/** Source evidence for the specific warning; never infer it from matched products. */
+export function generalReviewEvidence(reviews: GeneralSemanticReview[] = [], field: GeneralEssentialField): GeneralSemanticReview[] {
+  const seen = new Set<string>();
+  return reviews.flatMap(review => {
+    const originalText = generalOrderRelevantText(review.originalText).trim();
+    if (!originalText || generalReviewField({ ...review, originalText }) !== field) return [];
+    const key = JSON.stringify([review.source, originalText]);
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ ...review, originalText }];
+  });
+}
+
+/** Older extraction responses may repeat a generic warning as their reason. */
+export function generalReviewExplanation(review: GeneralSemanticReview): string {
+  const reason = review.reason?.trim();
+  if (reason && !/^(?:Products?(?: and quantities)?|Quantity|Orderer|Facility): Confirm\b/i.test(reason)) return reason;
+  switch (generalReviewField(review)) {
+    case 'ordererName': return 'This name could not be confidently verified. Confirm the person placing the order.';
+    case 'facilityName': return 'This facility could not be confidently verified. Confirm the requesting health facility.';
+    case 'quantity': return 'The quantity is missing or unclear. Confirm the quantity for this line.';
+    default: return 'This line could not be confidently interpreted. Confirm the product name and quantity before dispatch.';
+  }
+}
+
 /** Keep source evidence internally, but display each uncertain essential field once. */
 export function generalEssentialReviewNotices(reviews: GeneralSemanticReview[] = []): GeneralEssentialNotice[] {
   const fields = new Set<GeneralEssentialField>();
   for (const review of reviews) {
-    const text = generalOrderRelevantText(review.originalText).trim();
-    if (!text) continue;
-    const amendment = classifyGeneralText(text).orderChange;
-    const field = review.field || (/^(?:quantity|qty|amount)\b/i.test(text) || /(?:quantity (?:was not specified|is missing|cannot be read)|missing (?:requested )?quantity)/i.test(review.reason) ? 'quantity'
-      : review.kind === 'product' ? 'products'
-      : /^(?:name of orderer|orderer|ordered by|requested by|recipient)\s*[:;=]/i.test(text) || amendment && /\b(?:orderer|recipient)\b/i.test(text) ? 'ordererName'
-      : /^(?:name of health facility|health facility|facility|hospital)\s*[:;=]/i.test(text) || amendment && /\b(?:facility|hospital|clinic|chps|destination|district|drop area)\b/i.test(text) ? 'facilityName'
-      : amendment && /\b(?:quantity|qty|amount)\b/i.test(text) ? 'quantity' : 'products');
-    fields.add(field);
+    if (generalOrderRelevantText(review.originalText).trim()) fields.add(generalReviewField(review));
   }
   const notices: GeneralEssentialNotice[] = [];
   if (fields.has('ordererName')) notices.push({ field: 'ordererName', message: 'Orderer: Confirm the name of the person placing the order.' });

@@ -116,7 +116,9 @@ test('ambiguity requires human review and survives client summary processing', a
   const html = renderToStaticMarkup(createElement(Details, { details: result.generalAudit }));
   assert.match(html, /Product: Confirm the requested product/);
   assert.match(html, /role="status"/);
-  assert.doesNotMatch(html, /4\. cough syrup/);
+  assert.match(html, /4\. cough syrup - 5/);
+  assert.match(html, /Customer Request — text requiring review:/);
+  assert.match(html, /Possible matches:/);
 });
 
 test('missing quantity is reviewed, and a concentration cannot become an order quantity', async () => {

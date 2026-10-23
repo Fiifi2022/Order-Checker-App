@@ -1,6 +1,16 @@
 import type { GeneralProductCategory } from './generalProductCategory';
 
+export interface GeneralNameEvidence {
+  customer: string;
+  fulfillment: string;
+  decision: 'match' | 'mismatch';
+  confidence: number;
+  reason: string;
+}
 export interface GeneralFieldResult {
+  reason?: string;
+  nameMatchMethod?: 'deterministic' | 'fuzzy' | 'gemini';
+  nameEvidence?: GeneralNameEvidence;
   whatsappValue: string;
   fulfillmentValue: string;
   status: 'match' | 'mismatch' | 'not available in system entry' | 'missing from customer request' | 'review required' | 'optional not provided';

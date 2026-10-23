@@ -30,7 +30,7 @@ for (const [label, left, right] of [
   assert.equal(result.generalAudit.warnings?.length, 0);
   assert.equal(result.generalAudit.products.length, 2);
   assert.match(html(result), /Delivery\/Drop Area/); assert.match(html(result), /District/);
-  assert.match(html(result), /VERIFIED MATCH/);
+  assert.match(html(result), /Name of Orderer \(mandatory\)<\/span><span class="text-green-700">MATCH/);
 });
 
 test('both optional conflicts are separate review discrepancies with their source values', () => {

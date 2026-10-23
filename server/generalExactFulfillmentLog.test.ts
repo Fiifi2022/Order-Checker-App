@@ -12,21 +12,22 @@ const fulfillment = 'Thank you Adam Fauzia from Bagurugu CHPS for ordering with 
 const offline = () => { throw Error('AI should not be needed'); };
 const render = (details: Parameters<typeof Details>[0]['details']) => renderToStaticMarkup(createElement('div', null, createElement(Details, { details }), createElement(Summary, { details })));
 
-test('the exact supplied log has no product warnings and correctly flags the differing orderer spelling', async () => {
+test('the exact supplied log accepts a minor orderer spelling difference without product warnings', async () => {
   let calls = 0;
   const result = await audit(customer, fulfillment, {}, {}, () => { calls++; return offline(); });
   assert.equal(calls, 0);
-  assert.equal(result.allMatch, false);
-  assert.equal(result.issueCount, 1);
+  assert.equal(result.allMatch, true);
+  assert.equal(result.issueCount, 0);
   assert.equal(result.generalAudit.facility.status, 'match');
-  assert.equal(result.generalAudit.orderer.status, 'mismatch');
+  assert.equal(result.generalAudit.orderer.status, 'match');
+  assert.equal(result.generalAudit.orderer.nameMatchMethod, 'fuzzy');
   assert.equal(result.generalAudit.orderer.whatsappValue, 'Adam Fouzia');
   assert.equal(result.generalAudit.orderer.fulfillmentValue, 'Adam Fauzia');
   assert.deepEqual(result.items.map(item => [item.requested, item.found, item.status]), [['25', '25', 'match'], ['50', '50', 'match']]);
-  assert.deepEqual(result.generalAudit.discrepancies, ['Orderer Name Mismatch']);
+  assert.deepEqual(result.generalAudit.discrepancies, []);
   assert.deepEqual(result.generalAudit.warnings, []);
   assert.deepEqual(result.generalAudit.semanticReviews || [], []);
-  assert.equal(result.confidence, 83);
+  assert.equal(result.confidence, 100);
   assert.equal(result.canDispatchAutomatically, false);
   assert.doesNotMatch(render(result.generalAudit), /Product: Confirm|CLARIFICATION REQUIRED|MANUAL REVIEW REQUIRED/);
 });

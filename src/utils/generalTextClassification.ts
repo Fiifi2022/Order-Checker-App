@@ -58,7 +58,7 @@ function temporalNotification(clause: string) {
 // Closed grammatical patterns refer only to the unspecified remainder, never
 // a named product, quantity, facility or replacement destination. Compile once;
 // unknown additions do not inherit an exception from the word "stock".
-const remainder = '(?:the (?:rest|remainder|remaining (?:items|products))(?: of (?:your|the) order)?|any remaining (?:items|products))';
+const remainder = '(?:these items|them|the (?:rest|remainder|remaining (?:items|products))(?: of (?:your|the) order)?|any remaining (?:items|products))';
 const stockLocation = '(?:(?:the|your) (?:nearest|local)|another|an alternative) stock(?: location| point| centre| center)?';
 const genericStockContact = new RegExp(`^(?:please )?(?:reach out to|contact|check with) ${stockLocation} for ${remainder}$`, 'i');
 const restocked = '(?:re[- ]?stocked|back in stock|stock (?:is|becomes) available)';
@@ -80,6 +80,8 @@ function administrativeClause(value: string): boolean {
   if (/^(?:how are you(?: doing)?|have a (?:good|great|nice) (?:day|weekend)|sorry for (?:the )?(?:delay|late reply)|thank you (?:very much|so much)|thanks (?:again|in advance))[.!?]?$/i.test(text)) return true;
   if (/^(?:our|the) (?:nurse|doctor|staff|team|officer)(?: member)? (?:is|are) (?:on leave|off duty|on duty|away|unavailable|in a meeting)(?: (?:today|tomorrow|this (?:morning|afternoon|evening)))?$/i.test(text)) return true;
   if (temporalNotification(text)) return true;
+  if (/^(?:(?:please|kindly)[, ]+)+(?:make (?:it|the order) available|deliver (?:it|the order)) (?:on time|as soon as possible)$/i.test(text)) return true;
+  if (/^use this link to track your (?:order|delivery|shipment)\s*:\s*https?:\/\/\S+$/i.test(text)) return true;
   // Whole-sentence templates, never a keyword match: an unrecognized tail or
   // actual order instruction must remain available to the auditor.
   if (/^(?:you (?:will|may) receive (?:your )?(?:(?:flight|delivery|order|tracking|status) )?(?:notifications?|updates?) (?:via|by|through) (?:sms|text messages?)|(?:your )?(?:(?:flight|delivery|order|tracking|status) )?(?:notifications?|updates?) will be sent (?:to you )?(?:via|by|through) (?:sms|text messages?)|you will be notified (?:via|by) (?:sms|text message) when your (?:order|delivery) (?:is dispatched|is on its way|arrives))$/i.test(text)) return true;
@@ -118,6 +120,7 @@ export function classifyGeneralText(raw: string): GeneralTextClassification {
   if (change.test(text) || revisedIdentity.test(text) || changedDestination.test(text) || revisedQuantity.test(text)) return { category: 'unresolved_order', reason: 'Explicit order or destination change requires verification.', orderChange: true };
   if (standaloneOrderDate(text)) return { category: 'administrative', reason: 'Standalone order date; excluded from essential order checks.' };
   if (/^(?:delivery\s*\/\s*drop area|delivery drop area|drop area|delivery area|drop location|drop off area|district(?: name)?)\s*[:=]/i.test(text)) return { category: 'optional_order', reason: 'Explicit optional location information.' };
+  if (/^vaccines? requisition(?:\s*\(\s*all in vials\s*\))?\s*[:.!]?$/i.test(text) || /^we will now prepare the following items for delivery\s*[:.!]?$/i.test(text)) return { category: 'mandatory_order', reason: 'Product section heading; individual product quantities remain authoritative.' };
   if (/^(?:name of orderer|orderer(?: name)?|requested by|requester|recipient|customer name|name of health facility|health facility|facility(?: name| id)?|hospital|clinic|products?(?: and quantities)?|out of stock|available(?: products| items)?|in stock)\s*[:=.!]?$/i.test(text) || /^(?:name of orderer|orderer(?: name)?|requested by|requester|recipient|customer name|name of health facility|health facility|facility(?: name| id)?|hospital|clinic)\s*[:=]/i.test(text)) return { category: 'mandatory_order', reason: 'Explicit identity or order section.' };
   if (/^(?:(?:we are )?(?:currently )?out of stock(?: for (?:the )?following (?:items|products))?|we can prepare the following items we have in stock for delivery|available(?: products| items)?|no fulfilled products)[:.!]?$/i.test(text)) return { category: 'mandatory_order', reason: 'Stock or product section; quantities still require validation.' };
   // Check every sentence; an accepted prefix cannot hide an unrecognized tail.
