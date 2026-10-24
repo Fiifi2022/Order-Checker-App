@@ -54,7 +54,7 @@ test('approved ASV and ARV identities take precedence over model ambiguity and a
   assert.equal(result.confidence, 100);
 });
 
-test('rich interpretation precedes final validation, preserves quantities and cleans numbered titles', async () => {
+test('catalogue-supported concentration shorthand is deterministic, preserves quantities and cleans numbered titles', async () => {
   const a = '3. PCM syrup 120/5 - 15';
   const b = `${pcm} [15/15]`;
   let calls = 0;
@@ -67,13 +67,13 @@ test('rich interpretation precedes final validation, preserves quantities and cl
     assert.ok(payload.knownProductCatalog.includes(pcm));
     assert.ok(payload.aliases.some((entry: any) => entry.aliases.includes('PCM')));
   }));
-  assert.equal(calls, 1);
-  assert.equal(result.semanticAnalysis.status, 'used');
+  assert.equal(calls, 0);
+  assert.equal(result.semanticAnalysis.status, 'skipped');
   assert.equal(result.items.length, 1);
   assert.equal(result.items[0].name, pcm);
   assert.equal(result.items[0].status, 'match');
   assert.equal(result.confidence, 100);
-  assert.equal(result.semanticAnalysis.interpretation?.customerProducts[0].confidence, 0.98);
+  assert.ok(['attributes', 'synonym'].includes(result.items[0].fulfillment.matchingStage!));
 });
 
 test('natural quantity-before-name intent is normalized without supplying an invented strength', async () => {
@@ -93,7 +93,7 @@ test('adult and child intent produce exactly two informational stock cards', asy
   const result = await runGeneralSemanticAudit(headers + a + '\n' + c, headers + b + '\n' + d, {}, {}, client(data([
     product(a, adult, '5', 5), product(c, child, '5', 5)
   ], [product(b, adult, '0/1', 0), product(d, child, '0/1', 0)])));
-  assert.equal(result.semanticAnalysis.status, 'used');
+  assert.equal(result.semanticAnalysis.status, 'skipped');
   assert.deepEqual(result.items.map(item => item.status), ['out of stock', 'out of stock']);
   assert.equal(result.issueCount, 0);
   assert.equal(result.confidence, 100);
@@ -114,7 +114,7 @@ test('ambiguity requires human review and survives client summary processing', a
   assert.equal(accepted.allMatch, false);
   assert.equal(accepted.issueCount, 0);
   const html = renderToStaticMarkup(createElement(Details, { details: result.generalAudit }));
-  assert.match(html, /Product: Confirm the requested product/);
+  assert.match(html, /PRODUCT IDENTIFICATION REVIEW/);
   assert.match(html, /role="status"/);
   assert.match(html, /4\. cough syrup - 5/);
   assert.match(html, /Customer Request — text requiring review:/);

@@ -1,4 +1,4 @@
-import { compareGeneralProducts, enforceGeneralIdentityMatches, normalizeGeneralProductName, parseGeneralProducts, runGeneralAuditor, summarizeGeneralProducts, type GeneralAuditSupport } from './generalAuditor';
+import { compareGeneralProducts, enforceGeneralProductAssignments, enforceGeneralIdentityMatches, normalizeGeneralProductName, parseGeneralProducts, runGeneralAuditor, summarizeGeneralProducts, type GeneralAuditSupport } from './generalAuditor';
 import { traceGeneralAudit } from './generalAuditDebug';
 
 export interface GeneralAuditInputs {
@@ -83,6 +83,7 @@ export function completeGeneralAuditRun<T extends Record<string, unknown>>(run: 
   }
   comparison = enforceGeneralIdentityMatches(comparison, run.inputs.whatsappMessage, run.inputs.fulfillmentConfirmation,
     { ...run.support.facilityContext, ...(serverResult ? { records: comparison.generalAudit.facility.evidence || [], aiSuggestion: comparison.generalAudit.facility.aiSuggestion } : {}) });
+  comparison = enforceGeneralProductAssignments(comparison, run.inputs.whatsappMessage, run.inputs.fulfillmentConfirmation, run.support);
   // Recalculate from the accepted final comparison, including older server scores.
   const details = comparison.generalAudit;
   comparison = { ...comparison, ...summarizeGeneralProducts(comparison.items, details.facility, details.orderer,

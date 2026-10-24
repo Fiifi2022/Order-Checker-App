@@ -74,7 +74,7 @@ test('an unrelated unresolved line cannot mark any exact product as ambiguous on
     assert.ok(result.generalAudit.discrepancies.every(issue => !issue.includes(name)));
     const html = renderToStaticMarkup(createElement(Details, { details: result.generalAudit }));
     assert.doesNotMatch(html, /AMBIGUOUS PRODUCT/);
-    assert.match(html, /Product: Confirm the requested product/);
+    assert.match(html, /PRODUCT IDENTIFICATION REVIEW/);
     assert.doesNotMatch(html, /UNRESOLVED TEXT|bg-red-50/);
   }
 });

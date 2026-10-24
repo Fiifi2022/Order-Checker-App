@@ -1,8 +1,9 @@
+import { generalAuditMutations } from './generalAuditMutation';
 import type { RequestHandler } from 'express';
 import { acknowledgeOrderLimit } from '../shared/orderLimitAcknowledgement';
 
 export function orderLimitAcknowledgementHandler(deps: { read: (id: string) => Promise<any>; save: (record: any) => Promise<void> }): RequestHandler {
-  const pending = new Map<string, Promise<void>>();
+  const pending = generalAuditMutations;
   return async (req, res) => {
     const { key, answer } = req.body || {};
     if (typeof key !== 'string' || !key || key.length > 1000 || typeof answer !== 'boolean') { res.status(400).json({ error: 'Choose an eligible product and answer Yes or No.' }); return; }

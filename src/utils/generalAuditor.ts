@@ -1,9 +1,13 @@
+import { generalConfirmationPolicy } from './generalProductConfirmationPolicy';
+import { recognizeGeneralDocument } from './generalDocumentStructure';
+import { assignGeneralProductGroups, generalClinicalAttributes, generalCatalogSupports, matchGeneralClinicalProducts, type GeneralMatchingStage } from './generalProductMatching';
+import { canonicalGeneralSource, generalInputFingerprint } from '../../shared/generalAuditFingerprint';
 import { compareGeneralOrdererNames, matchGeneralOrdererNames, normalizeGeneralOrdererName } from './generalOrdererName';
 import { generalAuditClarifications, generalEssentialReviewNotices, generalReviewField } from './generalAuditReviews';
 import { classifyGeneralText, generalOrderRelevantText } from './generalTextClassification';
 import type { AuditTiming } from '../../shared/auditPerformance';
 import { compareGeneralFacilities, generalFacilityNamesMatch, normalizeGeneralDistrictName, findGeneralFacilityNames, hasGeneralFacilityType, normalizeGeneralFacilityName, type GeneralFacilityContext, type GeneralFacilityResult } from './generalFacility';
-import { expandGeneralMedicalTerms, getGeneralMedicalAmbiguity, stripGeneralRepeatedAlias, resolveGeneralApprovedIdentity } from './generalMedicalTerminology';
+import { expandGeneralMedicalTerms, generalMedicalTerminology, getGeneralMedicalAmbiguity, stripGeneralRepeatedAlias, resolveGeneralApprovedIdentity } from './generalMedicalTerminology';
 import { generalQuantityBasis } from './generalPackaging';
 import { expandGeneralProductAcronyms, isGeneralBloodProduct } from './medicalProductAcronyms';
 import { traceGeneralAudit } from './generalAuditDebug';
@@ -11,17 +15,26 @@ import { resolveVaccinePairingName } from '../../shared/vaccinePairing';
 import { applyGeneralVaccinePairing } from './generalVaccinePairing';
 import { resolveCatalogVaccineName, isConflictingVaccineAlias } from '../../shared/generalVaccineCatalog';
 import { generalProductCategory, type GeneralProductCategory } from './generalProductCategory';
-import type { GeneralFieldResult, GeneralAuditDetails, GeneralProductResult, GeneralAuditCheckSummary, GeneralSemanticReview } from './generalAuditTypes';
+import type { GeneralFieldResult, GeneralAuditDetails, GeneralProductResult, GeneralAuditCheckSummary, GeneralSemanticReview, GeneralProductVerification } from './generalAuditTypes';
 import type { AuditItem } from '../../server/deterministicAudit';
 import { calculateGeneralAuditSummary, getGeneralAuditorAction, normalizeAuditText } from '../../server/generalAuditRules';
 
 export type GeneralProductSource = 'customer_request' | 'fulfillment_confirmation';
 export interface GeneralProductEvidence {
   name: string; // Clean identity; originalText retains the relevant source clauses.
+  clinicalAttributes?: import('./generalProductMatching').GeneralClinicalAttributes;
+  matchedProductKey?: string;
+  matchingStage?: GeneralMatchingStage;
   canonicalId?: string;
   normalizedName: string;
   quantity: number;
   ratioRequestedQuantity?: number;
+  customerVerified?: boolean;
+  listNumber?: number;
+  quantityNotation?: string;
+  quantityReview?: string;
+  strength?: string;
+  dosageForm?: string;
   orderLimitApplied?: boolean;
   stockIndicator?: string;
   stockSection?: string;
@@ -38,11 +51,29 @@ export interface GeneralComparisonItem extends Omit<AuditItem, 'status' | 'categ
   fulfillment: GeneralProductResult;
 }
 
+const NUMBER = '(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?';
+const UNIT = '(?:units?|vials?|packs?|box(?:es)?|cards?|doses?|sachets?|tablets?|capsules?|bottles?|pieces?|pcs?|tests?)';
 // Anchored to the start: decimal strengths and compound dosage numbers are
 // medical identity, not list markers (e.g. 31.25mg and 20/120mg).
-const GENERAL_LIST_PREFIX = /^(?:(?:[-*•]\s*|\d+(?:\.(?!\d)|\))\s*|\d+\s+[-–—]\s*))+/;
+const GENERAL_LIST_PREFIX = /^(?:(?:[-*•]\s*|\(\d+\)\s*|\d+(?:\.(?!\d)|\))\s*|\d+\s+[-–—]\s*))+/;
+const GENERAL_ORDER_RATIO_SUFFIX = new RegExp(`\\s[\\[(]?\\s*${NUMBER}\\s*/\\s*${NUMBER}\\s*(?:${UNIT})?\\s*[\\])]?\\s*[.!]?$`, 'i');
+const GENERAL_LEADING_MEASUREMENT = new RegExp(`^${NUMBER}\\s*(?:(?:mcg|mg|g|mls?|l|iu|miu)\\b|%|${UNIT}\\b)`, 'i');
 export function stripGeneralListPrefix(value: string): string {
-  return value.trim().replace(GENERAL_LIST_PREFIX, '').trim();
+  const line = value.trim().replace(GENERAL_LIST_PREFIX, '').trim();
+  // A separate terminal order ratio disambiguates an unpunctuated list index.
+  // Leading strengths/capacities and quantity-first rows retain their numbers.
+  const concentrationAfterLeadingQuantity = /\b(?:syrup|suspension)\b/i.test(line) &&
+    !/[\[(]\s*\d+\s*\//.test(line) && !/\d+(?:\.\d+)?\s*(?:mcg|mg|g|mls?|l|miu|iu)\b/i.test(line);
+  return !concentrationAfterLeadingQuantity && /^\d+\s+[\p{L}]/u.test(line) && GENERAL_ORDER_RATIO_SUFFIX.test(line) && !GENERAL_LEADING_MEASUREMENT.test(line)
+    ? line.replace(/^\d+\s+/, '') : line;
+}
+
+/** An explicit strength followed by a separate ratio is an order quantity;
+ * a lone syrup concentration such as 120/5 still needs interpretation. */
+export function hasExplicitGeneralOrderRatio(product: GeneralProductEvidence): boolean {
+  if (product.ratioRequestedQuantity === undefined) return false;
+  return /[\[(]|[-:=]\s*\d/.test(stripGeneralListPrefix(product.originalText)) ||
+    /\d+(?:\.\d+)?\s*(?:mcg|mg|g|mls?|l|iu|miu)\b/i.test(product.name);
 }
 
 /** General-only display boundary, including older titles containing raw quantities. */
@@ -56,8 +87,11 @@ export function generalProductDisplayName(value: string): string {
 
 // These substitutions compare names already present in the inputs. They never
 // enumerate a catalogue or supply an implicit strength, form, or pack size.
-export function normalizeGeneralProductName(name: string): string {
-  const sourceName = stripGeneralRepeatedAlias(stripGeneralListPrefix(name));
+function normalizeGeneralProductIdentity(name: string): string {
+  const sourceName = stripGeneralRepeatedAlias(stripGeneralListPrefix(name))
+    .replace(/[µμ]g|(?<=\d)\s*ug\b|\bug\b/gi, 'mcg')
+    .replace(/(\d+(?:\.\d+)?)\s*mls\b/gi, '$1ml')
+    .replace(/^(?:given set\s*\(\s*infusion\s*\)|infusion giving set)$/i, 'IV Giving Set');
   // Closed spelling variants of existing vaccine names; preserve source evidence
   // and defer to any explicit catalog mapping before interpreting punctuation.
   const writtenName = sourceName.replace(/^y\s*\/\s*f(?=\s|$)/i, 'YF').replace(/^m\s*\/\s*r(?=\s|$)/i, 'MR')
@@ -92,13 +126,16 @@ export function normalizeGeneralProductName(name: string): string {
     .trim();
   // Preserve measurement order as well as values: compound strengths must not
   // match if the amounts assigned to the constituent medicines were swapped.
-  const measurements = normalized.match(/\b\d+(?:\.\d+)?(?:mg|mcg|g|ml|l|iu)(?:\/\d+(?:\.\d+)?(?:mg|mcg|g|ml|l|iu))?\b/g) || [];
+  const measurements = normalized.match(/\b\d+(?:\.\d+)?(?:mg|mcg|g|ml|l|miu|iu)(?:\/\d+(?:\.\d+)?(?:mg|mcg|g|ml|l|miu|iu))?\b/g) || [];
   const canonicalId = resolveGeneralApprovedIdentity(base)?.canonicalId;
   return `${canonicalId ? `${canonicalId}|` : ''}${normalized.split(/\s+/).filter(Boolean).sort().join(' ')}|${measurements.join(' ')}`;
 }
 
-const NUMBER = '(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?';
-const UNIT = '(?:units?|vials?|packs?|box(?:es)?|cards?|doses?|sachets?|tablets?|capsules?|bottles?|pieces?|pcs?|tests?)';
+/** Suggestions never establish an omitted customer formulation. */
+export function normalizeGeneralProductName(name: string): string {
+  return normalizeGeneralProductIdentity(name);
+}
+
 const quantityValue = (value: string) => Number(value.replace(/,/g, ''));
 const normalizeUnit = (value = '') => value.toLowerCase().replace(/^boxes$/, 'box').replace(/^pcs?$/, 'piece').replace(/s$/, '');
 // Ordered from specific labels to generic fallbacks, independent of line order.
@@ -141,6 +178,7 @@ function extractGeneralOrderLimit(line: string) {
 /** A fresh evidence list per call, extracted solely from explicit quantity lines. */
 export function parseGeneralProducts(text: string, source: GeneralProductSource, timing?: AuditTiming): GeneralProductEvidence[] {
   text = generalOrderRelevantText(text);
+  const document = recognizeGeneralDocument(text, classifyGeneralText);
   const result: GeneralProductEvidence[] = [];
   let stockSection: string | undefined;
   text.split(/\r?\n/).forEach((originalText, index) => {
@@ -156,8 +194,10 @@ export function parseGeneralProducts(text: string, source: GeneralProductSource,
       // always parsed as supplied, even if they occur inside a stock section.
       if (strippedLine.endsWith(':') || GENERAL_AVAILABLE_SECTION.test(strippedLine)) stockSection = undefined;
     }
+    if (document.lines[index].kind !== 'PRODUCT_ENTRY') return;
     const orderLimit = source === 'fulfillment_confirmation' ? extractGeneralOrderLimit(strippedLine) : { line: strippedLine, applied: false };
     let line = orderLimit.line;
+    line = source === 'fulfillment_confirmation' ? line.replace(/\s+(?:supplied|fulfilled|delivered)\s*[.!]?$/i, '') : line.replace(/\s+(?:requested|required|ordered)\s*[.!]?$/i, '');
     if (!line || isMetadataLabel(line.split(':')[0])) return;
     if (source === 'fulfillment_confirmation' && (extractSentenceOrderer(line) !== 'N/A' || extractSentenceFacility(line) !== 'N/A')) return;
     let name = '', quantity = '', unit = '';
@@ -178,7 +218,7 @@ export function parseGeneralProducts(text: string, source: GeneralProductSource,
       match = line.match(new RegExp(`^(${NUMBER})\\s*(${UNIT})?\\s+(?:of\\s+)?(.+?)\\s*[.!]?$`, 'i'));
       // A leading strength or capacity belongs to the product, including when
       // separated by a space (0.5 ml syringe, 250 mg tablets, 0.9% saline).
-      const startsWithSpecification = new RegExp(`^${NUMBER}\\s*(?:(?:mcg|mg|g|ml|l|iu)\\b|%)`, 'i').test(line);
+      const startsWithSpecification = new RegExp(`^${NUMBER}\\s*(?:(?:mcg|mg|g|mls?|l|miu|iu)\\b|%)`, 'i').test(line);
       if (match && !startsWithSpecification) { quantity = match[1]; unit = match[2] || ''; name = match[3]; }
       else {
         match = line.match(new RegExp(`^(.+?)\\s*(?:[-–—:=·•]+\\s*|[.\u2026]+\\s*|\\s+)(?:\\[)?(${NUMBER})(?:\\s*/\\s*(${NUMBER}))?\\s*(${UNIT})?\\s*(?:\\])?\\s*[.!]?$`, 'i'));
@@ -197,7 +237,17 @@ export function parseGeneralProducts(text: string, source: GeneralProductSource,
     const parsedQuantity = quantityValue(quantity);
     if (!Number.isFinite(parsedQuantity) || parsedQuantity < 0) return;
     const canonicalId = resolveGeneralApprovedIdentity(stripGeneralRepeatedAlias(name))?.canonicalId;
-    result.push({ name, ...(canonicalId ? { canonicalId } : {}), normalizedName: timing ? timing.measure('productNormalization', () => normalizeGeneralProductName(name)) : normalizeGeneralProductName(name), quantity: parsedQuantity, ...(ratioRequestedQuantity === undefined ? {} : { ratioRequestedQuantity }), ...(orderLimit.applied ? { orderLimitApplied: true } : {}), ...(stockIndicator ? { stockIndicator } : {}), ...(stockSection ? { stockSection } : {}), unit: normalizeUnit(unit), originalText: relevantText, source, line: index + 1 });
+    const listPrefix = relevantText.trim().match(/^(?:[-*•]\s*)?(?:\((\d+)\)|(\d+)(?:\.(?!\d)|\)|\s+[-–—]))\s*/);
+    const bareIndex = !listPrefix && relevantText.trim().match(/^(\d+)\s+/);
+    const listNumber = listPrefix ? Number(listPrefix[1] || listPrefix[2]) :
+      bareIndex && !strippedLine.startsWith(bareIndex[0]) ? Number(bareIndex[1]) : undefined;
+    const quantityNotation = [...line.matchAll(new RegExp(`(${NUMBER}\\s*/\\s*${NUMBER})`, 'g'))].at(-1)?.[1];
+    const quantityReview = source === 'customer_request' && ratioRequestedQuantity !== undefined && parsedQuantity !== ratioRequestedQuantity
+      ? 'Unequal customer quantity notation is ambiguous. Confirm which value is the requested quantity.'
+      : /\d+\s*\/\s*\d+(?![\d.])(?:\s|$|[\])])/.test(name) && !/\b(?:syrup|suspension)\b/i.test(name) ? 'Multiple quantity expressions conflict. Confirm the requested quantity and unit.' : undefined;
+    const strength = name.match(/\b\d+(?:\.\d+)?\s*(?:mcg|mg|g|mls?|l|miu|iu)\b(?:\s*\/\s*\d+(?:\.\d+)?\s*(?:mcg|mg|g|mls?|l|miu|iu)?)?/gi)?.join(' ');
+    const dosageForm = normalizeGeneralProductIdentity(name).match(/\b(?:tablet|capsule|syrup|suspension|injection|infusion|solution|suppository|cream|ointment|gel|powder)\b/i)?.[0];
+    result.push({ name, clinicalAttributes: generalClinicalAttributes(name, normalizeGeneralProductName), ...(listNumber === undefined ? {} : { listNumber }), ...(quantityNotation ? { quantityNotation } : {}), ...(quantityReview ? { quantityReview } : {}), ...(strength ? { strength } : {}), ...(dosageForm ? { dosageForm } : {}), ...(canonicalId ? { canonicalId } : {}), normalizedName: timing ? timing.measure('productNormalization', () => normalizeGeneralProductName(name)) : normalizeGeneralProductName(name), quantity: parsedQuantity, ...(ratioRequestedQuantity === undefined ? {} : { ratioRequestedQuantity }), ...(orderLimit.applied ? { orderLimitApplied: true } : {}), ...(stockIndicator ? { stockIndicator } : {}), ...(stockSection ? { stockSection } : {}), unit: normalizeUnit(unit), originalText: relevantText, source, line: index + 1 });
   });
   return result;
 }
@@ -205,9 +255,9 @@ export function parseGeneralProducts(text: string, source: GeneralProductSource,
 function groupProducts(products: GeneralProductEvidence[]) {
   const grouped = new Map<string, GeneralProductEvidence[]>();
   for (const product of products) {
-    const current = grouped.get(product.normalizedName) || [];
+    const current = grouped.get(product.matchedProductKey || product.normalizedName) || [];
     current.push(product);
-    grouped.set(product.normalizedName, current);
+    grouped.set(product.matchedProductKey || product.normalizedName, current);
   }
   return grouped;
 }
@@ -244,7 +294,41 @@ export function compareGeneralProducts(customerRequest: string, fulfillmentConfi
   return compareExtractedGeneralProducts(parseGeneralProducts(customerRequest, 'customer_request'), parseGeneralProducts(fulfillmentConfirmation, 'fulfillment_confirmation'), orderLimitDecisions, support);
 }
 
-function compareExtractedGeneralProducts(customerProducts: GeneralProductEvidence[], systemProducts: GeneralProductEvidence[], orderLimitDecisions: Record<string, boolean> = {}, support: GeneralAuditSupport = {}): GeneralComparisonItem[] {
+function compareExtractedGeneralProducts(customerProducts: GeneralProductEvidence[], systemProducts: GeneralProductEvidence[], decisions: Record<string, boolean> = {}, support: GeneralAuditSupport = {}) {
+  return prepareGeneralProductComparison(customerProducts, systemProducts, decisions, support).items;
+}
+
+function prepareGeneralProductComparison(customerProducts: GeneralProductEvidence[], systemProducts: GeneralProductEvidence[], decisions: Record<string, boolean> = {}, support: GeneralAuditSupport = {}) {
+  const groups = (products: GeneralProductEvidence[]) => [...groupProducts(products)].map(([key, products]) => ({ key, name: products[0].name, products }));
+  const plan = assignGeneralProductGroups(groups(customerProducts), groups(systemProducts), normalizeGeneralProductName);
+  const assignments = new Map(plan.pairs.map(pair => [pair.requested.key, pair]));
+  const unresolvedRequest = new Set(plan.uncertain.map(pair => pair.requested.key));
+  const unresolvedFulfilled = new Set(plan.uncertain.map(pair => pair.fulfilled.key));
+  const request = customerProducts.filter(product => !unresolvedRequest.has(product.matchedProductKey || product.normalizedName)).map(product => {
+    const pair = assignments.get(product.matchedProductKey || product.normalizedName);
+    return pair ? { ...product, matchedProductKey: pair.fulfilled.key, matchingStage: pair.match.stage } : product;
+  });
+  const items = compareAssignedGeneralProducts(request, systemProducts.filter(product => !unresolvedFulfilled.has(product.normalizedName)), decisions, support);
+  const reviews: GeneralSemanticReview[] = [];
+  const verifications: GeneralProductVerification[] = [];
+  for (const group of groups(customerProducts).filter(group => unresolvedRequest.has(group.key))) {
+    const edges = plan.uncertain.filter(pair => pair.requested.key === group.key);
+    const fulfilled = [...new Map(edges.flatMap(pair => pair.fulfilled.products).map(product => [productEvidenceKey(product), product])).values()];
+    const reason = [...new Set(edges.map(pair => pair.match.reason))].join(' ');
+    const options = generalVerificationOptions(group.name, fulfilled);
+    const key = JSON.stringify(group.products.map(productEvidenceKey));
+    verifications.push({ key, productName: group.name, originalText: group.products.map(product => product.originalText).join('\n'), reason,
+      requestedQuantity: group.products.reduce((sum, product) => sum + product.quantity, 0), suppliedQuantity: fulfilled.reduce((sum, product) => sum + product.quantity, 0),
+      ...(options.find(option => option.fromFulfillment) ? { suggestedProduct: options.find(option => option.fromFulfillment)!.name } : {}),
+      options, status: options.length ? 'customer confirmation required' : 'review required', requestedProducts: group.products, fulfillmentProducts: fulfilled });
+    for (const product of group.products) reviews.push({ dosageFormKey: key, kind: 'product', field: 'products', source: product.source,
+      originalText: product.originalText, possibleMatches: options.map(option => option.name), reason: `${reason} Requested quantity: ${group.products.reduce((sum, product) => sum + product.quantity, 0)}. Fulfilment Confirmation: ${fulfilled.map(product => `${product.name} — ${product.quantity} supplied`).join('; ')}.` });
+  }
+  traceGeneralAudit('productMatching', { stages: plan.pairs.map(pair => pair.match.stage), uncertainCount: verifications.length });
+  return { items, reviews, verifications };
+}
+
+function compareAssignedGeneralProducts(customerProducts: GeneralProductEvidence[], systemProducts: GeneralProductEvidence[], orderLimitDecisions: Record<string, boolean> = {}, support: GeneralAuditSupport = {}): GeneralComparisonItem[] {
   const customer = groupProducts(customerProducts);
   const fulfillmentProducts = groupProducts(systemProducts);
   // Pair canonical groups before assigning statuses. Presence is independent of
@@ -266,7 +350,7 @@ function compareExtractedGeneralProducts(customerProducts: GeneralProductEvidenc
     const foundQuantity = found.reduce((total, item) => total + item.quantity, 0);
     const sourceName = (requested[0] || found[0]).name;
     const identity = resolveGeneralApprovedIdentity(stripGeneralRepeatedAlias(sourceName));
-    const name = identity && found.length && !/^(?:ASV|ARV)$/i.test(found[0].name)
+    const name = requested[0]?.matchingStage && requested[0].matchingStage !== 'exact' && found.length && (requested[0].matchingStage !== 'synonym' || requested[0].normalizedName !== found[0].normalizedName) ? found[0].name : identity && found.length && !/^(?:ASV|ARV)$/i.test(found[0].name)
       ? found[0].name : identity?.resolvedName ?? sourceName;
     const requestedUnits = new Set(requested.map(item => item.unit).filter(Boolean));
     const foundUnits = new Set(found.map(item => item.unit).filter(Boolean));
@@ -292,7 +376,7 @@ function compareExtractedGeneralProducts(customerProducts: GeneralProductEvidenc
       decision === true ? 'order limit applied' :
       baseStatus === 'match' ? 'fully supplied' : 'discrepancy';
     const category = generalProductCategory(name, normalizeGeneralProductName);
-    const fulfillment: GeneralProductResult = { key, name, category, requested: requested.length ? requestedQuantity : found.reduce((total, item) => total + (item.ratioRequestedQuantity ?? 0), 0), supplied: foundQuantity,
+    const fulfillment: GeneralProductResult = { key, name, category, matchingStage: requested[0]?.matchingStage || 'distinct', clinicalAttributes: generalClinicalAttributes(name, normalizeGeneralProductName), requested: requested.length ? requestedQuantity : found.reduce((total, item) => total + (item.ratioRequestedQuantity ?? 0), 0), supplied: foundQuantity,
       difference: Math.abs(comparableRequested - comparableSupplied), fulfillmentStatus, orderLimitEligible,
       requestedUnit: [...requestedUnits][0] || '', suppliedUnit: [...foundUnits][0] || '',
       discrepancyKind: baseStatus === 'missing item' ? 'missing' : baseStatus === 'extra item' ? 'extra' : 'quantity',
@@ -539,7 +623,7 @@ export function runGeneralAuditor(customerRequest: string, fulfillmentConfirmati
     const extraction = source === 'customer_request' ? customerExtraction : systemExtraction;
     const parsedLines = new Set(extraction.products.map(product => product.line));
     text.split(/\r?\n/).forEach((line, index) => {
-      const listed = line.trim().match(/^(?:(?:[-*•]\s*|\d+(?:\.(?!\d)|\))\s*|\d+\s+[-–—]\s*))+(.+)$/);
+      const listed = line.trim().match(/^(?:(?:[-*•]\s*|\(\d+\)\s*|\d+(?:\.(?!\d)|\))\s*|\d+\s+[-–—]\s*))+(.+)$/);
       const identifiedHeader = listed && [extraction.ordererName, extraction.facilityName].some(value => value !== 'N/A' && normalizeAuditText(listed[1]) === normalizeAuditText(value));
       const headerProse = identifiedHeader || listed && source === 'fulfillment_confirmation' &&
         (GENERAL_STOCK_SECTION.test(listed[1]) || GENERAL_AVAILABLE_SECTION.test(listed[1]) || extractSentenceOrderer(listed[1]) !== 'N/A' || findCurrentOrdererMention(listed[1], customerExtraction.ordererName) !== 'N/A' ||
@@ -556,13 +640,20 @@ export function runGeneralAuditor(customerRequest: string, fulfillmentConfirmati
 
   const productContext = [...customerExtraction.products, ...systemExtraction.products].map(product => product.name).join('\n');
   for (const product of [...customerExtraction.products, ...systemExtraction.products]) {
-    const reason = getGeneralMedicalAmbiguity(product.name, productContext);
+    const concentrationOnly = product.source === 'customer_request' && product.ratioRequestedQuantity !== undefined &&
+      /\b(?:syrup|suspension|injection)\b/i.test(product.name) && !hasExplicitGeneralOrderRatio(product);
+    const reason = product.quantityReview || getGeneralMedicalAmbiguity(product.name, productContext) || (concentrationOnly
+      ? 'The trailing ratio may be a medicine concentration. Specify the order quantity separately.' : null);
     if (reason && !ambiguity.has(product.normalizedName)) ambiguity.set(product.normalizedName,
-      { originalText: product.originalText, source: product.source, possibleMatches: [], reason: `${reason} Verify before dispatch.` });
+      { ...(concentrationOnly || product.quantityReview ? { field: 'quantity' as const } : {}), originalText: product.originalText, source: product.source, possibleMatches: [], reason: `${reason} Verify before dispatch.` });
   }
-  const items = measure('quantityVerification', () => compareExtractedGeneralProducts(customerExtraction.products, systemExtraction.products, orderLimitDecisions, support))
-    .filter(item => !item.provenance.some(product => ambiguity.has(product.normalizedName)));
-  if (!items.length && !ambiguity.size && !support.allowEmptyProductsForReview && customerIdentity.ordererName === 'N/A' && customerIdentity.facilityName === 'N/A') {
+  const prepared = measure('quantityVerification', () => prepareGeneralProductComparison(customerExtraction.products, systemExtraction.products, orderLimitDecisions, support));
+  const comparison = prepared.items.filter(item => !item.provenance.some(product => ambiguity.has(product.normalizedName)));
+  const deferred = deferGeneralMissingDosageForms(comparison);
+  const { items } = deferred;
+  const dosageFormReviews = [...prepared.reviews, ...deferred.reviews];
+  const verifications = [...prepared.verifications, ...deferred.verifications];
+  if (!items.length && !ambiguity.size && !dosageFormReviews.length && !support.allowEmptyProductsForReview && customerIdentity.ordererName === 'N/A' && customerIdentity.facilityName === 'N/A') {
     throw new Error('No explicit product quantities could be read from one of the current inputs. Use “Product - 5” or “Product [5/5]” and try again.');
   }
   // Keep the response shape compatible; facility, orderer and available phone numbers are audited headers.
@@ -584,10 +675,162 @@ export function runGeneralAuditor(customerRequest: string, fulfillmentConfirmati
   // Unrequested zero-supply records are informational, not extra products.
   const systemCount = groupProducts(systemExtraction.products.filter(product =>
     product.quantity > 0 || customerExtraction.products.some(requested => requested.normalizedName === product.normalizedName))).size;
-  const generalAuditResult = { meta,
-    ...measure('finalValidation', () => summarizeGeneralProducts(items, facilityName, ordererName, phone, requestedCount, systemCount, [...ambiguity.values(), ...changeReviews], meta)) };
+  const generalAuditResult = { inputFingerprint: generalInputFingerprint({ whatsappMessage: customerRequest, fulfillmentConfirmation }), meta,
+    ...measure('finalValidation', () => summarizeGeneralProducts(items, facilityName, ordererName, phone, requestedCount, systemCount, [...ambiguity.values(), ...dosageFormReviews, ...changeReviews], { ...meta, productVerifications: verifications })) };
   traceGeneralAudit('comparison', { generalAuditResult });
   return generalAuditResult;
+}
+
+// An omitted medicine dosage form is incomplete identity evidence, not proof
+// of two different products. Explicitly different forms remain discrepancies.
+const GENERAL_DOSAGE_FORM = /\b(?:tablets?|tabs?|capsules?|caps?|syrup|suspension|injection|inj|infusion|solution|suppositor(?:y|ies)|cream|ointment|drops?|inhaler|nebules?|drip|soln|inf|susp|syr)\b/i;
+function formStem(name: string) {
+  return normalizeGeneralProductName(name.replace(new RegExp(GENERAL_DOSAGE_FORM.source, 'gi'), ' '));
+}
+function productEvidenceKey(product: GeneralProductEvidence) {
+  return JSON.stringify([product.source, product.line, product.originalText]);
+}
+export function generalFormOptions(name: string, fulfilled: GeneralProductEvidence[] = []) {
+  const stem = formStem(name);
+  const options = new Map<string, GeneralProductVerification['options'][number]>();
+  for (const term of generalMedicalTerminology) {
+    for (const name of [term.canonicalName, ...term.aliases.filter(alias => !term.contextualAliases.includes(alias))]) {
+      if (!GENERAL_DOSAGE_FORM.test(name) || formStem(name) !== stem) continue;
+      const key = normalizeGeneralProductName(name);
+      if (options.has(key)) continue;
+      const actual = fulfilled.find(product => product.normalizedName === key);
+      options.set(key, { key, name: actual?.name || name, fromFulfillment: !!actual });
+    }
+  }
+  return [...options.values()].sort((a, b) => Number(b.fromFulfillment) - Number(a.fromFulfillment) || a.name.localeCompare(b.name));
+}
+export function generalVerificationOptions(name: string, fulfilled: GeneralProductEvidence[] = []) {
+  const options = generalFormOptions(name, fulfilled);
+  for (const product of fulfilled) {
+    const match = matchGeneralClinicalProducts(name, product.name, normalizeGeneralProductName);
+    if (!match.plausible || !generalCatalogSupports(product.name, normalizeGeneralProductName)) continue;
+    if (!options.some(option => option.key === product.normalizedName)) options.unshift({ key: product.normalizedName, name: product.name, fromFulfillment: true, reason: match.reason });
+  }
+  return options;
+}
+function deferGeneralMissingDosageForms(comparison: GeneralComparisonItem[]) {
+  const deferred = new Set<GeneralComparisonItem>();
+  const reviews: GeneralSemanticReview[] = [];
+  const verifications: GeneralProductVerification[] = [];
+  for (const missing of comparison.filter(item => item.category === 'Medical Product')) {
+    const request = missing.provenance.filter(product => product.source === 'customer_request');
+    if (!request.length || request.some(product => product.customerVerified || product.canonicalId || GENERAL_DOSAGE_FORM.test(product.name) ||
+      /\b(?:normal saline|sodium chloride|ringer|dextrose)\b/i.test(expandGeneralMedicalTerms(product.name)) &&
+      /\d+(?:\.\d+)?\s*ml\b/i.test(product.name) && missing.provenance.some(evidence => evidence.source === 'fulfillment_confirmation'))) continue;
+    const candidates = comparison.filter(item => (item === missing || !item.provenance.some(product => product.source === 'customer_request')) &&
+      item.provenance.some(product => product.source === 'fulfillment_confirmation' && GENERAL_DOSAGE_FORM.test(product.name) && formStem(product.name) === formStem(request[0].name)));
+    const fulfilled = [...new Map([...missing.provenance.filter(product => product.source === 'fulfillment_confirmation'),
+      ...candidates.flatMap(item => item.provenance.filter(product => product.source === 'fulfillment_confirmation'))]
+      .map(product => [productEvidenceKey(product), product])).values()];
+    if (!candidates.length && !/\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml|miu|iu)\b/i.test(request[0].name)) continue;
+    const options = generalFormOptions(request[0].name, fulfilled);
+    if (!candidates.length && !options.length) continue;
+    if (candidates.length) deferred.add(missing);
+    candidates.forEach(item => deferred.add(item));
+    const key = JSON.stringify(request.map(productEvidenceKey));
+    const suggested = options.find(option => option.fromFulfillment);
+    verifications.push({ key, productName: request[0].name, originalText: request.map(product => product.originalText).join('\n'),
+      requestedQuantity: request.reduce((sum, product) => sum + product.quantity, 0),
+      suppliedQuantity: fulfilled.reduce((sum, product) => sum + product.quantity, 0),
+      ...(suggested ? { suggestedProduct: suggested.name } : {}), options,
+      status: options.length ? 'customer confirmation required' : 'review required', requestedProducts: request, fulfillmentProducts: fulfilled });
+    for (const product of request) reviews.push({ dosageFormKey: key, kind: 'product', field: 'products', source: product.source, originalText: product.originalText,
+      possibleMatches: options.map(option => option.name),
+      reason: `The Customer Request omits the dosage form. Requested quantity: ${missing.requested}. Fulfilment Confirmation: ${fulfilled.map(product => `${product.name} — ${product.quantity} supplied`).join('; ') || 'No matching formulation recorded'}. Contact the customer to confirm the dosage form before accepting the product or comparing its quantity.` });
+  }
+  return { items: comparison.filter(item => !deferred.has(item)), reviews, verifications };
+}
+
+/** Recompare current evidence after the CCA's explicit customer-contact action. */
+export function applyGeneralProductConfirmation<T extends ReturnType<typeof runGeneralAuditor>>(
+  result: T, key: string, productKey: string, customerContactConfirmed: boolean,
+  actor?: { id: string; name: string }, confirmedAt = new Date().toISOString(),
+) {
+  const verifications = result.generalAudit.productVerifications || [];
+  const previousTarget = verifications.find(item => item.key === key);
+  const target = previousTarget ? { ...previousTarget, confirmation: undefined, status: 'customer confirmation required' as const } : undefined;
+  if (!customerContactConfirmed || !target) throw new Error('Contact the customer and select a product before confirming.');
+  if (target.requestedProducts.some(product => product.quantityReview)) throw new Error('Clarify the ambiguous requested quantity before confirming the product.');
+  const policy = generalConfirmationPolicy(target, normalizeGeneralProductName);
+  if (policy.state !== 'dosage/formulation confirmation required') throw new Error('This entry requires product identification or quantity review, not formulation confirmation.');
+  // Revalidate against the live catalogue, rather than trusting client options.
+  const option = generalVerificationOptions(target.productName, target.fulfillmentProducts).find(option => option.key === productKey && policy.options.some(eligible => eligible.key === productKey));
+  if (!option) throw new Error('Select a current catalogue-verified formulation at the requested strength.');
+  const requestedKeys = new Set(target.requestedProducts.map(productEvidenceKey));
+  const evidence = [...new Map([...result.items.flatMap(item => item.provenance),
+    ...verifications.flatMap(item => [...item.requestedProducts, ...item.fulfillmentProducts])]
+    .map(product => [productEvidenceKey(product), product])).values()]
+    .map(product => requestedKeys.has(productEvidenceKey(product)) ? { ...product, name: option.name, normalizedName: option.key, matchedProductKey: option.key, matchingStage: 'exact' as const, dosageForm: normalizeGeneralProductIdentity(option.name).match(GENERAL_DOSAGE_FORM)?.[0] || '', customerVerified: true } : product)
+    .sort((left, right) => left.line - right.line);
+  const prepared = prepareGeneralProductComparison(evidence.filter(product => product.source === 'customer_request'),
+    evidence.filter(product => product.source === 'fulfillment_confirmation'), result.generalAudit.orderLimitDecisions,
+    { osuItems: result.items.filter(item => item.fulfillment.registeredOutOfStock).map(item => item.name) });
+  const deferred = deferGeneralMissingDosageForms(prepared.items);
+  const pending = { items: deferred.items, reviews: [...prepared.reviews, ...deferred.reviews], verifications: [...prepared.verifications, ...deferred.verifications] };
+  const verified: GeneralProductVerification = { ...target, status: 'customer verified',
+    ...(previousTarget?.confirmation ? { confirmationHistory: [...(previousTarget.confirmationHistory || []), previousTarget.confirmation] } : {}),
+    confirmation: { productName: option.name, productKey: option.key, formulation: normalizeGeneralProductIdentity(option.name).match(GENERAL_DOSAGE_FORM)?.[0] || '', customerContactConfirmed: true, confirmedAt, inputFingerprint: result.inputFingerprint,
+      ...(actor ? { confirmedBy: actor } : {}) } };
+  // Verified source evidence must win over original copies in later confirmations.
+  verified.requestedProducts = evidence.filter(product => requestedKeys.has(productEvidenceKey(product)));
+  const details = result.generalAudit;
+  const productVerifications = [...verifications.filter(item => item.status === 'customer verified' && item.key !== key), verified, ...pending.verifications];
+  const reviews = [...(details.semanticReviews || []).filter(review => !review.dosageFormKey), ...pending.reviews];
+  const summary = summarizeGeneralProducts(pending.items, details.facility, details.orderer, details.phone,
+    details.productCount.requested, details.productCount.found, reviews, { ...details, productVerifications });
+  const extracted = (result as T & { extractedOrder?: { products: { name: string; quantity: number | null; unit: string | null }[]; unresolvedFields: string[]; extractionConfidence: number } }).extractedOrder;
+  const originalNames = new Set(target.requestedProducts.map(product => product.normalizedName));
+  const productReview = generalEssentialReviewNotices(summary.generalAudit.semanticReviews).some(notice => notice.field === 'products' || notice.field === 'quantity');
+  const unresolvedFields = extracted ? extracted.unresolvedFields.filter(field => field !== 'products' || productReview) : [];
+  const extractedOrder = extracted ? { ...extracted,
+    products: extracted.products.map(product => originalNames.has(normalizeGeneralProductName(product.name)) ? { ...product, name: option.name } : product),
+    unresolvedFields, extractionConfidence: unresolvedFields.length ? 0 : 1 } : undefined;
+  return { ...result, ...summary, ...(extractedOrder ? { extractedOrder } : {}) };
+}
+
+/** Validate final/legacy/AI comparisons against all original explicit product rows.
+ * Only raw-source confident pairs or unresolved clinical candidates can repair a
+ * classification; a saved CCA selection is authoritative for its own source. */
+export function enforceGeneralProductAssignments<T extends ReturnType<typeof runGeneralAuditor>>(result: T, customer: string, fulfillment: string, support: GeneralAuditSupport = {}) {
+  const originals = prepareGeneralProductComparison(parseGeneralProducts(customer, 'customer_request'), parseGeneralProducts(fulfillment, 'fulfillment_confirmation'), result.generalAudit.orderLimitDecisions, support);
+  const sourceKey = (product: GeneralProductEvidence) => `${product.source}:${canonicalGeneralSource(product.originalText)}`;
+  // Semantic rewriting is line-position preserving. Bind source evidence here;
+  // clinical pairing itself is determined exclusively by the shared engine.
+  const sameEvidence = (a: GeneralProductEvidence, b: GeneralProductEvidence) => a.source === b.source &&
+    (sourceKey(a) === sourceKey(b) || a.line === b.line && a.quantity === b.quantity && a.unit === b.unit);
+  const verifiedSources = new Set((result.generalAudit.productVerifications || []).filter(product => product.confirmation)
+    .flatMap(product => product.requestedProducts.map(sourceKey)));
+  let items = result.items;
+  let reviews = [...(result.generalAudit.semanticReviews || [])];
+  const verifications = [...(result.generalAudit.productVerifications || [])];
+  let changed = false;
+  for (const candidate of originals.items) {
+    const requests = candidate.provenance.filter(product => product.source === 'customer_request');
+    if (!requests.length || !candidate.provenance.some(product => product.source === 'fulfillment_confirmation') ||
+      requests.some(product => verifiedSources.has(sourceKey(product))) || candidate.provenance.some(product => product.quantityReview || getGeneralMedicalAmbiguity(product.name))) continue;
+    const keys = new Set(candidate.provenance.map(sourceKey));
+    const related = items.filter(item => item.provenance.some(product => keys.has(sourceKey(product)) || candidate.provenance.some(original => sameEvidence(product, original))));
+    if (!related.some(item => ['missing item', 'extra item'].includes(item.status)) || related.some(item => !['missing item', 'extra item'].includes(item.status))) continue;
+    items = [...items.filter(item => !related.includes(item)), candidate];
+    changed = true;
+  }
+  for (const pending of originals.verifications) {
+    if (pending.requestedProducts.some(product => verifiedSources.has(sourceKey(product))) || verifications.some(product => product.key === pending.key || product.requestedProducts.some(current => pending.requestedProducts.some(original => sameEvidence(current, original))))) continue;
+    const keys = new Set([...pending.requestedProducts, ...pending.fulfillmentProducts].map(sourceKey));
+    items = items.filter(item => !item.provenance.some(product => keys.has(sourceKey(product)) || [...pending.requestedProducts, ...pending.fulfillmentProducts].some(original => sameEvidence(product, original))));
+    verifications.push(pending);
+    reviews.push(...originals.reviews.filter(review => review.dosageFormKey === pending.key));
+    changed = true;
+  }
+  if (!changed) return result;
+  const details = result.generalAudit;
+  return { ...result, ...summarizeGeneralProducts(items, details.facility, details.orderer, details.phone,
+    details.productCount.requested, details.productCount.found, reviews, { ...details, productVerifications: verifications }) };
 }
 
 /** Score only validations performed by the final General audit, never AI certainty. */
@@ -624,6 +867,7 @@ export function buildGeneralAuditCheckSummary(items: { status: string; requested
  * and numeric evidence are accounted for by a final, paired comparison. */
 export function reconcileGeneralProductReviews(items: GeneralComparisonItem[], reviews: GeneralSemanticReview[], fields?: { facility: GeneralFacilityResult; orderer: GeneralFieldResult }): GeneralSemanticReview[] {
   return reviews.filter(review => {
+    if (review.dosageFormKey) return true; // Only explicit customer confirmation resolves this review.
     const text = generalOrderRelevantText(review.originalText).trim();
     if (!text || /^products?(?: and quantities)?\s*[:=.!]?$/i.test(text)) return false;
     if (classifyGeneralText(text).orderChange) return true;
@@ -652,13 +896,36 @@ export function reconcileGeneralProductReviews(items: GeneralComparisonItem[], r
 }
 
 /** Rebuild every product-derived total while retaining authoritative header checks. */
-export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFacilityResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = [], parameters: Pick<GeneralAuditDetails, 'dropArea' | 'district'> = {}) {
+export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFacilityResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = [], parameters: Pick<GeneralAuditDetails, 'dropArea' | 'district' | 'productVerifications'> = {}) {
+  const verifications: GeneralProductVerification[] = [];
+  for (const product of parameters.productVerifications || []) {
+    const policy = generalConfirmationPolicy(product, normalizeGeneralProductName);
+    if (policy.state === 'dosage/formulation confirmation required' || policy.state === 'product match' || policy.state === 'product discrepancy') {
+      verifications.push({ ...product, options: policy.options, reviewState: policy.state });
+    } else if (policy.productEvidence) {
+      // Genuine unknown products and quantities have review records, never controls.
+      semanticReviews = semanticReviews.filter(review => review.dosageFormKey !== product.key);
+      semanticReviews.push(...product.requestedProducts.map(source => ({ kind: 'product' as const,
+        field: policy.state === 'quantity review' ? 'quantity' as const : 'products' as const,
+        reviewState: policy.state, source: source.source, originalText: source.originalText, possibleMatches: [],
+        reason: policy.state === 'quantity review' ? 'The requested quantity is unclear. Verify the quantity before comparison.' : 'Establish the actual product identity before considering a formulation.' })));
+    } else {
+      semanticReviews = semanticReviews.filter(review => review.dosageFormKey !== product.key);
+    }
+  }
+  const formulationKeys = new Set(verifications.map(product => product.key));
+  semanticReviews = semanticReviews.map(review => {
+    if (!review.dosageFormKey || formulationKeys.has(review.dosageFormKey)) return review;
+    const { dosageFormKey: _obsoleteKey, ...reviewEvidence } = review;
+    return reviewEvidence;
+  });
+  parameters = { ...parameters, productVerifications: verifications };
   // Rebuilds and older semantic responses must obey the same classification.
   // Strip routine clauses before review counts, confidence, and final status.
   // Reconcile duplicate source reviews after stripping mixed notification text.
   semanticReviews = [...new Map(reconcileGeneralProductReviews(items, semanticReviews, { facility: facilityName, orderer: ordererName }).flatMap(review => {
     const originalText = generalOrderRelevantText(review.originalText).trim();
-    return originalText ? [[`${review.source}:${originalText}`, { ...review, originalText }] as const] : [];
+    return originalText ? [[`${review.source}:${originalText}`, { ...review, originalText, reviewState: review.dosageFormKey ? 'dosage/formulation confirmation required' as const : generalReviewField(review) === 'quantity' ? 'quantity review' as const : generalReviewField(review) === 'products' ? 'product identification review' as const : undefined }] as const] : [];
   })).values()];
   const reviewNotices = generalEssentialReviewNotices(semanticReviews);
   const hasProductReview = reviewNotices.some(notice => notice.field === 'products' || notice.field === 'quantity');
@@ -666,6 +933,8 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   items = applyGeneralVaccinePairing(items, normalizeGeneralProductName);
   items = items.map(item => {
     const category = generalProductCategory(item.name, normalizeGeneralProductName, item.category);
+    const productStatus = ['missing item', 'extra item', 'vaccine pairing mismatch'].includes(item.status) ? 'product discrepancy' as const : 'product match' as const;
+    if (item.fulfillment.productStatus !== productStatus) item = { ...item, fulfillment: { ...item.fulfillment, productStatus } };
     return item.category === category && item.fulfillment.category === category ? item :
       { ...item, category, fulfillment: { ...item.fulfillment, category } };
   });
@@ -725,7 +994,7 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
     productCount: { requested: requestedCount, found: systemCount, status: requestedCount === systemCount ? 'match' : 'mismatch' }, semanticReviews }).map(notice => notice.message);
   const requiresFacilityConfirmation = facilityName.requiresDispatchConfirmation !== false || facilityName.identityStatus !== 'resolved';
   const dispatchReadiness = { requiresFacilityConfirmation, canDispatchAutomatically: allMatch && !requiresFacilityConfirmation };
-  const generalAudit: GeneralAuditDetails = { dispatchReadiness, facility: facilityName, orderer: ordererName, phone, dropArea: parameters.dropArea, district: parameters.district,
+  const generalAudit: GeneralAuditDetails = { ...(parameters.productVerifications?.length ? { productVerifications: parameters.productVerifications } : {}), dispatchReadiness, facility: facilityName, orderer: ordererName, phone, dropArea: parameters.dropArea, district: parameters.district,
     message, warnings, auditSummary, ...(semanticReviews.length ? { semanticReviews } : {}),
     productCount: { requested: requestedCount, found: systemCount, status: requestedCount === systemCount ? 'match' : 'mismatch' }, discrepancies,
     counts: { fullySupplied: items.filter(item => item.fulfillment.fulfillmentStatus === 'fully supplied').length, outOfStock: stockCount, orderLimited: limitedCount, pendingOrderLimits: pendingOrderLimitCount },

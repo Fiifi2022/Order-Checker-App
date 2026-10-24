@@ -1,3 +1,5 @@
+import { generalInputFingerprint } from '../shared/generalAuditFingerprint';
+import { restoreGeneralProductConfirmations } from '../src/utils/generalProductConfirmationPersistence';
 import { auditReadBudget, auditRemainingMs, auditSignal, auditTiming } from './auditBudget';
 import { AUDIT_AI_FALLBACK_MS, auditTimeoutSetting } from '../shared/auditPerformance';
 import test from 'node:test';
@@ -97,7 +99,7 @@ function verifyRoute(app: ReturnType<typeof fixture>) {
     auditReadBudget, auditRemainingMs, auditSignal, auditTiming, auditTimeoutSetting, process: { env: {} }, AUDIT_AI_FALLBACK_MS,
     readGeneralFacilityContext, collection(_db: unknown, name: string) { return name; },
     async getDocs(name: string) { return { docs: [...app.records.entries()].filter(([path]) => path.startsWith(name + '/')).map(([path, value]) => ({ id: path.slice(name.length + 1), data: () => value })) }; },
-    getGeminiClient() { throw new Error('No external AI allowed in this test'); }, osuItems: [], audits: [], createHash, setTimeout, clearTimeout,
+    getGeminiClient() { throw new Error('No external AI allowed in this test'); }, osuItems: [], audits: [], createHash, generalInputFingerprint, restoreGeneralProductConfirmations, setTimeout, clearTimeout,
     cleanFirestorePayload: app.storage.clean, getFirestoreDb() { return {}; }, doc: app.storage.doc,
     async setDoc(path: string, value: any) { app.records.set(path, value); }
   });

@@ -64,7 +64,7 @@ test('real product uncertainty shows its original source, reason and candidates 
   assert.match(html, /Cough syrup - 2/);
   assert.match(html, /Reason: Adult or paediatric formulation was not specified/);
   assert.match(html, /Possible matches: Adult cough syrup, Paediatric cough syrup/);
-  assert.match(html, /Product: Confirm the requested product/);
+  assert.match(html, /PRODUCT IDENTIFICATION REVIEW/);
 });
 
 test('generic fallback warnings show the exact unresolved line when Gemini is unavailable', async () => {

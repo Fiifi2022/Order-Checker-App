@@ -1,3 +1,4 @@
+export type GeneralProductReviewState = 'product identification review' | 'quantity review' | 'dosage/formulation confirmation required' | 'product match' | 'product discrepancy';
 import type { GeneralProductCategory } from './generalProductCategory';
 
 export interface GeneralNameEvidence {
@@ -25,6 +26,8 @@ export interface GeneralAuditCheckSummary {
   confidence: number;
 }
 export interface GeneralSemanticReview {
+  reviewState?: GeneralProductReviewState;
+  dosageFormKey?: string;
   kind?: 'product' | 'unparsed_text';
   field?: import('./generalAuditReviews').GeneralEssentialField;
   originalText: string;
@@ -32,7 +35,32 @@ export interface GeneralSemanticReview {
   possibleMatches: string[];
   reason: string;
 }
+export interface GeneralProductVerification {
+  reviewState?: GeneralProductReviewState;
+  key: string;
+  productName: string;
+  reason?: string;
+  originalText: string;
+  requestedQuantity: number;
+  suggestedProduct?: string;
+  suppliedQuantity: number;
+  options: { key: string; name: string; fromFulfillment: boolean; reason?: string }[];
+  status: 'customer confirmation required' | 'customer verified' | 'review required';
+  requestedProducts: import('./generalAuditor').GeneralProductEvidence[];
+  fulfillmentProducts: import('./generalAuditor').GeneralProductEvidence[];
+  confirmationHistory?: NonNullable<GeneralProductVerification['confirmation']>[];
+  confirmation?: {
+    productName: string;
+    productKey: string;
+    inputFingerprint?: string;
+    formulation: string;
+    customerContactConfirmed: true;
+    confirmedAt: string;
+    confirmedBy?: { id: string; name: string };
+  };
+}
 export interface GeneralAuditDetails {
+  productVerifications?: GeneralProductVerification[];
   dispatchReadiness?: { canDispatchAutomatically: boolean; requiresFacilityConfirmation: boolean };
   semanticReviews?: GeneralSemanticReview[];
   auditSummary?: GeneralAuditCheckSummary;
@@ -55,6 +83,9 @@ export interface GeneralAuditDetails {
 
 export type GeneralFulfillmentStatus = 'fully supplied' | 'out of stock' | 'pending order limit' | 'order limit applied' | 'discrepancy';
 export interface GeneralProductResult {
+  productStatus?: GeneralProductReviewState;
+  matchingStage?: import('./generalProductMatching').GeneralMatchingStage;
+  clinicalAttributes?: import('./generalProductMatching').GeneralClinicalAttributes;
   category?: GeneralProductCategory;
   vaccineCompanionFor?: string;
   vaccinePairingError?: string;

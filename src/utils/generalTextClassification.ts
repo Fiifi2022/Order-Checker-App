@@ -1,3 +1,4 @@
+import { generalDocumentLabel, generalNonProductPhrase, recognizeGeneralDocument } from './generalDocumentStructure';
 /** General Auditor only. Unknown text remains unresolved; a date, number or
  * delivery keyword by itself never proves that a line is administrative. */
 export type GeneralTextCategory = 'mandatory_order' | 'optional_order' | 'administrative' | 'unresolved_order';
@@ -115,10 +116,16 @@ function standaloneOrderDate(text: string): boolean {
 export function classifyGeneralText(raw: string): GeneralTextClassification {
   const text = raw.trim().replace(/^(?:[-*•]\s+|\d+[.)]\s+)/, '');
   if (isGeneralNonOrderInformation(text)) return { category: 'administrative', reason: 'Patient, clinical, status or contact information; excluded from order checks.' };
+  const structure = generalDocumentLabel(text);
+  if (structure && !structure.value) return { category: structure.field === 'date' ? 'administrative' : 'mandatory_order', reason: 'Recognized document field or section heading.' };
   // Specific operational directives take precedence over greetings, dates and
   // metadata prefixes, even when embedded in an otherwise routine footer.
   if (change.test(text) || revisedIdentity.test(text) || changedDestination.test(text) || revisedQuantity.test(text)) return { category: 'unresolved_order', reason: 'Explicit order or destination change requires verification.', orderChange: true };
-  if (standaloneOrderDate(text)) return { category: 'administrative', reason: 'Standalone order date; excluded from essential order checks.' };
+  const phrase = generalNonProductPhrase(text);
+  if (phrase && !phrase.value) return { category: phrase.boundary ? 'mandatory_order' : 'administrative', reason: 'Recognized introductory, administrative or notification text.' };
+  if (structure?.field === 'date' && /^(?:\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+\s+\d{4}|[a-z]+\s+\d{1,2}(?:st|nd|rd|th)?[,]?\s+\d{4})$/i.test(structure.value)) return { category: 'administrative', reason: 'Explicit order date.' };
+  const labelledDate = text.match(/^date\s*[:;=–—-]?\s*(\d{1,4}[-/]\d{1,2}[-/]\d{2,4})$/i)?.[1];
+  if (standaloneOrderDate(text) || labelledDate && standaloneOrderDate(labelledDate)) return { category: 'administrative', reason: 'Standalone order date; excluded from essential order checks.' };
   if (/^(?:delivery\s*\/\s*drop area|delivery drop area|drop area|delivery area|drop location|drop off area|district(?: name)?)\s*[:=]/i.test(text)) return { category: 'optional_order', reason: 'Explicit optional location information.' };
   if (/^vaccines? requisition(?:\s*\(\s*all in vials\s*\))?\s*[:.!]?$/i.test(text) || /^we will now prepare the following items for delivery\s*[:.!]?$/i.test(text)) return { category: 'mandatory_order', reason: 'Product section heading; individual product quantities remain authoritative.' };
   if (/^(?:name of orderer|orderer(?: name)?|requested by|requester|recipient|customer name|name of health facility|health facility|facility(?: name| id)?|hospital|clinic|products?(?: and quantities)?|out of stock|available(?: products| items)?|in stock)\s*[:=.!]?$/i.test(text) || /^(?:name of orderer|orderer(?: name)?|requested by|requester|recipient|customer name|name of health facility|health facility|facility(?: name| id)?|hospital|clinic)\s*[:=]/i.test(text)) return { category: 'mandatory_order', reason: 'Explicit identity or order section.' };
@@ -130,5 +137,5 @@ export function classifyGeneralText(raw: string): GeneralTextClassification {
 }
 /** Preserve line positions for quantity provenance; never rewrite source orders. */
 export function generalOrderRelevantText(text: string) {
-  return stripGeneralNonOrderInformation(text).split(/\r?\n/).map(line => classifyGeneralText(line).category === 'administrative' ? '' : sentences(line).filter(part => classifyGeneralText(part).category !== 'administrative').join(' ')).join('\n');
+  return recognizeGeneralDocument(stripGeneralNonOrderInformation(text), classifyGeneralText).auditText.split(/\r?\n/).map(line => classifyGeneralText(line).category === 'administrative' ? '' : sentences(line).filter(part => classifyGeneralText(part).category !== 'administrative').join(' ')).join('\n');
 }

@@ -71,7 +71,7 @@ test('a missing quantity produces one clarification even with unrelated conversa
   const header = 'Facility: Maple HC\nOrderer: Adjoa Asante\n';
   const result = await audit(header + 'ORS\n' + context, header + 'ORS - 2 packs', {}, { semanticTimeoutMs: 0 }, offline);
   assert.deepEqual(result.generalAudit.warnings, ['Quantity: Confirm the requested quantity.']);
-  assert.equal((markup(result).match(/Quantity: Confirm the requested quantity/g) || []).length, 1);
+  assert.equal((markup(result).match(/QUANTITY REVIEW/g) || []).length, 1);
   assert.equal(result.canDispatchAutomatically, false);
 });
 

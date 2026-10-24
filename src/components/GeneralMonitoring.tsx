@@ -1,6 +1,6 @@
 import { authFetch } from '../utils/authFetch';
 import { useState } from 'react';
-export default function GeneralMonitoring() {
+export default function GeneralMonitoring({ onOpenAudit }: { onOpenAudit?: (record: any) => void }) {
   const [history, setHistory] = useState<any>(null);
   const [diagnostics, setDiagnostics] = useState<any[]>([]);
   const [error, setError] = useState('');
@@ -24,7 +24,7 @@ export default function GeneralMonitoring() {
     {diagnostics.length > 0 && <ul className="space-y-1 mb-3">{diagnostics.map((row, index) => <li key={index}>{row.service}: <strong>{row.status}</strong>{row.detail && ` — ${row.detail}`}</li>)}</ul>}
     {history && <><p className="mb-2">History source: {history.source}. {history.warning}</p><dl className="grid sm:grid-cols-3 gap-2">{Object.entries(history.analytics).filter(([, value]) => !Array.isArray(value)).map(([key, value]) => <div key={key}><dt>{key.replace(/([A-Z])/g, ' $1')}</dt><dd className="font-bold">{String(value)}{key.endsWith('Rate') ? '%' : ''}</dd></div>)}</dl>
       {['frequentlyMismatchedProducts', 'frequentlyOutOfStockProducts'].map(key => <p key={key} className="mt-2">{key.replace(/([A-Z])/g, ' $1')}: {history.analytics[key].map((row: any) => `${row.name} (${row.count})`).join(', ') || 'None'}</p>)}
-      <div className="overflow-auto mt-4"><table className="w-full text-left"><thead><tr>{['Time', 'Facility', 'Orderer', 'Verdict', 'Issues', 'Stock / Limits / Supplied', 'Seconds', 'Resolution'].map(label => <th key={label} className="p-2">{label}</th>)}</tr></thead><tbody>{history.records.map((row: any) => <tr key={row.id}><td className="p-2">{row.timestamp}</td><td>{row.facility}</td><td>{row.orderer || row.generalAudit.orderer.whatsappValue}</td><td>{row.generalAudit.finalStatus}</td><td>{row.issueCount}</td><td>{row.generalAudit.counts?.outOfStock ?? '—'} / {row.generalAudit.counts?.orderLimited ?? '—'} / {row.generalAudit.counts?.fullySupplied ?? '—'}</td><td>{row.durationSec}</td><td>{row.status}{row.resolutionNotes && `: ${row.resolutionNotes}`}</td></tr>)}</tbody></table></div>
+      <div className="overflow-auto mt-4"><table className="w-full text-left"><thead><tr>{['Time', 'Facility', 'Orderer', 'Verdict', 'Issues', 'Stock / Limits / Supplied', 'Seconds', 'Resolution', 'Audit'].map(label => <th key={label} className="p-2">{label}</th>)}</tr></thead><tbody>{history.records.map((row: any) => <tr key={row.id}><td className="p-2">{row.timestamp}</td><td>{row.facility}</td><td>{row.orderer || row.generalAudit.orderer.whatsappValue}</td><td>{row.generalAudit.finalStatus}</td><td>{row.issueCount}</td><td>{row.generalAudit.counts?.outOfStock ?? '—'} / {row.generalAudit.counts?.orderLimited ?? '—'} / {row.generalAudit.counts?.fullySupplied ?? '—'}</td><td>{row.durationSec}</td><td>{row.status}{row.resolutionNotes && `: ${row.resolutionNotes}`}</td><td>{onOpenAudit && <button className="rounded border p-2" onClick={() => onOpenAudit(row)}>Open saved audit</button>}</td></tr>)}</tbody></table></div>
       {!history.records.length && <p>No General Auditor records yet.</p>}</>}
   </details>;
 }

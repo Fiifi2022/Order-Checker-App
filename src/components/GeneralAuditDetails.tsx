@@ -2,12 +2,19 @@ import { generalFacilityDisplayStatus } from '../utils/generalFacility';
 import { generalAuditClarifications, generalReviewEvidence, generalReviewExplanation } from '../utils/generalAuditReviews';
 import type { GeneralAuditDetails as Details } from '../utils/generalAuditTypes';
 
-export default function GeneralAuditDetails({ details }: { details: Details }) {
-  const reviewNotices = generalAuditClarifications(details);
+export default function GeneralAuditDetails({ details, onConfirmProduct, confirmationDisabled = false }: {
+  details: Details; onConfirmProduct?: (key: string, productKey: string) => Promise<void>; confirmationDisabled?: boolean;
+}) {
+  const reviewNotices = generalAuditClarifications({ ...details, semanticReviews: details.semanticReviews?.filter(review => !review.dosageFormKey) });
+  // Older summaries combine product and quantity wording. Keep the actual
+  // review evidence separate in the interface without changing legacy payloads.
+  if (generalReviewEvidence(details.semanticReviews?.filter(review => !review.dosageFormKey), 'quantity').length && !reviewNotices.some(notice => notice.field === 'quantity')) {
+    reviewNotices.push({ field: 'quantity', message: 'QUANTITY REVIEW' });
+  }
   const optionalAbsent = { whatsappValue: 'N/A', fulfillmentValue: 'N/A', status: 'optional not provided' as const };
   const productStatus = details.productCount.requested === 0 || details.productCount.found === 0 ? 'missing from customer request'
     : details.products.some(product => product.fulfillmentStatus === 'discrepancy') ? 'mismatch'
-    : details.pendingOrderLimitCount || reviewNotices.some(notice => notice.field === 'products' || notice.field === 'quantity') ? 'review required' : 'match';
+    : details.productVerifications?.some(product => product.status !== 'customer verified') || details.pendingOrderLimitCount || reviewNotices.some(notice => notice.field === 'products' || notice.field === 'quantity') ? 'review required' : 'match';
   const fields = [
     { unavailable: 'Not available', label: 'Facility Name', required: true, customer: details.facility.whatsappValue, system: details.facility.fulfillmentValue, status: generalFacilityDisplayStatus(details.facility) },
     { unavailable: 'Not found', label: 'Name of Orderer', required: true, customer: details.orderer.whatsappValue, system: details.orderer.fulfillmentValue, status: details.orderer.status, reason: details.orderer.reason },
@@ -29,9 +36,9 @@ export default function GeneralAuditDetails({ details }: { details: Details }) {
   return <section className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm space-y-4" aria-label="General audit field results">
     <h4 className="text-sm font-bold text-[#3B1A5E]">Identity and order checks</h4>
     {reviewNotices.map(notice => {
-      const evidence = generalReviewEvidence(details.semanticReviews, notice.field);
+      const evidence = generalReviewEvidence(details.semanticReviews?.filter(review => !review.dosageFormKey), notice.field);
       return <div key={notice.field} role="status" className="text-xs text-amber-800 bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-2">
-        <p className="font-semibold">{notice.message}</p>
+        <p className="font-semibold">{notice.field === 'products' ? 'PRODUCT IDENTIFICATION REVIEW' : notice.field === 'quantity' ? 'QUANTITY REVIEW' : notice.message}</p>
         {evidence.map((review, index) => <div key={`${review.source}:${index}`} className="space-y-1">
           <p className="font-medium">{review.source === 'customer_request' ? 'Customer Request' : 'Fulfilment Confirmation'} — text requiring review:</p>
           <blockquote className="whitespace-pre-wrap break-words border-l-2 border-amber-300 pl-2">{review.originalText}</blockquote>

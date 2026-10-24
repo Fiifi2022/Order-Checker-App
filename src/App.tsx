@@ -1,3 +1,5 @@
+import GeneralInventory, { generalInventoryRows } from './components/GeneralInventory';
+import { generalInputFingerprint, sameGeneralAuditSources } from '../shared/generalAuditFingerprint';
 import { AUDIT_TARGET_MS, AUDIT_HARD_TIMEOUT_MS, AUDIT_DELAY_MESSAGE, AUDIT_TIMEOUT_MESSAGE, auditTimeoutSetting } from '../shared/auditPerformance';
 import GeneralFacilityManager from './components/GeneralFacilityManager';
 import { acknowledgeOrderLimit } from '../shared/orderLimitAcknowledgement';
@@ -359,15 +361,52 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
     setVerificationTime(null);
     setLoading(false);
   };
+  const pendingSavedAudit = useRef<AuditRecord | null>(null);
+  const savedAuditStorageKey = `general-auditor:last-audit:${activeUser?.id}`;
+  const openSavedGeneralAudit = (record: AuditRecord) => {
+    if (!(record as AuditRecord & { generalAudit?: GeneralAuditDetailsPayload }).generalAudit) return;
+    invalidateGeneralAudit();
+    if (record.whatsappMessage === currentGeneralInputs.current.whatsappMessage && record.fulfillmentConfirmation === currentGeneralInputs.current.fulfillmentConfirmation) setResult(record);
+    else {
+      pendingSavedAudit.current = record;
+      setWhatsappMessage(record.whatsappMessage);
+      setFulfillmentConfirmation(record.fulfillmentConfirmation);
+    }
+    setIsDemoAudit(false);
+    setGeneralAuditorSection('check');
+    setActiveTab('auditor');
+  };
   useEffect(() => {
     invalidateGeneralAudit();
+    const saved = pendingSavedAudit.current;
+    pendingSavedAudit.current = null;
+    if (saved && sameGeneralAuditSources(saved, currentGeneralInputs.current)) setResult(saved);
   }, [whatsappMessage, fulfillmentConfirmation]);
+  useEffect(() => {
+    if (!result || !generalDetails || !sameGeneralAuditSources(result, currentGeneralInputs.current)) return;
+    try { localStorage.setItem(savedAuditStorageKey, result.id); } catch { /* History remains available on the server. */ }
+  }, [result, savedAuditStorageKey]);
+  useEffect(() => {
+    let cancelled = false;
+    const revision = generalAuditRevision.current;
+    let id: string | null = null;
+    try { id = localStorage.getItem(savedAuditStorageKey); } catch { return; }
+    if (!id || currentGeneralInputs.current.whatsappMessage || currentGeneralInputs.current.fulfillmentConfirmation) return;
+    void authFetch(`/api/audits/${encodeURIComponent(id)}`).then(async response => {
+      if (!response.ok) return;
+      const record = await response.json();
+      if (!cancelled && revision === generalAuditRevision.current && record.generalAudit &&
+        (!record.inputFingerprint || record.inputFingerprint === generalInputFingerprint(record))) openSavedGeneralAudit(record);
+    }).catch(() => { /* A temporary history outage must not block a new audit. */ });
+    return () => { cancelled = true; };
+  }, [savedAuditStorageKey]);
   useEffect(() => () => {
     generalAuditRequest.current?.abort();
   }, []);
 
 
   const handleCustomChange = (type: 'whatsapp' | 'fulfillment', value: string) => {
+    try { localStorage.removeItem(savedAuditStorageKey); } catch { /* No browser storage. */ }
     invalidateGeneralAudit();
     setIsDemoAudit(false);
     if (type === 'whatsapp') {
@@ -404,9 +443,31 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
 
   const verifyOrder = () => runGeneralVerification();
 
+  const [savingProductConfirmation, setSavingProductConfirmation] = useState(false);
+  const productConfirmationInFlight = useRef(false);
+  const confirmGeneralProduct = async (key: string, productKey: string) => {
+    if (!result || loading || productConfirmationInFlight.current) throw new Error('Wait for the current audit action to finish.');
+    const record = result;
+    const revision = generalAuditRevision.current;
+    if (!sameGeneralAuditSources(record, currentGeneralInputs.current)) throw new Error('Run the current inputs through the auditor again.');
+    productConfirmationInFlight.current = true;
+    setSavingProductConfirmation(true);
+    try {
+      const response = await authFetch(`/api/audits/${encodeURIComponent(record.id)}/product-confirmation`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, productKey, previousProductKey: (record as unknown as ReturnType<typeof runGeneralAuditor>).generalAudit?.productVerifications?.find(product => product.key === key)?.confirmation?.productKey, customerContactConfirmed: true, whatsappMessage: record.whatsappMessage,
+          fulfillmentConfirmation: record.fulfillmentConfirmation, inputFingerprint: generalInputFingerprint(record) }),
+      });
+      const updated = await response.json();
+      if (!response.ok) throw new Error(updated.error || 'Product confirmation could not be saved.');
+      if (revision === generalAuditRevision.current && sameGeneralAuditSources(record, currentGeneralInputs.current)) setResult(updated);
+      void fetchHistory();
+    } finally { productConfirmationInFlight.current = false; setSavingProductConfirmation(false); }
+  };
+
   const answerGeneralOrderLimit = (key: string, answer: boolean) => {
-    if (!result || !generalDetails || loading || !generalDetails.products.some(product => product.key === key && product.orderLimitEligible)) return;
-    if (result.whatsappMessage !== currentGeneralInputs.current.whatsappMessage || result.fulfillmentConfirmation !== currentGeneralInputs.current.fulfillmentConfirmation) return;
+    if (!result || !generalDetails || loading || savingProductConfirmation || !generalDetails.products.some(product => product.key === key && product.orderLimitEligible)) return;
+    if (!sameGeneralAuditSources(result, currentGeneralInputs.current)) return;
     const confirmed = acknowledgeOrderLimit(result as unknown as ReturnType<typeof runGeneralAuditor>, key, answer);
     setResult(confirmed as unknown as AuditRecord);
     void authFetch(`/api/audits/${encodeURIComponent(result.id)}/order-limit`, {
@@ -424,6 +485,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
       return;
     }
 
+    const priorAudit = result && generalDetails && sameGeneralAuditSources(result, inputs) ? result : null;
     invalidateGeneralAudit();
     const revision = generalAuditRevision.current;
     const controller = new AbortController();
@@ -472,7 +534,8 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
           auditScope: 'general_auditor',
           includeProductCatalog: true,
           checkSource: 'order_checker_app',
-          checkId: existingCheckId || `AUD-${crypto.randomUUID()}`,
+          checkId: existingCheckId || priorAudit?.id || `AUD-${crypto.randomUUID()}`,
+          restoreProductConfirmations: !!priorAudit,
           generalOrderLimitDecisions: { ...orderLimitDecisions },
           actor: activeUser ? { id: activeUser.id, name: activeUser.name, district: activeUser.district } : undefined,
           isDemo: isDemoAudit
@@ -953,7 +1016,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
               </div>
             </div>
 
-            {isAdministrator && <GeneralMonitoring />}
+            {isAdministrator && <GeneralMonitoring onOpenAudit={openSavedGeneralAudit} />}
             {generalServiceWarning && <p role="status" className="text-xs text-amber-800">{generalServiceWarning}</p>}
             {/* Inputs Layout */}
             <div id="editor-grid" className="grid md:grid-cols-2 gap-6">
@@ -1204,12 +1267,12 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                             Inventory Cross-Examination
                           </span>
                           <span className="text-xs text-[#5C2D91] font-mono font-medium">
-                            Items Analysed: {result.items.length}
+                            Items Analysed: {generalDetails ? generalInventoryRows(result.items as unknown as import('./utils/generalAuditor').GeneralComparisonItem[], generalDetails).length : result.items.length}
                           </span>
                         </div>
 
                         <div className="space-y-3">
-                          {result.items.map((item, idx) => {
+                          {generalDetails ? <GeneralInventory items={result.items as unknown as import('./utils/generalAuditor').GeneralComparisonItem[]} details={generalDetails} onConfirm={confirmGeneralProduct} onOrderLimit={answerGeneralOrderLimit} disabled={loading || savingProductConfirmation} /> : result.items.map((item, idx) => {
                             const colors = getStatusColor(item.status);
                             const generalProduct = generalDetails?.products.find(product => product.name === item.name);
                             return (
@@ -1266,7 +1329,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                                   )}
                                 </div>
 
-                                {generalProduct?.orderLimitEligible && <GeneralOrderLimitPrompt product={generalProduct} onDecision={answerGeneralOrderLimit} disabled={loading} />}
+                                {generalProduct?.orderLimitEligible && <GeneralOrderLimitPrompt product={generalProduct} onDecision={answerGeneralOrderLimit} disabled={loading || savingProductConfirmation} />}
 
                                 {/* Inline Order Limit Validation Panel (Directly Under Product Detail!) */}
                                 {!generalDetails && item.status === 'quantity mismatch' && !promptedItems.includes(item.name) && (
@@ -1361,7 +1424,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         </div>
                         )}
 
-                        {generalDetails && <GeneralAuditDetails details={generalDetails} />}
+                        {generalDetails && <GeneralAuditDetails details={generalDetails} onConfirmProduct={confirmGeneralProduct} confirmationDisabled={loading || savingProductConfirmation} />}
 
                         {/* AI Insights and notes */}
                         <div className="bg-[#3B1A5E] text-white p-5 rounded-2xl shadow-md border border-[#2C1349] relative overflow-hidden">

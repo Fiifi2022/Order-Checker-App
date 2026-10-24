@@ -1,3 +1,4 @@
+import { isGeneralKnownProductDescription, matchGeneralClinicalProducts } from '../src/utils/generalProductMatching';
 import { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 import { classifyGeneralText, generalOrderRelevantText } from '../src/utils/generalTextClassification';
 import { getGeneralVaccineCatalogVersion } from '../shared/generalVaccineCatalog';
@@ -9,7 +10,7 @@ import { Type } from '@google/genai';
 import { createHash } from 'node:crypto';
 import packaging from '../src/utils/generalPackagingCatalogue.json';
 import { medicalProductAcronyms, isGeneralBloodProduct, expandGeneralProductAcronyms } from '../src/utils/medicalProductAcronyms';
-import { extractGeneralInput, parseGeneralProducts, normalizeGeneralProductName, stripGeneralListPrefix, isMetadataLabel } from './generalAuditor';
+import { extractGeneralInput, parseGeneralProducts, normalizeGeneralProductName, hasExplicitGeneralOrderRatio, stripGeneralListPrefix, isMetadataLabel } from './generalAuditor';
 import { auditSemanticSchema, validateAuditSemantics, interpretAuditInputs, approvedProductName, type SemanticPair, type InterpretedAudit } from './auditSemantics';
 import { getAliases, matchVaccineName } from './vaccineService';
 import { geminiUsage } from './geminiUsage';
@@ -93,19 +94,23 @@ const interpretationIntent = /\b(?:need|send|give|please|pls|children|child)\b/i
 // routing only. The complete name, strength, form, unit and quantity are still
 // compared by the unchanged deterministic engine; specifications are never erased.
 function knownSpecifiedIdentity(name: string, normalizedName: string, known: Set<string>) {
-  if (known.has(normalizedName) || known.has(normalizeGeneralProductName(stripGeneralLeadingSpecification(name)))) return true;
+  if (isGeneralKnownProductDescription(name, normalizeGeneralProductName) || known.has(normalizedName) || known.has(normalizeGeneralProductName(stripGeneralLeadingSpecification(name)))) return true;
   const plain = key(name);
   for (const base of knownVocabulary!.plainNames) {
     if (!plain.startsWith(base + ' ')) continue;
-    const suffix = plain.slice(base.length).replace(/(?<![a-z])(?:mcg|mg|g|ml|l|iu|units?|adult|paediatric|pediatric|oral|iv|im|sc|syrup|suspension|tablets?|capsules?|injection|infusion|solution|cream|ointment|gel|powder|bottles?)(?![a-z])/gi, '');
+    const suffix = plain.slice(base.length).replace(/(?<![a-z])(?:mcg|mg|g|ml|l|miu|iu|units?|adult|paediatric|pediatric|oral|iv|im|sc|syrup|suspension|tablets?|capsules?|injection|infusion|solution|cream|ointment|gel|powder|bottles?)(?![a-z])/gi, '');
     if (/^[\d.,/%\s×*x()+-]*$/.test(suffix)) return true;
   }
   return false;
 }
 function deterministicProduct(product: ReturnType<typeof extractGeneralInput>['products'][number], inputs: GeneralExtractedPair, known: Set<string>) {
+  if (product.quantityReview) return false;
   if (product.source === 'customer_request' && product.ratioRequestedQuantity !== undefined &&
     /\b(?:syrup|suspension|injection)\b/i.test(product.name) &&
-    !/[\[(]|[-–—:=]\s*\d/.test(product.originalText)) return false;
+    !hasExplicitGeneralOrderRatio(product)) return false;
+  const counterparts = product.source === 'customer_request' ? inputs.fulfillment.products : inputs.customer.products;
+  const approvedWholeAlias = currentGeneralProductAliases().some(row => !('contextual' in row && row.contextual) && row.aliases.some(alias => key(alias) === key(product.name)));
+  if ((!interpretationIntent.test(product.name) || approvedWholeAlias) && !getGeneralMedicalAmbiguity(product.name) && counterparts.some(other => matchGeneralClinicalProducts(product.name, other.name, normalizeGeneralProductName).confident)) return true;
   const paired = inputs.customer.products.some(other => other.normalizedName === product.normalizedName) &&
     inputs.fulfillment.products.some(other => other.normalizedName === product.normalizedName);
   // A child/children qualifier is clinical product text when both sides supply
@@ -167,12 +172,12 @@ function quantityFragment(product: GeneralInterpretedProduct, source: 'customer_
   const offset = raw.lastIndexOf(product.quantityText);
   if (offset < 0 || /[\d.−]/.test(raw[offset - 1] || '') || /[\d.a-z]/i.test(raw[offset + product.quantityText.length] || '')) return null;
   const parsed = parseGeneralProducts(product.originalText, source);
-  if (parsed.some(p => p.quantity !== product.quantity || (p.ratioRequestedQuantity !== undefined && Number(m[2]) !== p.ratioRequestedQuantity))) return null;
+  if (parsed.some(p => p.quantityReview || p.quantity !== product.quantity || (p.ratioRequestedQuantity !== undefined && Number(m[2]) !== p.ratioRequestedQuantity))) return null;
   // Without a parsed order quantity, reject fragments embedded in strengths or
   // package sizes rather than blessing Gemini's numeric inference.
   if (!parsed.length && (/\d\s*$/.test(raw.slice(0, offset)) || /\b(?:mg|ml|mcg|iu)\b/i.test(product.quantityText) || /[\/+*-]\s*$/.test(raw.slice(0, offset)))) return null;
   if (!parsed.length && !/^(?:\s*[\])]*\s*[.!]?)$/.test(raw.slice(offset + product.quantityText.length)) && !/^\s*(?:of\s+)?[a-z]/i.test(raw.slice(offset + product.quantityText.length))) return null;
-  if (source === 'customer_request' && m[2] && /\b(?:syrup|suspension|injection)\b/i.test(raw) && !/[\[(]|[-:=]\s*\d/.test(raw)) return null;
+  if (source === 'customer_request' && m[2] && /\b(?:syrup|suspension|injection)\b/i.test(raw) && !parsed.some(hasExplicitGeneralOrderRatio)) return null;
   const observedUnit = parsed[0]?.unit || raw.slice(offset + product.quantityText.length).match(/^\s*(units?|vials?|packs?|boxes?|cards?|doses?|sachets?|tablets?|capsules?|bottles?|pieces?|pcs?|tests?)\b/i)?.[1] || '';
   return { text: m[2] === undefined ? `${product.quantity}` : `${product.quantity}/${m[2]}`, unit: m[3] || observedUnit, offset };
 }

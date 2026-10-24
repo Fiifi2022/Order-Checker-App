@@ -83,7 +83,7 @@ test('a genuine missing ASV quantity produces one concise quantity warning despi
   assert.deepEqual(result.generalAudit.warnings, ['Quantity: Confirm the requested quantity.']);
   assert.equal(result.generalAudit.finalStatus, 'ORDER DETAILS REQUIRED');
   const rendered = html(result.generalAudit);
-  assert.equal((rendered.match(/Quantity: Confirm the requested quantity\./g) || []).length, 1);
+  assert.equal((rendered.match(/QUANTITY REVIEW/g) || []).length, 1);
   assert.equal((rendered.match(/role="status"/g) || []).length, 1);
   assert.doesNotMatch(rendered, banned);
   assert.doesNotMatch(rendered, /bg-red-50/);
@@ -97,7 +97,9 @@ test('several unclear products and quantity fragments are grouped by field rathe
   assert.equal(rebuilt.issueCount, 0);
   assert.equal(rebuilt.allMatch, false);
   assert.deepEqual(rebuilt.generalAudit.warnings, ['Products and quantities: Confirm the requested products and quantities.']);
-  assert.equal((html(rebuilt.generalAudit).match(/role="status"/g) || []).length, 1);
+  assert.equal((html(rebuilt.generalAudit).match(/role="status"/g) || []).length, 2);
+  assert.match(html(rebuilt.generalAudit), /PRODUCT IDENTIFICATION REVIEW/);
+  assert.match(html(rebuilt.generalAudit), /QUANTITY REVIEW/);
 });
 
 test('true identity and quantity conflicts remain discrepancies, while missing optional locations do not', async () => {

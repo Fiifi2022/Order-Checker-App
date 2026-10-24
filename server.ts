@@ -1,3 +1,6 @@
+import { generalInputFingerprint } from './shared/generalAuditFingerprint';
+import { restoreGeneralProductConfirmations } from './src/utils/generalProductConfirmationPersistence';
+import { generalProductConfirmationHandler } from './server/generalProductConfirmation';
 import { needsProductCatalog } from './server/catalogReadPolicy';
 import { currentBlueprintHandler } from './server/currentBlueprint';
 import { coalesceFreshRead, readSnapshot, firestoreReadContext, firestoreReadReport } from './server/firestoreReads';
@@ -2026,9 +2029,9 @@ app.post('/api/verify', async (req, res) => {
     const durationSec = Number(((Date.now() - startTime) / 1000).toFixed(2));
 
     // Construct final audit record with database metadata
-    const auditRecord = {
+    let auditRecord = {
       ...payload,
-      ...(isGeneralAuditor ? { auditScope: 'general_auditor', orderer: payload.generalAudit.orderer.whatsappValue, finalVerdict: payload.generalAudit.finalStatus, generalCounts: payload.generalAudit.counts } : {}),
+      ...(isGeneralAuditor ? { inputFingerprint: generalInputFingerprint({ whatsappMessage, fulfillmentConfirmation }), auditScope: 'general_auditor', orderer: payload.generalAudit.orderer.whatsappValue, finalVerdict: payload.generalAudit.finalStatus, generalCounts: payload.generalAudit.counts } : {}),
       id: checkId || ('audit_' + Math.random().toString(36).substring(2, 11)),
       timestamp: new Date().toISOString(),
       verificationStartedAt,
@@ -2049,8 +2052,17 @@ app.post('/api/verify', async (req, res) => {
       resolvedAt: payload.allMatch ? new Date().toISOString() : undefined
     };
 
+    if (isGeneralAuditor && body.restoreProductConfirmations === true) {
+      let previous = audits.find(record => record.id === auditRecord.id);
+      if (!previous) {
+        try { const snapshot = await getDoc(doc(getFirestoreDb(), 'audits', auditRecord.id)); previous = snapshot.exists() ? snapshot.data() : null; }
+        catch { /* Without a saved decision the new audit remains unconfirmed. */ }
+      }
+      auditRecord = restoreGeneralProductConfirmations(auditRecord as any, previous as any);
+    }
+
     if (isGeneralAuditor && companionMode) Object.assign(auditRecord, { auditId: auditRecord.id, auditMode: companionMode,
-      isValid: auditRecord.allMatch, discrepancies: payload.generalAudit.discrepancies,
+      isValid: auditRecord.allMatch, discrepancies: auditRecord.generalAudit.discrepancies,
       facilityId: selectedCompanionFacility!.id, facilityName: selectedCompanionFacility!.facilityName,
       canCommit: false, allocationStatus: 'not_applicable', auditStatus: auditRecord.allMatch ? 'passed' : 'failed' });
 
@@ -2271,6 +2283,31 @@ app.post('/api/audits/:id/order-limit', orderLimitAcknowledgementHandler({
     const index = audits.findIndex(existing => existing.id === record.id);
     if (index >= 0) audits[index] = record; else audits.unshift(record);
     await setDoc(doc(getFirestoreDb(), 'audits', record.id), cleanFirestorePayload(record));
+  },
+}));
+
+app.get('/api/audits/:id', async (req, res) => {
+  try {
+    let record = audits.find(record => record.id === req.params.id);
+    if (!record) { const snapshot = await getDoc(doc(getFirestoreDb(), 'audits', req.params.id)); record = snapshot.exists() ? snapshot.data() : null; }
+    if (!record) return res.status(404).json({ error: 'Audit record not found.' });
+    return res.json(record);
+  } catch { return res.status(503).json({ error: 'Saved audit could not be loaded.' }); }
+});
+
+// Customer-contact confirmation is a saved audit action, separate from quantity limits.
+app.post('/api/audits/:id/product-confirmation', generalProductConfirmationHandler({
+  read: async id => {
+    const cached = audits.find(record => record.id === id);
+    if (cached) return cached;
+    const snapshot = await getDoc(doc(getFirestoreDb(), 'audits', id));
+    return snapshot.exists() ? snapshot.data() : null;
+  },
+  refreshCatalog: async () => { applyCatalog(await readProductCatalog()); },
+  save: async record => {
+    await setDoc(doc(getFirestoreDb(), 'audits', record.id), cleanFirestorePayload(record));
+    const index = audits.findIndex(existing => existing.id === record.id);
+    if (index >= 0) audits[index] = record; else audits.unshift(record);
   },
 }));
 

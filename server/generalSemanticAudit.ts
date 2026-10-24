@@ -1,10 +1,10 @@
 import { resolveGeneralOrdererName } from './generalOrdererFallback';
 import { getGeneralMedicalAmbiguity, resolveGeneralApprovedIdentity } from '../src/utils/generalMedicalTerminology';
-import { generalEssentialReviewNotices } from '../src/utils/generalAuditReviews';
+import { generalEssentialReviewNotices, generalReviewField } from '../src/utils/generalAuditReviews';
 import { extractGeneralOrderDeterministically, type StructuredGeneralOrder } from './generalOrderExtraction';
 import { resolveGeneralOrderExtraction } from './generalHybridExtraction';
 import { canAuditGeneralWithoutAi, generalInterpretationGaps, interpretGeneralOrder, type GeneralInterpretedAudit } from './generalOrderInterpretation';
-import { runGeneralAuditor, extractGeneralInput, enforceGeneralIdentityMatches, preserveGeneralOutOfStockEvidence, preserveGeneralRequestedStockProducts, summarizeGeneralProducts, normalizeGeneralProductName, type GeneralAuditSupport } from './generalAuditor';
+import { runGeneralAuditor, enforceGeneralProductAssignments, extractGeneralInput, enforceGeneralIdentityMatches, preserveGeneralOutOfStockEvidence, preserveGeneralRequestedStockProducts, summarizeGeneralProducts, normalizeGeneralProductName, type GeneralAuditSupport } from './generalAuditor';
 
 async function auditGeneralExtractedText(customer: string, fulfilment: string, decisions: Record<string, boolean>, support: GeneralAuditSupport, getClient: () => any, override?: GeneralInterpretedAudit) {
   // Always run reference/rule validation before considering optional interpretation.
@@ -19,6 +19,15 @@ async function auditGeneralExtractedText(customer: string, fulfilment: string, d
   if (interpreted.semanticAnalysis.status === 'used') {
     interpreted.fulfilmentConfirmation = preserveGeneralOutOfStockEvidence(fulfilment, interpreted.fulfilmentConfirmation);
     interpreted.customerRequest = preserveGeneralRequestedStockProducts(customer, fulfilment, interpreted.customerRequest);
+    // A formulation suggested by AI or fulfilment is never customer consent.
+    // Keep each known missing-form source line unresolved until the CCA acts.
+    if (first?.generalAudit.productVerifications?.length) {
+      const lines = interpreted.customerRequest.split(/\r?\n/);
+      for (const verification of first.generalAudit.productVerifications) {
+        for (const product of verification.requestedProducts) lines[product.line - 1] = product.originalText;
+      }
+      interpreted.customerRequest = lines.join('\n');
+    }
     // A structurally valid AI response can still omit an unrelated source line.
     // Keep that line under review rather than approving a partially read order.
     for (const review of generalInterpretationGaps(interpreted.customerRequest, interpreted.fulfilmentConfirmation)) {
@@ -102,7 +111,9 @@ function finalStructuredOrder(order: StructuredGeneralOrder, source: 'customer_r
   // A source can be fully extracted even when comparisons against an unclear
   // opposite source are deferred. Retain that independent evidence in its output.
   for (const product of order.products) {
-    if (!products.some(other => normalizeGeneralProductName(other.name) === normalizeGeneralProductName(product.name) &&
+    const represented = result.items.some(item => item.provenance.some(evidence => evidence.source === source &&
+      evidence.normalizedName === normalizeGeneralProductName(product.name) && evidence.quantity === product.quantity && evidence.unit === (product.unit || '')));
+    if (!represented && !products.some(other => normalizeGeneralProductName(other.name) === normalizeGeneralProductName(product.name) &&
       other.quantity === product.quantity && other.unit === product.unit)) products.push(product);
   }
   const facilityName = details.facility[field] === 'N/A' ? null : details.facility[field];
@@ -136,8 +147,9 @@ export async function runGeneralSemanticAudit(customer: string, fulfilment: stri
   if (!hybrid) {
     const audited = await auditGeneralExtractedText(customer, fulfilment, decisions, support, getClient);
     const reviews = audited.generalAudit.semanticReviews || [];
-    let result = deferUncertainProducts(audited, reviews.some(review => review.source === 'customer_request'), reviews.some(review => review.source === 'fulfillment_confirmation'));
+    let result = deferUncertainProducts(audited, reviews.some(review => review.source === 'customer_request' && !review.dosageFormKey && !['ordererName', 'facilityName'].includes(generalReviewField(review))), reviews.some(review => review.source === 'fulfillment_confirmation' && !review.dosageFormKey && !['ordererName', 'facilityName'].includes(generalReviewField(review))));
     result = await resolveGeneralOrdererName(result, support, getClient);
+    result = enforceGeneralProductAssignments(result, customer, fulfilment, support);
     return { ...result, extractedOrder: finalStructuredOrder(a.order, 'customer_request', result), fulfilledOrder: finalStructuredOrder(b.order, 'fulfillment_confirmation', result) };
   }
   const extraction = await resolveGeneralOrderExtraction(a, b, getClient, support);
@@ -153,5 +165,6 @@ export async function runGeneralSemanticAudit(customer: string, fulfilment: stri
   const fulfillmentUncertain = extraction.fulfillment.order.unresolvedFields.includes('products');
   result = deferUncertainProducts(result, customerUncertain, fulfillmentUncertain);
   result = await resolveGeneralOrdererName(result, support, getClient);
+  result = enforceGeneralProductAssignments(result, customer, fulfilment, support);
   return { ...result, extractedOrder: finalStructuredOrder(extraction.customer.order, 'customer_request', result), fulfilledOrder: finalStructuredOrder(extraction.fulfillment.order, 'fulfillment_confirmation', result) };
 }
