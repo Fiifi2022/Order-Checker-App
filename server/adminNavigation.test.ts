@@ -23,8 +23,8 @@ test('only administrators see KPI Dashboard and Audit & Activity Log navigation'
   assert.doesNotMatch(render('admin', ['cca']), /KPI Dashboard|Audit &amp; Activity Log/);
 });
 
-test('Companion Chrome Extension is hidden for every role, including administrators', () => {
+test('Extension download tab is available to every signed-in operational role', () => {
   for (const role of ['admin', 'warehouse', 'dco', 'cca', 'auditor']) {
-    assert.doesNotMatch(render(role), /Companion Chrome Extension|OrderCheck Chrome Extension Companion|Download Packed ZIP/);
+    assert.match(render(role), /aria-label="Download Chrome extension"/);
   }
 });

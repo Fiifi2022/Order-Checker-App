@@ -28,7 +28,7 @@ export function GeneralProductVerificationControls({ product, selected, contacte
 }
 
 export default function GeneralProductVerification({ product, onConfirm, disabled = false }: {
-  product: Verification; onConfirm?: (key: string, productKey: string) => Promise<void>; disabled?: boolean;
+  product: Verification; onConfirm?: (key: string, productKey: string, rejectSuggestion?: boolean) => Promise<void>; disabled?: boolean;
 }) {
   const savingRequest = useRef(false);
   const panel = useRef<HTMLDetailsElement>(null);
@@ -42,6 +42,11 @@ export default function GeneralProductVerification({ product, onConfirm, disable
     if (panel.current) panel.current.open = false;
   }, [sourceIdentity]);
   const editableProduct = { ...product, confirmation: undefined, status: 'customer confirmation required' as const };
+  const reject = async () => {
+    if (!selected || !onConfirm || saving || disabled) return;
+    setSaving(true); setError('');
+    try { await onConfirm(product.key, selected, true); setSelected(''); setContacted(false); } catch (error: any) { setError(error.message || 'Could not save rejection.'); } finally { setSaving(false); }
+  };
   const confirm = async () => {
     if (!onConfirm || !canConfirmGeneralProduct(editableProduct, selected, contacted, disabled || saving || savingRequest.current)) return;
     savingRequest.current = true;
@@ -54,12 +59,14 @@ export default function GeneralProductVerification({ product, onConfirm, disable
   if (policy.state !== 'dosage/formulation confirmation required' && policy.state !== 'product match' && policy.state !== 'product discrepancy') return null;
   return <details ref={panel} className="text-xs rounded-lg border border-purple-200 p-3" aria-label={`Product verification: ${product.productName}`}>
     <summary className="cursor-pointer font-semibold text-[#5C2D91] rounded focus-visible:outline-2 focus-visible:outline-purple-700">
-      {product.confirmation ? 'View verification details / Correct confirmation' : 'Confirm Dosage / Formulation'}
+      {product.confirmation ? 'View verification details / Correct confirmation' : product.kind === 'ai product match' ? 'AI-Suggested Product Match — Verification Required' : 'Confirm Dosage / Formulation'}
     </summary>
     <div className="pt-3 space-y-3">
       <p>Requested: {product.productName}</p>
       <p>Suggested: {product.suggestedProduct || 'Select a catalogue product'}</p>
+      {!product.confirmation && product.reason && <p>{product.reason}</p>}
       <p>Confirm the exact formulation with the customer.</p>
+      {product.rejectedSuggestions?.length ? <p>{product.rejectedSuggestions.length} suggestion(s) rejected. The product still requires verification.</p> : null}
       {product.confirmation && <div className="text-slate-600 space-y-1">
         <p>Confirmed: {product.confirmation.productName}</p>
         <p>Confirmed by: {product.confirmation.confirmedBy?.name || 'CCA'} — <time dateTime={product.confirmation.confirmedAt}>{product.confirmation.confirmedAt}</time></p>
@@ -67,6 +74,7 @@ export default function GeneralProductVerification({ product, onConfirm, disable
       </div>}
       {onConfirm && <GeneralProductVerificationControls product={editableProduct} selected={selected} contacted={contacted} disabled={disabled || saving}
         onSelect={value => { setSelected(value); setContacted(false); }} onContact={setContacted} onConfirm={confirm} />}
+      {onConfirm && product.kind === 'ai product match' && !product.confirmation && <button type="button" disabled={saving || disabled || !selected} onClick={reject} className="text-red-800 underline">Reject selected AI suggestion</button>}
       {error && <p role="alert" className="text-red-800">{error}</p>}
       {saving && <p role="status">Saving confirmation…</p>}
     </div>

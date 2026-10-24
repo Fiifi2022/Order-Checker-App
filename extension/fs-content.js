@@ -415,6 +415,11 @@
     };
     const click = (event) => {
       if (adapter.isNewOrder(event.target)) {
+        try {
+          void chrome.runtime.sendMessage({ type: "FS_OPEN_PANEL" }).catch(() => {
+          });
+        } catch {
+        }
         adapter.resetOrder();
         pending = null;
         suppressed = "";

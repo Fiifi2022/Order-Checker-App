@@ -50,6 +50,11 @@ async function update(tabId, selection, manualFacilityId, refresh = false) {
   return state;
 }
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message?.type === 'FS_OPEN_PANEL') {
+    if (!allowed(sender)) return false;
+    chrome.sidePanel.open({ tabId: sender.tab.id }).then(() => respond({ ok: true }), error => respond({ error: error.message }));
+    return true;
+  }
   if (!['FS_SELECTION', 'FS_REFRESH_ALL', 'FS_MANUAL'].includes(message?.type)) return false;
   return respondAsync(respond, async () => {
   if (message.type === 'FS_SELECTION' && allowed(sender)) {
@@ -96,3 +101,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }).catch(error => console.warn('FS session invalidation failed:', error.message));
   }
 });
+
+// The supplied OrderCheck side panel is the default toolbar experience.
+chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch(error => console.warn('Side panel behavior failed:', error.message));

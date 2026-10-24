@@ -59,6 +59,7 @@ async function fetchJson(url, options = {}, timeoutMs = 9e4) {
 // extension/auth.js
 async function signOut() {
   await chrome.storage.session.remove("authSession");
+  await chrome.storage.local?.remove("persistedAuth");
 }
 async function getToken() {
   const { authSession } = await chrome.storage.session.get("authSession");
@@ -70,12 +71,15 @@ async function getToken() {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: authSession.refreshToken }).toString()
     }, 3e4);
-    await chrome.storage.session.set({ authSession: {
+    const refreshed = {
       ...authSession,
       idToken: data.id_token,
       refreshToken: data.refresh_token,
       expiresAt: Date.now() + Number(data.expires_in) * 1e3
-    } });
+    };
+    await chrome.storage.session.set({ authSession: refreshed });
+    const { persistedAuth } = await chrome.storage.local?.get("persistedAuth") || {};
+    if (persistedAuth) await chrome.storage.local.set({ persistedAuth: refreshed });
     return data.id_token;
   } catch (error) {
     if (error.status === 400 || error.status === 401) await signOut();
@@ -217,6 +221,11 @@ async function update(tabId, selection, manualFacilityId, refresh = false) {
   return state;
 }
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message?.type === "FS_OPEN_PANEL") {
+    if (!allowed(sender)) return false;
+    chrome.sidePanel.open({ tabId: sender.tab.id }).then(() => respond({ ok: true }), (error) => respond({ error: error.message }));
+    return true;
+  }
   if (!["FS_SELECTION", "FS_REFRESH_ALL", "FS_MANUAL"].includes(message?.type)) return false;
   return respondAsync(respond, async () => {
     if (message.type === "FS_SELECTION" && allowed(sender)) {
@@ -273,3 +282,4 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }).catch((error) => console.warn("FS session invalidation failed:", error.message));
   }
 });
+chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch((error) => console.warn("Side panel behavior failed:", error.message));

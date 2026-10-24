@@ -27,11 +27,9 @@ test('all comparisons include deferred products, full names and separate quantit
   assert.match(html, /Paracetamol 500mg Tablet/);
   assert.match(html, /Requested: 20/);
   assert.match(html, /Fulfilled: 2/);
-  assert.match(html, /Difference: 18/);
-  assert.match(html, /1 product requires customer verification/);
-  assert.equal((html.match(/<details/g) || []).length, 1);
-  assert.ok(html.indexOf('<details') < html.indexOf('</article>'), 'controls belong to the relevant card');
-  assert.doesNotMatch(html, /<details[^>]* open/);
+  assert.match(html, /20 requested, 2 fulfilled/);
+  assert.match(html, /REVIEW REQUIRED/);
+  assert.doesNotMatch(html, /<details|<select|Confirm Dosage|customer verification/);
   assert.match(html, /flex flex-wrap/);
   assert.match(html, /min-w-0/);
 });
@@ -68,43 +66,23 @@ test('correction records the previous actor and formulation and preserves other 
   assert.equal(corrected.confirmationHistory?.[0].productKey, tablet.key);
   assert.equal(corrected.confirmationHistory?.[0].confirmedBy?.name, 'CCA');
   assert.equal(corrected.confirmation?.productKey, suppository.key);
-  assert.match(markup(stored), /Product Discrepancy/);
+  assert.match(markup(stored), /PRODUCT DETAILS MISMATCH/);
   assert.equal(stored.items.find(item => item.name === 'ORS')!.difference, 5);
   assert.equal(stored.allMatch, false);
   assert.equal(await send(tablet.key, suppository.key), 200);
   assert.equal(stored.generalAudit.productVerifications![0].confirmationHistory?.length, 2);
-  assert.match(markup(stored), /Customer Verified — Product Match/);
-  assert.match(markup(stored), /Order Limit Verification Required/);
+  assert.match(markup(stored), /ORDER LIMIT REVIEW/);
+  assert.match(markup(stored), /ORDER LIMIT REVIEW/);
 });
 
-test('pending-product navigation opens only the selected inline panel', async () => {
-  const { parseHTML } = await import('linkedom');
-  const { window } = parseHTML('<html><body><div id="inventory"></div></body></html>');
-  const previous = { window: globalThis.window, document: globalThis.document, act: (globalThis as any).IS_REACT_ACT_ENVIRONMENT };
-  Object.assign(globalThis, { window, document: window.document, IS_REACT_ACT_ENVIRONMENT: true });
-  const { act } = await import('react');
-  const { createRoot } = await import('react-dom/client');
-  const root = createRoot(window.document.getElementById('inventory')!);
-  try {
-    const record = audit(customer + '\nInjection cipro -15', fulfillment + '\nCiprofloxacin 2mg/mL Infusion 100mL [10/10]');
-    await act(async () => { root.render(createElement(Inventory, { items: record.items, details: record.generalAudit, onConfirm: async () => {}, onOrderLimit() {} })); });
-    window.document.querySelectorAll('article').forEach(card => { (card as any).scrollIntoView = () => {}; });
-    const buttons = window.document.querySelectorAll('nav button');
-    const panels = window.document.querySelectorAll('article details');
-    assert.equal(buttons.length, 2);
-    assert.equal(panels.length, 2);
-    await act(async () => { buttons[1].dispatchEvent(new window.Event('click', { bubbles: true })); });
-    assert.equal((panels[1] as HTMLDetailsElement).open, true);
-    assert.ok(!(panels[0] as HTMLDetailsElement).open);
-    await act(async () => { buttons[0].dispatchEvent(new window.Event('click', { bubbles: true })); });
-    assert.equal((panels[0] as HTMLDetailsElement).open, true);
-    assert.equal((panels[1] as HTMLDetailsElement).open, true, 'other product stays open');
-    const changed = audit(customer + '\nInjection cipro -15', fulfillment + '\nCiprofloxacin 2mg/mL Infusion 100mL [9/10]');
-    await act(async () => { root.render(createElement(Inventory, { items: changed.items, details: changed.generalAudit, onConfirm: async () => {}, onOrderLimit() {} })); });
-    assert.equal((panels[0] as HTMLDetailsElement).open, true, 'unrelated product retains its panel state');
-    assert.equal((panels[1] as HTMLDetailsElement).open, false, 'changed product resets stale verification controls');
-  } finally {
-    await act(async () => { root.unmount(); });
-    Object.assign(globalThis, { window: previous.window, document: previous.document, IS_REACT_ACT_ENVIRONMENT: previous.act });
-  }
+test('multiple pending products retain independent source quantities without confirmation navigation', () => {
+  const record = audit(customer + '\nInjection cipro -15', fulfillment + '\nCiprofloxacin 2mg/mL Infusion 100mL [10/10]');
+  const html = markup(record);
+  assert.equal((html.match(/<article/g) || []).length, 3);
+  assert.doesNotMatch(html, /<nav|<select|Confirm Dosage|data-confirm-product/);
+  assert.match(html, /Requested: 20/); assert.match(html, /Requested: 15/);
+  const changed = audit(customer + '\nInjection cipro -15', fulfillment + '\nCiprofloxacin 2mg/mL Infusion 100mL [9/10]');
+  const next = markup(changed);
+  assert.match(next, /Fulfilled: 9/); assert.match(next, /Fulfilled: 2/);
+  assert.equal(changed.generalAudit.productVerifications!.length, 2);
 });

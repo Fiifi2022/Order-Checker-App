@@ -19,6 +19,7 @@ export function canAccess(role: string | readonly string[], method: string, path
   if (blueprintPath && ['warehouse', 'dco', 'auditor'].includes(role as string)) return true;
   if (blueprintPath && method !== 'GET') return false;
   if (/^\/general\/facilities\/?$/.test(path)) return method === 'GET' || ['warehouse', 'dco', 'auditor'].includes(role as string);
+  if (/^\/general\/product-aliases\/?$/.test(path)) return ['cca', 'warehouse', 'dco', 'auditor'].includes(role as string);
   if (path === '/products/hints' && method === 'POST') return true;
   if (path === '/products' || path.startsWith('/products/')) return method === 'GET' || ['warehouse', 'dco', 'auditor'].includes(role as string);
   if (/clear|reset-demo/.test(path)) return false;

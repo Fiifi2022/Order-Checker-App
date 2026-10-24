@@ -1,18 +1,22 @@
+import { generalProductResults } from '../utils/generalProductResults';
+import type { GeneralComparisonItem } from '../utils/generalAuditor';
 import { generalFacilityDisplayStatus } from '../utils/generalFacility';
 import { generalAuditClarifications, generalReviewEvidence, generalReviewExplanation } from '../utils/generalAuditReviews';
 import type { GeneralAuditDetails as Details } from '../utils/generalAuditTypes';
 
-export default function GeneralAuditDetails({ details, onConfirmProduct, confirmationDisabled = false }: {
-  details: Details; onConfirmProduct?: (key: string, productKey: string) => Promise<void>; confirmationDisabled?: boolean;
+export default function GeneralAuditDetails({ details, items, onConfirmProduct, confirmationDisabled = false }: {
+  details: Details; items?: GeneralComparisonItem[]; onConfirmProduct?: (key: string, productKey: string) => Promise<void>; confirmationDisabled?: boolean;
 }) {
-  const reviewNotices = generalAuditClarifications({ ...details, semanticReviews: details.semanticReviews?.filter(review => !review.dosageFormKey) });
+  const productResults = items ? generalProductResults(items, details) : undefined;
+  const visibleReviews = details.semanticReviews?.filter(review => !review.dosageFormKey && !productResults?.some(row => [...row.requested, ...row.fulfilled].some(source => source.source === review.source && source.originalText.trim() === review.originalText.trim())));
+  const reviewNotices = generalAuditClarifications({ ...details, semanticReviews: visibleReviews });
   // Older summaries combine product and quantity wording. Keep the actual
   // review evidence separate in the interface without changing legacy payloads.
-  if (generalReviewEvidence(details.semanticReviews?.filter(review => !review.dosageFormKey), 'quantity').length && !reviewNotices.some(notice => notice.field === 'quantity')) {
+  if (generalReviewEvidence(visibleReviews, 'quantity').length && !reviewNotices.some(notice => notice.field === 'quantity')) {
     reviewNotices.push({ field: 'quantity', message: 'QUANTITY REVIEW' });
   }
   const optionalAbsent = { whatsappValue: 'N/A', fulfillmentValue: 'N/A', status: 'optional not provided' as const };
-  const productStatus = details.productCount.requested === 0 || details.productCount.found === 0 ? 'missing from customer request'
+  const productStatus = productResults ? !productResults.length || reviewNotices.some(notice => notice.field === 'products' || notice.field === 'quantity') ? 'review required' : productResults.some(row => row.tone === 'discrepancy') ? 'mismatch' : productResults.some(row => row.tone === 'pending') ? 'review required' : 'match' : details.productCount.requested === 0 || details.productCount.found === 0 ? 'missing from customer request'
     : details.products.some(product => product.fulfillmentStatus === 'discrepancy') ? 'mismatch'
     : details.productVerifications?.some(product => product.status !== 'customer verified') || details.pendingOrderLimitCount || reviewNotices.some(notice => notice.field === 'products' || notice.field === 'quantity') ? 'review required' : 'match';
   const fields = [
@@ -36,7 +40,7 @@ export default function GeneralAuditDetails({ details, onConfirmProduct, confirm
   return <section className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm space-y-4" aria-label="General audit field results">
     <h4 className="text-sm font-bold text-[#3B1A5E]">Identity and order checks</h4>
     {reviewNotices.map(notice => {
-      const evidence = generalReviewEvidence(details.semanticReviews?.filter(review => !review.dosageFormKey), notice.field);
+      const evidence = generalReviewEvidence(visibleReviews, notice.field);
       return <div key={notice.field} role="status" className="text-xs text-amber-800 bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-2">
         <p className="font-semibold">{notice.field === 'products' ? 'PRODUCT IDENTIFICATION REVIEW' : notice.field === 'quantity' ? 'QUANTITY REVIEW' : notice.message}</p>
         {evidence.map((review, index) => <div key={`${review.source}:${index}`} className="space-y-1">
@@ -62,7 +66,7 @@ export default function GeneralAuditDetails({ details, onConfirmProduct, confirm
       </div>
       {'reason' in field && field.reason && <p>Reason: {field.reason}</p>}
     </div>)}
-    {details.discrepancies.length > 0 && <div className="text-xs text-red-800">
+    {!items && details.discrepancies.length > 0 && <div className="text-xs text-red-800">
       <h4 className="font-bold">DISCREPANCY FOUND</h4>
       <ul className="list-disc pl-4 mt-2 space-y-1">{details.discrepancies.map((issue, i) => <li key={i}>{issue}</li>)}</ul>
     </div>}

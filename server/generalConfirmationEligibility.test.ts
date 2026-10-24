@@ -62,13 +62,14 @@ for (const [request, fulfilled] of [['Paracetamol 500mg 20/20', 'Paracetamol 500
     const product = result.generalAudit.productVerifications![0];
     assert.equal(product.reviewState, 'dosage/formulation confirmation required');
     assert.equal(generalConfirmationPolicy(product, normalizeGeneralProductName).state, 'dosage/formulation confirmation required');
-    assert.match(markup(result), /Confirm Dosage \/ Formulation/);
+    assert.match(markup(result), /REVIEW REQUIRED|PRODUCT DETAILS MISMATCH/);
+    assert.doesNotMatch(markup(result), /Confirm Dosage|<select/);
     const option = product.options.find(option => option.fromFulfillment)!;
     assert.equal(canConfirmGeneralProduct(product, option.key, false), false);
     assert.equal(canConfirmGeneralProduct(product, option.key, true), true);
     const confirmed = applyGeneralProductConfirmation(result, product.key, option.key, true);
     assert.equal(confirmed.generalAudit.productVerifications![0].reviewState, 'product match');
-    assert.match(markup(confirmed), /Customer Verified — Product Match/);
+    assert.match(markup(confirmed), /MATCH|ORDER LIMIT REVIEW/);
     if (/cipro/i.test(request)) {
       assert.equal(confirmed.items[0].status, 'quantity mismatch');
       assert.equal(confirmed.items[0].difference, 5);
@@ -118,5 +119,5 @@ test('a customer-verified different formulation remains a product discrepancy', 
   const confirmed = applyGeneralProductConfirmation(result, product.key, different.key, true);
   assert.equal(confirmed.generalAudit.productVerifications![0].reviewState, 'product discrepancy');
   assert.equal(confirmed.allMatch, false);
-  assert.match(markup(confirmed), /Product Discrepancy/);
+  assert.match(markup(confirmed), /PRODUCT DETAILS MISMATCH/);
 });

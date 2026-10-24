@@ -72,6 +72,7 @@ export function createFsScriptReader() {
 
 export function createFsScriptSync({ field, onChanged, persist }) {
   let owned = false, source, observed = false;
+  field.addEventListener?.('input', event => { if (event.isTrusted) owned = false; });
   return {
     get owned() { return owned; },
     get observed() { return observed; },

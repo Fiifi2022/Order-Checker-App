@@ -1,3 +1,5 @@
+import { generalAliasCatalog, generalLearnedAlias } from '../../shared/generalProductAliases';
+import { generalAiCandidateEligible } from './generalAiProductSuggestion';
 import type { GeneralProductVerification, GeneralProductReviewState } from './generalAuditTypes';
 import { recognizeGeneralDocument } from './generalDocumentStructure';
 import { classifyGeneralText, generalOrderRelevantText } from './generalTextClassification';
@@ -12,16 +14,17 @@ export function generalConfirmationPolicy(product: GeneralProductVerification, n
   const productEvidence = sources.length > 0 && sources.every(source => recognizeGeneralDocument(generalOrderRelevantText(source.originalText), classifyGeneralText)
     .lines.some(line => line.kind === 'PRODUCT_ENTRY'));
   const result = (state: GeneralProductReviewState, options: GeneralProductVerification['options'] = []) => ({ state, options, productEvidence });
-  if (!productEvidence) return result('product identification review');
+  if (!productEvidence || sources.some(source => source.sourceReview)) return result('product identification review');
   if (sources.some(source => source.quantityReview || !Number.isFinite(source.quantity) || source.quantity <= 0)) return result('quantity review');
-  if (!generalProductIdentityEstablished(product.productName, normalize) || sources.some(source =>
-    !generalProductIdentityEstablished(source.name, normalize) || !generalProductIdentityEstablished(generalOrderRelevantText(source.originalText), normalize))) return result('product identification review');
+  const aiSuggestion = product.kind === 'ai product match';
+  if (!aiSuggestion && (!generalProductIdentityEstablished(product.productName, normalize) || sources.some(source =>
+    !generalProductIdentityEstablished(source.name, normalize) || (!generalLearnedAlias(source.name) && !generalProductIdentityEstablished(generalOrderRelevantText(source.originalText), normalize))))) return result('product identification review');
   if (product.confirmation && product.status === 'customer verified' && generalCatalogSupports(product.confirmation.productName, normalize)) return result(product.fulfillmentProducts.some(source => normalize(source.name) === product.confirmation!.productKey) ? 'product match' : 'product discrepancy', product.options);
   const competing = new Set((product.fulfillmentProducts || []).map(source => source.normalizedName)).size > 1;
-  const options = (product.options || []).filter(option => generalCatalogSupports(option.name, normalize) &&
+  const options = (product.options || []).filter(option => !product.rejectedSuggestions?.some(rejection => rejection.productKey === option.key) && (aiSuggestion ? generalAliasCatalog().some(canonical => canonical.id === option.catalogProductId && canonical.name === option.name) && generalAiCandidateEligible(product.productName, option.name, normalize) : true) && generalCatalogSupports(option.name, normalize) &&
     normalize(option.name) === option.key && (() => {
       const match = matchGeneralClinicalProducts(product.productName, option.name, normalize);
-      return match.plausible && (match.stage === 'verification' || competing);
+      return aiSuggestion || match.plausible && (match.stage === 'verification' || competing);
     })());
-  return options.length ? result('dosage/formulation confirmation required', options) : result('product identification review');
+  return options.length || aiSuggestion ? result('dosage/formulation confirmation required', options) : result('product identification review');
 }

@@ -56,7 +56,7 @@ General Auditor reads unpunctuated numbered product rows with a separate termina
 
 General Auditor identifies facilities in labelled fields or message prose, expands Ghana facility abbreviations without dropping facility type, and compares the original customer order with the Fulfilment Confirmation. It reads saved facility identities from `vaccine_districts` without changing allocations. Official `fsFacilityId` / `facilityId`, district, region and explicitly verified aliases can confirm a shared identity. `verifiedAliases` contains approved name strings; entries in `aliases` are accepted only when they contain `{ name, verified: true }`. Allocation row IDs are provenance, not official facility IDs.
 
-**KPI Dashboard** and **Audit & Activity Log** are administrator-only in both portal navigation and report-read APIs. Non-admin roles retain their operational audit submissions, order-limit acknowledgements and activity logging. The Companion Chrome Extension download tab is hidden from portal navigation for all roles; installed extension workflows are unchanged.
+**KPI Dashboard** and **Audit & Activity Log** are administrator-only in both portal navigation and report-read APIs. Non-admin roles retain their operational audit submissions, order-limit acknowledgements and activity logging. The **Extension** tab is available to all signed-in operational roles and downloads the current default OrderCheck side-panel extension.
 
 Open **General Auditor → Facilities** to search the reference list, add a facility with its district/region/type, or remove an entry. The latest removal can be undone. Administrator, Warehouse (including DCO), and Compliance roles can edit; CCA has view access. Changes are saved in a separate versioned `general_facility_directory/current` document and apply to subsequent General Auditor comparisons. Concurrent edits require reloading the list. The imported CSV and all vaccine allocations remain unchanged.
 
@@ -167,3 +167,30 @@ Old or AI-generated non-product verification records and their linked reviews ar
 `server/generalConfirmationEligibility.test.ts` runs through the normal `npm test` / CI workflow and covers introductions, equivalent administrative captions, inline medicine requests, unknown products, unclear quantities, clinical conflicts, stale AI records, customer confirmation, quantities and stock boundaries.
 
 Validation for confirmation eligibility: `npm test` passed **1,101 tests with 0 failures and 1 skipped Firestore-emulator check**, including all 22 new eligibility regressions. Type checking (`npm run lint`), production build (`npm run build`) and `git diff --check` passed.
+
+
+### Default companion extension (supplied version 11)
+
+The default extension now uses the supplied `ordercheck-compliance-companion (11).zip` side-panel interface, updated to **2.3.8**. The toolbar opens `sidepanel.html`; the older popup remains available as the extension options page. Both General Auditor surfaces use the existing product-specific Inventory Cross Examination and the authenticated product-confirmation endpoint. Confirmations update the saved audit immediately, retain independent quantity checks and record corrections in audit history. Reopening the panel restores the last matching audit for the same signed-in account and backend.
+
+`npm run build` produces `dist/ordercheck-compliance-companion.zip`; `npm run package:extension` packages the already built extension separately. The portal's `/api/download-extension` route packages these same files with its deployment backend URL and public Firebase configuration. Source builds retain the supplied localhost default. The current shared audit rules, FS adapters and receipt-verified vaccine allocation writes remain authoritative; bundled archive notes are reference material, not build instructions.
+
+Extract the updated ZIP, choose **Load unpacked** in `chrome://extensions`, and select the extracted directory. For an existing installation, replace its files and click **Reload**, then refresh the FS and WhatsApp tabs. Source edits cannot replace files already installed in Chrome or update a remote backend deployment.
+
+### Verified General Auditor product wording
+
+General Auditor checks deterministic clinical names and approved wording before requesting Gemini. When a bounded Gemini response provides catalogue-backed candidates, Inventory Cross Examination offers an **AI-Suggested Product Match** control. Customer contact and an explicit product selection are required to confirm; incorrect suggestions can be rejected. Confirmation updates the saved audit immediately and keeps quantity and order-limit decisions independent.
+
+After a product is matched or customer verified, **Approve and save this wording for future audits** optionally learns that source wording. Confirmation alone never learns an alias. The default extension provides the same approval and suggestion controls; download its updated ZIP from the app's **Extension** tab.
+
+Open **Product Catalog → Verified Product Name Alias Dictionary** to correct, disable or reactivate learned wording and inspect its history. Approved wording records retain the canonical catalogue ID, original wording, clinical constraints, approving user and time. Missing attributes stay missing: an identity-only alias cannot supply an omitted strength, dosage form, route or release type. Explicit clinical conflicts cannot be learned, including a different concentration that was accepted for one particular order.
+
+The authenticated API stores the versioned dictionary transactionally in `general_product_name_aliases/current`. Existing Firestore rules deny direct client reads and writes; only authorized server actions approve or change entries. Concurrent edits require the current dictionary revision, repeated identical approval is idempotent, and dictionary edits invalidate catalogue and Gemini cache versions. Existing saved audits retain their original confirmations.
+
+### General Auditor source-aware product reconciliation
+
+Each extracted product carries an audit-scoped `sourceEntryId`, its source field and original text, plus extraction provenance. Equivalent deterministic and interpreted candidates for that same source occurrence are consolidated before pairing and scoring; their quantities are counted once. Separate order lines retain separate IDs and quantities in `generalAudit.sourceEntries`. Existing same-product quantity aggregation is preserved, and cards expose the original requested entries when more than one line contributes to a total. Unknown source spans and conflicting extraction candidates require review.
+
+Product confirmations use canonical source identities, with retired candidate keys retained for saved records and in-flight requests. Reopening an audit, confirming a product and rebuilding its summary all reconcile the same records. Cosmetic wording changes can reuse an explicit confirmation; changed clinical details or quantities require fresh verification for the affected product. The confirming user, timestamp, prior corrections and rejected suggestions remain recorded.
+
+Inventory headings in the app and default extension contain only the medicine name, preserve clinical numbers, and wrap naturally. Abbreviated or repeated dosage-form labels are normalized for display; the customer wording and list numbering remain in the original source. Concentration review remains independent of quantity matching, including 7 requested and 7 fulfilled in the Diclofenac example.

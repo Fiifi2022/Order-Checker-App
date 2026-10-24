@@ -1,3 +1,4 @@
+import { setGeneralProductNameAliases, type GeneralProductAliasState } from '../../shared/generalProductAliases';
 import { catalogProductNames, type CatalogProduct } from '../../shared/productCatalog';
 import { setGeneralMedicalTerminology } from './generalMedicalTerminology';
 import { setMedicalProductAcronyms } from './medicalProductAcronyms';
@@ -5,7 +6,8 @@ import { setVaccinePairingCatalog } from '../../shared/vaccinePairing';
 import { setGeneralVaccineCatalog } from '../../shared/generalVaccineCatalog';
 import { setGeneralProductCategories } from './generalProductCategory';
 
-export function applyGeneralCatalog(products: CatalogProduct[]) {
+export function applyGeneralCatalog(products: CatalogProduct[], aliases?: GeneralProductAliasState) {
+  setGeneralProductNameAliases(aliases, products);
   setVaccinePairingCatalog(products);
   setGeneralVaccineCatalog(products);
   setGeneralProductCategories(products);

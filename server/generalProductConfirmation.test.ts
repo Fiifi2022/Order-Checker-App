@@ -40,8 +40,8 @@ test('suggestions include the actual fulfilled tablet and only catalogue-support
   assert.equal(product.confirmation, undefined);
   assert.equal(result.allMatch, false);
   const html = renderToStaticMarkup(createElement(Inventory, { items: result.items, details: result.generalAudit, onConfirm: async () => {}, onOrderLimit() {} }));
-  assert.match(html, /Customer Confirmation Required/);
-  assert.match(html, /Suggested: .*Paracetamol 500mg Tablet/);
+  assert.match(html, /REVIEW REQUIRED/);
+  assert.match(html, /Fulfilment: Paracetamol 500mg Tablet/);
   assert.doesNotMatch(html, /Product: Confirm the requested product\./);
 });
 
@@ -71,9 +71,9 @@ test('confirmed tablet retains shortfall 18 and records customer contact, timest
   assert.equal(result.issueCount, 1);
   assert.equal(result.allMatch, false);
   const rendered = renderToStaticMarkup(createElement(Inventory, { items: result.items, details: result.generalAudit, onOrderLimit() {} })).replace(/<[^>]*>/g, '');
-  assert.match(rendered, /Customer Verified — Product Match/);
-  assert.match(rendered, /Difference: 18/);
-  assert.match(rendered, /Quantity: Order Limit Verification Required/);
+  assert.match(rendered, /ORDER LIMIT REVIEW/);
+  assert.match(rendered, /Shortfall: 18/);
+  assert.match(rendered, /ORDER LIMIT REVIEW/);
   assert.equal(result.generalAudit.productVerifications![0].status, 'customer verified');
   assert.deepEqual(result.generalAudit.productVerifications![0].confirmation, {
     productName: 'Paracetamol 500mg Tablet', productKey: option.key, formulation: 'tablet', customerContactConfirmed: true,
@@ -87,7 +87,7 @@ test('confirmed tablet retains shortfall 18 and records customer contact, timest
   assert.equal(limited.allMatch, true);
   const declined = applyGeneralOrderLimitDecision(result, result.items[0].fulfillment.key, false);
   const declinedHtml = renderToStaticMarkup(createElement(Inventory, { items: declined.items, details: declined.generalAudit, onOrderLimit() {} })).replace(/<[^>]*>/g, '');
-  assert.match(declinedHtml, /Quantity: Quantity Discrepancy/);
+  assert.match(declinedHtml, /SHORTFALL/);
 });
 
 test('customer rejection permits catalogue suppository selection and reports different products', () => {

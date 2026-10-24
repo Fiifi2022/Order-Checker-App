@@ -1,3 +1,6 @@
+import { enforceGeneralProductAssignments } from './server/generalAuditor';
+import { generalProductAliasHandlers, changeGeneralProductAlias } from './server/generalProductAliases';
+import { emptyGeneralProductAliases, type GeneralProductAliasState } from './shared/generalProductAliases';
 import { generalInputFingerprint } from './shared/generalAuditFingerprint';
 import { restoreGeneralProductConfirmations } from './src/utils/generalProductConfirmationPersistence';
 import { generalProductConfirmationHandler } from './server/generalProductConfirmation';
@@ -143,26 +146,27 @@ app.use('/api', createAuthentication(
 ));
 // One versioned catalog document: transactional updates prevent lost edits.
 const catalogReference = adminDb.collection('product_catalog').doc('current');
+const generalAliasReference = adminDb.collection('general_product_name_aliases').doc('current');
 const catalogSeed: ProductCatalog = { revision: 1, products: defaultProducts() };
 const readProductCatalog = coalesceFreshRead(async (): Promise<ProductCatalog> => {
   return runAdminTransaction(async transaction => {
     const snapshot = await transaction.get(catalogReference);
-    if (snapshot.exists) return snapshot.data() as ProductCatalog;
-    transaction.set(catalogReference, catalogSeed);
-    return catalogSeed;
+    const aliases = await transaction.get(generalAliasReference);
+    if (!snapshot.exists) transaction.set(catalogReference, catalogSeed);
+    return { ...(snapshot.exists ? snapshot.data() as ProductCatalog : catalogSeed), productNameAliases: aliases.exists ? aliases.data() as GeneralProductAliasState : emptyGeneralProductAliases() };
   });
 });
 const catalogHandlers = productCatalogHandlers({
   read: readProductCatalog,
   save: async (input, actor) => {
-    const saved = await runAdminTransaction(async transaction => {
+    await runAdminTransaction(async transaction => {
       const snapshot = await transaction.get(catalogReference);
       const updated = saveCatalogProduct(snapshot.exists ? snapshot.data() as ProductCatalog : catalogSeed, input, actor);
       transaction.set(catalogReference, updated);
       return updated;
     });
     readProductCatalog.invalidate();
-    return saved;
+    return readProductCatalog();
   },
 });
 // General Auditor reference edits are stored separately from vaccine/Blueprint data.
@@ -2291,11 +2295,36 @@ app.get('/api/audits/:id', async (req, res) => {
     let record = audits.find(record => record.id === req.params.id);
     if (!record) { const snapshot = await getDoc(doc(getFirestoreDb(), 'audits', req.params.id)); record = snapshot.exists() ? snapshot.data() : null; }
     if (!record) return res.status(404).json({ error: 'Audit record not found.' });
+    if (record.generalAudit) { applyCatalog(await readProductCatalog()); record = enforceGeneralProductAssignments(record, record.whatsappMessage, record.fulfillmentConfirmation); }
     return res.json(record);
   } catch { return res.status(503).json({ error: 'Saved audit could not be loaded.' }); }
 });
 
 // Customer-contact confirmation is a saved audit action, separate from quantity limits.
+const generalAliasHandlers = generalProductAliasHandlers({
+  readCatalog: readProductCatalog,
+  readAudit: async id => {
+    const snapshot = await getDoc(doc(getFirestoreDb(), 'audits', id));
+    return snapshot.exists() ? snapshot.data() : null;
+  },
+  change: async (input, actor) => {
+    const state = await runAdminTransaction(async transaction => {
+      const dictionary = await transaction.get(generalAliasReference);
+      const products = await transaction.get(catalogReference);
+      const catalog = products.exists ? products.data() as ProductCatalog : catalogSeed;
+      applyCatalog({ ...catalog, productNameAliases: dictionary.exists ? dictionary.data() as GeneralProductAliasState : emptyGeneralProductAliases() });
+      const updated = changeGeneralProductAlias(dictionary.exists ? dictionary.data() as GeneralProductAliasState : emptyGeneralProductAliases(), input, catalog, actor);
+      transaction.set(generalAliasReference, updated);
+      return updated;
+    });
+    readProductCatalog.invalidate();
+    applyCatalog(await readProductCatalog());
+    return state;
+  },
+});
+app.get('/api/general/product-aliases', generalAliasHandlers.read);
+app.post('/api/general/product-aliases', generalAliasHandlers.save);
+
 app.post('/api/audits/:id/product-confirmation', generalProductConfirmationHandler({
   read: async id => {
     const cached = audits.find(record => record.id === id);

@@ -1,3 +1,4 @@
+import { generalAliasRevision } from '../shared/generalProductAliases';
 import { isGeneralKnownProductDescription, matchGeneralClinicalProducts } from '../src/utils/generalProductMatching';
 import { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 import { classifyGeneralText, generalOrderRelevantText } from '../src/utils/generalTextClassification';
@@ -76,7 +77,7 @@ Expand only supported whole-token acronyms and catalog aliases. Approved canonic
 let knownVocabulary: { signature: string; names: Set<string>; plainNames: string[] } | undefined;
 function knownProductNames() {
   const catalog = currentGeneralProductCatalog();
-  const signature = JSON.stringify([getCatalogRevision(), getGeneralVaccineCatalogVersion(), catalog, currentGeneralProductAliases()]);
+  const signature = JSON.stringify([getCatalogRevision(), generalAliasRevision(), getGeneralVaccineCatalogVersion(), catalog, currentGeneralProductAliases()]);
   if (!knownVocabulary || knownVocabulary.signature !== signature) {
     knownVocabulary = { signature, names: new Set(catalog.map(normalizeGeneralProductName)), plainNames: [...new Set(catalog.map(key))] };
   }
@@ -243,7 +244,7 @@ function interpretRich(value: unknown, customer: string, fulfilment: string, cat
       const canonical = product.status === 'RESOLVED' ? safeCanonical(product, catalog, source) : null;
       const index = lines.findIndex(line => line.trim() === product.originalText.trim());
       if (!canonical) {
-        reviews.push({ originalText: product.originalText, source, possibleMatches: product.possibleMatches, reason: product.quantity === null ? 'Requested quantity was not specified. Verify product and quantity before dispatch.' : 'Unable to confidently identify the intended product. Verify before dispatch.' });
+        reviews.push({ originalText: product.originalText, source, possibleMatches: [...new Set([...product.possibleMatches, ...(product.canonicalProductName && catalog.includes(product.canonicalProductName) ? [product.canonicalProductName] : [])])], reason: product.quantity === null ? 'Requested quantity was not specified. Verify product and quantity before dispatch.' : 'Unable to confidently identify the intended product. Verify before dispatch.' });
         lines[index] = '';
       } else {
         const quantity = quantityFragment(product, source)!;
@@ -353,7 +354,7 @@ export async function interpretGeneralOrder(customer: string, fulfilment: string
   const generalProductCatalog = currentGeneralProductCatalog();
   const generalProductAliases = currentGeneralProductAliases();
   const catalog = [...new Set([...generalProductCatalog, ...Object.keys(vaccineAliases), ...parseGeneralProducts(customer, 'customer_request').map(p => p.name), ...parseGeneralProducts(fulfilment, 'fulfillment_confirmation').map(p => p.name)])];
-  const version = createHash('sha256').update(JSON.stringify([options.cacheScope || 'local', getCatalogRevision(), generalProductCatalog, generalProductAliases, vaccineAliases])).digest('hex');
+  const version = createHash('sha256').update(JSON.stringify([options.cacheScope || 'local', getCatalogRevision(), generalAliasRevision(), generalProductCatalog, generalProductAliases, vaccineAliases])).digest('hex');
   const cacheKey = JSON.stringify([customer, fulfilment, version]);
   if (options.signal?.aborted) return fallback('fallback', 'Audit cancelled; manual review required');
   const existing = cache.get(cacheKey);

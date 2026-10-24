@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OrderCheck</title>
+  <link rel="stylesheet" href="sidepanel.css">
+  <link rel="stylesheet" href="general-report.css">
+</head>
+<body>
+  <section aria-label="Live FS allocation" hidden style="display:none;margin:12px 0;padding:12px;background:#f8fafc;color:#202a38;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;">
+    <strong>Current FS order · Live allocation</strong>
+    <div id="fsLiveContext" role="status" aria-live="polite"></div>
+    <select id="fsManualFacility" aria-label="Resolve ambiguous FS facility" hidden style="width:100%;margin:6px 0"></select>
+    <button id="fsRefresh" type="button">Refresh allocation</button>
+    <button id="fsCheckConnection" type="button">Check FS connection</button>
+    <div id="fsConnectionStatus" role="status" style="margin-top:6px"></div>
+  </section>
+
+  <div class="shell">
+
+    <header class="masthead">
+      <div class="masthead-top">
+        <img class="brand-logo" src="logo-white.png" alt="Zipline" height="26">
+        <button id="btnHide" type="button" class="btn-outline">Hide</button>
+      </div>
+      <div class="masthead-text">
+        <h1 id="title">OrderCheck</h1>
+        <p id="subtitle">Compliance companion</p>
+        <p id="authStatus" class="masthead-meta" hidden></p>
+      </div>
+    </header>
+
+    <!-- Step 1: sign in -->
+    <section id="authView" aria-label="Sign in">
+      <form id="signInForm" class="auth-card" novalidate>
+        <h2>Sign in</h2>
+        <p class="hint">Use your approved portal account to start checking orders.</p>
+
+        <label for="signInEmail">Email</label>
+        <input id="signInEmail" name="email" type="email" autocomplete="username" placeholder="you@example.com" required>
+
+        <label for="signInPassword">Password</label>
+        <input id="signInPassword" name="password" type="password" autocomplete="current-password" placeholder="Your portal password" required>
+
+        <div class="remember">
+          <label class="check"><input id="rememberEmail" type="checkbox" checked> Remember my email</label>
+          <label class="check"><input id="keepSignedIn" type="checkbox"> Keep me signed in on this computer</label>
+          <p class="hint">Only tick this on your own computer. Your password is never saved.</p>
+        </div>
+
+        <p id="signInMessage" class="form-message" role="status" data-tone="error"></p>
+        <button id="btnSignIn" type="submit" class="btn-primary">Sign in</button>
+      </form>
+    </section>
+
+    <!-- Step 2: greeting + tools -->
+    <section id="appView" aria-label="Order audit" hidden>
+
+      <div class="tabs" role="tablist" aria-label="Checker">
+        <button id="tabGeneral" type="button" role="tab" aria-selected="true" aria-controls="auditView" class="tab">General audit</button>
+        <button id="tabVaccine" type="button" role="tab" aria-selected="false" aria-controls="vaccineView" class="tab" tabindex="-1">Vaccine checker</button>
+      </div>
+
+      <nav class="toolbar" aria-label="Tools">
+        <button id="openCatalog" type="button" class="link-btn">Product catalog</button>
+        <button id="openPortal" type="button" class="link-btn">Open portal</button>
+        <button id="btnSignOut" type="button" class="link-btn link-btn-end">Sign out</button>
+      </nav>
+
+      <div id="auditView">
+        <section class="block">
+          <h2>WhatsApp message</h2>
+          <p class="hint">Paste the client order message or capture it from WhatsApp Web.</p>
+          <textarea id="whatsappText" placeholder="Paste WhatsApp order details here"></textarea>
+          <div class="scan-row">
+            <label class="file-btn">Attach screenshot
+              <input id="whatsappImage" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+            </label>
+            <button id="whatsappScan" type="button" class="btn-small" disabled>Scan screenshot</button>
+          </div>
+          <p id="whatsappScanStatus" class="scan-status" role="status"></p>
+          <aside id="whatsappHints" class="reminders" role="status" hidden></aside>
+        </section>
+
+        <section class="block">
+          <div class="block-head">
+            <h2>Fulfillment log</h2>
+            <div class="block-actions">
+              <button id="btnCapture" type="button" class="action-link">Capture</button>
+              <button id="btnClear" type="button" class="action-link action-danger" title="Clear both logs and the result">Clear</button>
+            </div>
+          </div>
+          <p class="hint">Highlight fulfillment data on the active page, then capture it here.</p>
+          <textarea id="fulfillmentText" placeholder="Capture highlighted fulfillment data or paste it here"></textarea>
+          <div class="scan-row">
+            <label class="file-btn">Attach screenshot
+              <input id="fulfillmentImage" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+            </label>
+            <button id="fulfillmentScan" type="button" class="btn-small" disabled>Scan screenshot</button>
+          </div>
+          <p id="fulfillmentScanStatus" class="scan-status" role="status"></p>
+          <aside id="fulfillmentHints" class="reminders" role="status" hidden></aside>
+
+          <button id="btnVerify" type="button" class="btn-primary btn-wide">Analyze discrepancies</button>
+          <div id="confirmGroup" class="confirm-group" hidden>
+            <button id="btnConfirm" type="button" class="btn-confirm">Confirm discrepancy sorted</button>
+            <p class="hint">Fixed it in the Fulfillment System? Capture the updated log, then confirm. It re-checks the order and clears everything if it's clean.</p>
+          </div>
+        </section>
+
+        <section class="block">
+          <h2>Audit result</h2>
+          <div id="results" class="result-box" role="status" aria-live="polite" data-state="message" data-tone="muted">Add both logs, then run the audit.</div>
+        </section>
+      </div>
+
+      <!-- Vaccine checker: audit type -> facility -> audit -> allocation deduction -->
+      <div id="vaccineView" role="tabpanel" aria-labelledby="tabVaccine" hidden>
+        <section class="block">
+          <h2>Audit type</h2>
+          <p class="hint">Choose what you are checking.</p>
+          <div class="mode-cards" role="radiogroup" aria-label="Audit type">
+            <button type="button" role="radio" aria-checked="true" class="mode-card" data-mode="both">
+              <span class="mode-title">WhatsApp + Fulfillment</span>
+              <span class="mode-sub">Cross-check the client request against fulfillment</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="mode-card" data-mode="fulfillment">
+              <span class="mode-title">Fulfillment only</span>
+              <span class="mode-sub">Check fulfillment against the allocation</span>
+            </button>
+          </div>
+        </section>
+
+        <section id="vxPick" class="block">
+          <p class="step">Step 1 of 2</p>
+          <div class="block-head">
+            <h2>Choose facility</h2>
+            <button id="vxReload" type="button" class="action-link">Reload</button>
+          </div>
+          <p class="hint">Pick the facility for this order. You go straight to the audit.</p>
+          <input id="vxSearch" type="search" aria-label="Search facilities" placeholder="Search facilities">
+          <p id="vxFacilityStatus" class="list-status" role="status"></p>
+          <ul id="vxFacilities" class="facility-list" hidden></ul>
+          <details id="vxManual" class="manual-list" hidden>
+            <summary>Can’t see your facilities?</summary>
+            <label for="vxRouteInput">Facility list route</label>
+            <div class="conn-row">
+              <input id="vxRouteInput" type="text" spellcheck="false" placeholder="/api/your-facility-route">
+              <button id="vxRouteSave" type="button" class="btn-small btn-save">Try route</button>
+            </div>
+            <p class="hint">If you know the route your portal uses for the facility list, enter it here. In Chrome, open the portal, press F12, choose Network, then Fetch/XHR, and open the Vaccine Checker. The request that returns the facilities is the one.</p>
+            <label for="vxManualText">Or add facilities manually</label>
+            <p class="hint">One facility per line. Add a district after a comma if you like, for example <em>Mpanya HC, Nkwanta</em>. Saved on this computer until the backend provides the list.</p>
+            <textarea id="vxManualText" placeholder="Mpanya HC, Nkwanta&#10;Omenako CHPS"></textarea>
+            <div class="manual-actions">
+              <button id="vxManualSave" type="button" class="btn-small btn-save">Save list</button>
+              <button id="vxManualClear" type="button" class="btn-small">Remove list</button>
+            </div>
+          </details>
+        </section>
+
+        <div id="vxAudit" hidden>
+          <section class="block facility-bar">
+            <div class="facility-bar-text">
+              <p class="step">Step 2 of 2</p>
+              <h2 id="vxFacilityName"></h2>
+              <p id="vxFacilityMeta" class="hint"></p>
+            </div>
+            <button id="vxChange" type="button" class="action-link">Change</button>
+          </section>
+
+          <section id="vxWhatsappBlock" class="block">
+            <h2>WhatsApp request</h2>
+            <p id="vxWhatsappHint" class="hint">Paste the client request or capture it from WhatsApp Web.</p>
+            <textarea id="vxWhatsapp" placeholder="Paste WhatsApp request here"></textarea>
+          </section>
+
+          <section class="block">
+            <div class="block-head">
+              <h2>Fulfillment confirmation</h2>
+              <div class="block-actions">
+                <button id="vxCapture" type="button" class="action-link">Capture</button>
+                <button id="vxClear" type="button" class="action-link action-danger" title="Clear both logs and the result">Clear</button>
+              </div>
+            </div>
+            <p class="hint">Highlight fulfillment data on the active page, then capture it here.</p>
+            <textarea id="vxFulfillment" placeholder="Capture highlighted fulfillment data or paste it here"></textarea>
+            <button id="vxAnalyze" type="button" class="btn-primary btn-wide">Audit order</button>
+            <div id="vxConfirmGroup" class="confirm-group" hidden>
+              <button id="vxConfirm" type="button" class="btn-confirm">Confirm discrepancy sorted</button>
+              <p class="hint">Fixed it in the Fulfillment System? Capture the updated log, then confirm. It re-checks the order, deducts from the allocation and clears everything if it's clean.</p>
+            </div>
+          </section>
+
+          <section class="block">
+            <h2>Audit result</h2>
+            <div id="vxResults" class="result-box" role="status" aria-live="polite" data-state="message" data-tone="muted">Add the logs, then run the audit.</div>
+          </section>
+        </div>
+      </div>
+
+      <!-- Product catalog replaces the audit view while open -->
+      <section id="catalogPanel" class="block" aria-label="Product catalog" hidden>
+        <div class="block-head">
+          <h2>Product catalog</h2>
+          <button id="closeCatalog" type="button" class="action-link">Close</button>
+        </div>
+        <p class="hint">Aliases and receiving details used when matching orders.</p>
+
+        <input id="catalogSearch" type="search" aria-label="Search products" placeholder="Search products or aliases">
+        <div class="catalog-controls">
+          <select id="catalogScope" aria-label="Filter by checker">
+            <option value="">Both checkers</option>
+            <option value="general">General Auditor</option>
+            <option value="vaccine">Vaccine Checker</option>
+          </select>
+          <button id="reloadCatalog" type="button" class="btn-small">Reload</button>
+          <button id="addCatalogProduct" type="button" class="btn-small" disabled>Add product</button>
+        </div>
+        <div id="catalogProducts"></div>
+
+        <form id="catalogForm" hidden>
+          <fieldset id="catalogFields" disabled>
+            <label>Product name<input name="displayName" required maxlength="160"></label>
+            <label>Used in
+              <select name="scope">
+                <option value="general">General Auditor</option>
+                <option value="vaccine">Vaccine Checker</option>
+              </select>
+            </label>
+            <label>Category<input name="category" required maxlength="60"></label>
+            <label>Fulfillment System name (optional)<input name="fulfillmentSystemName" maxlength="160"></label>
+            <label>How this product is received or supplied (optional)
+              <textarea name="receivingDetails" maxlength="2000" placeholder="e.g. Received in boxes containing 10 units"></textarea>
+            </label>
+            <label>Sync new aliases and changed receiving details to
+              <select name="linkedProductId"></select>
+            </label>
+            <label>Aliases (one per line)<textarea name="aliases"></textarea></label>
+            <label id="catalogContextLabel">Aliases that need context (one per line)<textarea name="contextualAliases"></textarea></label>
+            <label>Notes<textarea name="note" maxlength="2000"></textarea></label>
+
+            <button id="suggestCatalogAliases" type="button" class="btn-small">Suggest aliases with Gemini</button>
+            <div id="catalogSuggestions"></div>
+            <button id="addAliasSuggestions" type="button" class="btn-small" hidden>Add selected suggestions to draft</button>
+            <button id="saveCatalogProduct" type="submit" class="btn-primary btn-wide">Save product</button>
+          </fieldset>
+        </form>
+
+        <p id="catalogStatus" class="form-message" role="status" data-tone="muted"></p>
+        <p class="hint">Keep strengths, formulations, and vaccine companions separate. Receiving reminders do not change quantities.</p>
+      </section>
+    </section>
+
+    <footer class="connection" aria-label="Verification service">
+      <details>
+        <summary>
+          <span class="conn-title">Verification service URL</span>
+          <span id="connectionBadge" class="conn-badge" data-state="pending">Checking…</span>
+        </summary>
+        <div class="conn-body">
+          <div class="conn-row">
+            <input id="backendUrlInput" type="url" inputmode="url" spellcheck="false" aria-label="Verification service URL" placeholder="https://your-service.run.app">
+            <button id="btnSaveBackend" type="button" class="btn-small btn-save">Save</button>
+            <button id="btnResetBackend" type="button" class="btn-small">Reset</button>
+          </div>
+          <p id="backendSaveMsg" class="form-message" role="status" data-tone="success" hidden></p>
+          <p class="hint">Where audits are sent. After you change it, sign in again. A sleeping service can take about a minute to start.</p>
+        </div>
+      </details>
+    </footer>
+
+  </div>
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

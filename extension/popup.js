@@ -1,3 +1,5 @@
+import { setupGeneralProductReview } from './general-report.js';
+import { restoreGeneralAudit, rememberGeneralAudit } from './general-session.js';
 import { setupFsPanel } from './fs-panel.js';
 import { createFsScriptSync } from './fs-script.js';
 import { acknowledgeOrderLimit } from './order-limits.js';
@@ -82,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const input = source === 'whatsapp' ? whatsappText : fulfillmentText; input.value = text;
     chrome.storage.local.set({ [source === 'whatsapp' ? 'whatsappText' : 'fulfillmentText']: text }); invalidate();
   } });
-  const resetContext = () => { auditController?.abort(); contextRevision++; inputRevision++; activeResult = null; limitDecisions = {}; catalogUI.reset(); screenshots.reset(); vaccines.reset(); clearHints(); };
+  const resetContext = () => { lastGeneralAudit = null; auditController?.abort(); contextRevision++; inputRevision++; activeResult = null; limitDecisions = {}; catalogUI.reset(); screenshots.reset(); vaccines.reset(); clearHints(); };
   document.getElementById('openPortal').addEventListener('click', () => {
     try { chrome.tabs.create({ url: normalizeBackendUrl(savedBackendUrl) }); } catch (error) { showError(error); }
   });
@@ -165,6 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // State variables for dynamic interactive flows
   let activeResult = null;
+  let lastGeneralAudit = null;
   let declinedLimitItems = [];
   let limitDecisions = {};
 
@@ -175,8 +178,26 @@ document.addEventListener('DOMContentLoaded', () => {
       const warning = document.createElement('p'); warning.textContent = 'Decision acknowledged here, but could not be saved to history.'; results.append(warning);
     } }
   };
+  const productReview = setupGeneralProductReview({ root: results, request, getResult: () => activeResult,
+    getSources: () => ({ whatsappMessage: whatsappText.value, fulfillmentConfirmation: fulfillmentText.value }),
+    contextKey: () => `${contextRevision}:${inputRevision}:${savedBackendUrl}`,
+    onSaved: updated => { activeResult = updated; lastGeneralAudit = updated; }, rerender: () => renderResults(), onBusy: busy => { btnVerify.disabled = busy; },
+  });
+  results.addEventListener('click', event => {
+    const button = event.target.closest('[data-general-limit]');
+    if (!button || !activeResult || productReview.isBusy()) return;
+    const answer = button.dataset.generalLimit === 'yes'; const key = button.dataset.key;
+    if (!activeResult.generalAudit.products.some(product => product.key === key && product.orderLimitEligible)) return;
+    limitDecisions[key] = answer; activeResult = acknowledgeOrderLimit(activeResult, key, answer);
+    renderResults(); void saveLimitAcknowledgement(activeResult.id, key, answer);
+  });
   const renderResults = () => {
     if (!activeResult) return;
+    if (activeResult.generalAudit) {
+      document.getElementById('auditStatus').textContent = activeResult.allMatch ? 'Audit passed' : 'Audit requires review';
+      document.getElementById('allocationStatus').textContent = 'Not applicable';
+      results.innerHTML = productReview.render(activeResult); void rememberGeneralAudit(activeResult, savedBackendUrl); return;
+    }
 
     const escape = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     let html = '';
@@ -300,7 +321,11 @@ document.addEventListener('DOMContentLoaded', () => {
     checkConnection();
     const { authSession } = await chrome.storage.session.get('authSession');
     if (authSession && savedBackendUrl) {
-      try { await loadProfile(); } catch (error) { showError(error); await updateAuth(); }
+      try { await loadProfile();
+        const restoreVersion = inputRevision;
+        const savedAudit = await restoreGeneralAudit(request, savedBackendUrl, { whatsappMessage: whatsappText.value, fulfillmentConfirmation: fulfillmentText.value });
+        if (savedAudit && restoreVersion === inputRevision) { activeResult = savedAudit; lastGeneralAudit = savedAudit; renderResults(); }
+      } catch (error) { showError(error); await updateAuth(); }
     }
   });
 
@@ -338,6 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Clear inputs action
   if (btnClear) {
     btnClear.addEventListener('click', () => {
+      lastGeneralAudit = null;
       whatsappText.value = '';
       fulfillmentText.value = '';
       invalidate(); screenshots.reset(); clearHints();
@@ -436,7 +462,7 @@ document.addEventListener('DOMContentLoaded', () => {
   btnCapture.addEventListener('click', captureSelection);
 
   const verify = async () => {
-    if (btnVerify.disabled || vaccines.isBusy()) return;
+    if (btnVerify.disabled || vaccines.isBusy() || productReview.isBusy()) return;
     if (vaccines.vaccineMode()) {
       activeResult = null; btnVerify.disabled = true;
       try {
@@ -478,7 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
         signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(auditBody(wa, ff, undefined, limitDecisions)),
+        body: JSON.stringify(auditBody(wa, ff, undefined, limitDecisions, lastGeneralAudit)),
       });
       if (!Array.isArray(data.items) || typeof data.allMatch !== 'boolean') {
         throw new Error('Unexpected audit response from the backend.');
@@ -488,6 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
       void refreshHints();
       // Initialize active results and render dynamically
       activeResult = data;
+      lastGeneralAudit = data.generalAudit ? data : null;
       renderResults();
 
     } catch (err) {

@@ -61,8 +61,8 @@ test('actual browser/server whitespace mismatch confirms immediately without a n
   assert.equal(response.data.issueCount, 1);
   assert.equal(response.data.allMatch, false);
   const html = renderToStaticMarkup(createElement(Inventory, { items: response.data.items, details: response.data.generalAudit, onOrderLimit() {} }));
-  assert.match(html, /text-green-700/);
-  assert.match(html, /Customer Verified — Product Match/);
+  assert.match(html, /text-amber-800/);
+  assert.match(html, /ORDER LIMIT REVIEW/);
   assert.doesNotMatch(html, /Customer Confirmation Required|omits the dosage form/);
 });
 
@@ -112,14 +112,14 @@ test('concurrent duplicate clicks save exactly one confirmation with one origina
   assert.equal(stored.generalAudit.productVerifications!.filter(product => product.confirmation).length, 1);
 });
 
-test('failed saving keeps the orange unverified panel and never reports success', async () => {
+test('failed saving keeps the product under review and never reports success', async () => {
   const stored = audit();
   const handler = generalProductConfirmationHandler({ read: async () => stored, save: async () => { throw Error('offline'); } });
   const response = await send(handler, confirmationBody(stored));
   assert.equal(response.status, 503);
   const html = renderToStaticMarkup(createElement(Inventory, { items: stored.items, details: stored.generalAudit, onOrderLimit() {} }));
-  assert.match(html, /bg-amber-50/);
-  assert.match(html, /Customer Confirmation Required/);
+  assert.match(html, /text-amber-800/);
+  assert.match(html, /REVIEW REQUIRED/);
   assert.doesNotMatch(html, /Product successfully confirmed|CUSTOMER VERIFIED/);
 });
 
@@ -150,6 +150,6 @@ test('the actual UI confirmation handler immediately accepts the saved result de
   assert.equal(rendered.items[0].difference, 18);
   assert.equal(rendered.allMatch, false);
   const html = renderToStaticMarkup(createElement(Inventory, { items: rendered.items, details: rendered.generalAudit, onOrderLimit() {} }));
-  assert.match(html, /Customer Verified — Product Match/);
-  assert.match(html, /text-green-700/);
+  assert.match(html, /ORDER LIMIT REVIEW/);
+  assert.match(html, /text-amber-800/);
 });

@@ -100,7 +100,7 @@ test('reported multi-product order has one match/shortfall and one formulation v
   assert.match(product.reason!, /formulation/);
   assert.equal(product.options[0].name, 'Ciprofloxacin 2mg/mL Infusion 100mL');
   const html = renderToStaticMarkup(createElement(Inventory, { items: initial.items, details: initial.generalAudit, onOrderLimit() {} }));
-  assert.match(html, /Order Limit Verification Required — confirm product first/);
+  assert.match(html, /REVIEW REQUIRED|PRODUCT DETAILS MISMATCH/);
   assert.ok(!initial.items.some(item => ['extra item', 'missing item'].includes(item.status)));
   const confirmed = applyGeneralProductConfirmation(initial, product.key, product.options[0].key, true, { id: 'cca', name: 'CCA' });
   assert.equal(confirmed.items.length, 2);

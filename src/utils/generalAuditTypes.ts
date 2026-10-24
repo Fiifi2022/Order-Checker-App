@@ -36,6 +36,9 @@ export interface GeneralSemanticReview {
   reason: string;
 }
 export interface GeneralProductVerification {
+  candidateKeys?: string[];
+  kind?: 'ai product match';
+  rejectedSuggestions?: { productKey: string; rejectedAt: string; rejectedBy?: { id: string; name: string } }[];
   reviewState?: GeneralProductReviewState;
   key: string;
   productName: string;
@@ -44,7 +47,7 @@ export interface GeneralProductVerification {
   requestedQuantity: number;
   suggestedProduct?: string;
   suppliedQuantity: number;
-  options: { key: string; name: string; fromFulfillment: boolean; reason?: string }[];
+  options: { catalogProductId?: string; key: string; name: string; fromFulfillment: boolean; reason?: string }[];
   status: 'customer confirmation required' | 'customer verified' | 'review required';
   requestedProducts: import('./generalAuditor').GeneralProductEvidence[];
   fulfillmentProducts: import('./generalAuditor').GeneralProductEvidence[];
@@ -60,6 +63,7 @@ export interface GeneralProductVerification {
   };
 }
 export interface GeneralAuditDetails {
+  sourceEntries?: import('./generalAuditor').GeneralProductEvidence[];
   productVerifications?: GeneralProductVerification[];
   dispatchReadiness?: { canDispatchAutomatically: boolean; requiresFacilityConfirmation: boolean };
   semanticReviews?: GeneralSemanticReview[];

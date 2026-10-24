@@ -3,6 +3,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // All reads and writes go through the authenticated, authorized Express API.
     // The Admin SDK uses server credentials and bypasses these client rules.
+    // Includes general_product_name_aliases: only the authorized server API may
+    // approve, correct or disable learned wording and write its editing history.
     match /{document=**} {
       allow read, write: if false;
     }

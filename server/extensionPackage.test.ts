@@ -8,7 +8,10 @@ test('downloaded companion includes every module and only the selected public co
   const zip = new AdmZip(await buildExtensionPackage('http://localhost:3000', 'public-browser-key'));
   const names = zip.getEntries().map(entry => entry.entryName);
   assert.deepEqual(new Set(names), new Set([...extensionAssets, 'config.js']));
-  assert.equal(JSON.parse(zip.readAsText('manifest.json')).version, '1.5.14');
+  assert.equal(JSON.parse(zip.readAsText('manifest.json')).version, '2.3.8');
+  assert.equal(JSON.parse(zip.readAsText('manifest.json')).side_panel.default_path, 'sidepanel.html');
+  assert.ok(!JSON.parse(zip.readAsText('manifest.json')).action.default_popup);
+  assert.match(zip.readAsText('sidepanel.js'), /setupGeneralProductReview/);
   assert.match(zip.readAsText('config.js'), /http:\/\/localhost:3000/);
   assert.match(zip.readAsText('config.js'), /public-browser-key/);
   assert.match(zip.readAsText('config.js'), /fulfillment-gh3-production/);

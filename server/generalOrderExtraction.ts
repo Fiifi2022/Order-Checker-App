@@ -9,6 +9,7 @@ import { findGeneralFacilityNames, normalizeGeneralFacilityName, type GeneralFac
 import { classifyGeneralText, stripGeneralNonOrderInformation } from '../src/utils/generalTextClassification';
 import { medicalProductAcronyms } from '../src/utils/medicalProductAcronyms';
 import { getGeneralTerminologyAliases, generalApprovedProductIdentities, resolveGeneralApprovedIdentity, getGeneralMedicalAmbiguity, stripGeneralLeadingSpecification } from '../src/utils/generalMedicalTerminology';
+import { bindGeneralExtractionSources } from '../src/utils/generalExtractionSources';
 import packaging from '../src/utils/generalPackagingCatalogue.json';
 
 export interface StructuredGeneralOrder {
@@ -25,6 +26,8 @@ export interface DeterministicGeneralOrder {
   changed: boolean;
   order: StructuredGeneralOrder;
   unresolvedText: string[];
+  /** Original source spans consumed by independently extracted products. */
+  sourceEntries?: import('./generalAuditor').GeneralProductEvidence[];
   conflictingFields?: string[];
   missingQuantityProducts?: string[];
 }
@@ -109,7 +112,7 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
     return products.length === 1 && knownName(products[0].name) ? line
       : line.replace(labelBoundary, (_, boundary, field) => `\n${/^ordered by$/i.test(field) ? 'Orderer' : field}: `);
   }).join('\n');
-  text = text.split('\n').map(line => line.includes(';') && !classifyGeneralText(line).orderChange && (isMetadataLabel(line.split(':')[0]) && !/^notes\b/i.test(line) || line.split(';').every(part => parseGeneralProducts(part, source).length > 0)) ? line.replace(/;\s*/g, '\n') : line).join('\n').replace(/([.!?])\s+(?=[a-z])/gi, (match, mark, offset, input) => /(?:\b(?:dr|mr|mrs|ms|prof)|\d)$/i.test(input.slice(0, offset)) ? match : `${mark}\n`);
+  text = text.split('\n').map(line => line.includes(';') && !classifyGeneralText(line).orderChange && (isMetadataLabel(line.split(':')[0]) && !/^notes\b/i.test(line) || line.split(';').every(part => parseGeneralProducts(part, source).length > 0)) ? line.replace(/;\s*/g, '\n') : line).join('\n').replace(/([.!?])\s+(?=[a-z])/gi, (match, mark, offset, input) => /(?:\b(?:dr|mr|mrs|ms|prof|inj|injs|tab|tabs|cap|caps|susp)|\d)$/i.test(input.slice(0, offset)) ? match : `${mark}\n`);
   const prepared = text.split(/\r?\n/).map(line => {
     const plain = line.trim();
     if (clinical.test(plain)) {
@@ -173,8 +176,9 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
     const names = findGeneralFacilityNames(text, context.records);
     if (names.length === 1) { improved = true; text += `\nFacility: ${names[0]}`; extracted = extractGeneralInput(text, source, reference?.ordererName || 'N/A', reference?.facilityName || 'N/A'); }
   }
+  extracted.products = bindGeneralExtractionSources(extracted.products, raw, source);
   const fields = (pattern: RegExp) => text.match(pattern)?.[1].trim() || null;
-  const evidenceByLine = new Map(extracted.products.map(product => [product.line, product]));
+  const evidenceByLine = new Map(parseGeneralProducts(text, source).map(product => [product.line, product]));
   const unresolvedText = text.split('\n').filter((line, index) => {
     if (!line.trim() || classifyGeneralText(line).category === 'administrative') return false;
     if ([extracted.facilityName, extracted.ordererName].some(value => value !== 'N/A' && stripGeneralListPrefix(line) === value)) return false;
@@ -200,7 +204,7 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
   }
   const certainProducts = extracted.products.filter(product => !product.quantityReview && knownName(product.name) && !getGeneralMedicalAmbiguity(product.name));
   const unresolvedFields = [extracted.facilityName === 'N/A' ? 'facilityName' : '', extracted.ordererName === 'N/A' ? 'ordererName' : '', !certainProducts.length || unresolvedText.some(line => !/^(?:name of orderer|orderer|ordered by|requested by|name of health facility|health facility|facility|hospital)\s*:/i.test(line) && !/^(?:signed(?: by)?|duty (?:nurse|officer)(?: is)?|my name is)\b/i.test(line)) ? 'products' : ''].filter(Boolean);
-  return { text, changed: improved, unresolvedText, conflictingFields, missingQuantityProducts: pending.filter(item => output[item.index] === item.name && !getGeneralMedicalAmbiguity(item.name) && !extracted.products.some(product => product.normalizedName === normalizeGeneralProductName(item.name) && (product.stockSection || product.stockIndicator))).map(item => item.name), order: {
+  return { text, changed: improved, sourceEntries: extracted.products, unresolvedText, conflictingFields, missingQuantityProducts: pending.filter(item => output[item.index] === item.name && !getGeneralMedicalAmbiguity(item.name) && !extracted.products.some(product => product.normalizedName === normalizeGeneralProductName(item.name) && (product.stockSection || product.stockIndicator))).map(item => item.name), order: {
     facilityName: extracted.facilityName === 'N/A' ? null : extracted.facilityName,
     ordererName: extracted.ordererName === 'N/A' ? null : extracted.ordererName,
     products: certainProducts.map(product => ({ name: resolveGeneralApprovedIdentity(product.name)?.canonicalName || product.name, quantity: product.quantity, unit: product.unit })),
