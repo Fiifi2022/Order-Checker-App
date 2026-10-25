@@ -53,7 +53,7 @@ export function defaultProducts(): CatalogProduct[] {
 }
 export function applyCatalog(catalog: ProductCatalog) {
   setCatalogRevision(catalog.revision);
-  applyGeneralCatalog(catalog.products, catalog.productNameAliases);
+  applyGeneralCatalog(catalog.products);
   vaccineService.replaceAliases(Object.fromEntries(catalog.products.filter(product => product.scope === 'vaccine').map(product => [product.name, catalogProductNames(product)])));
 }
 export function saveCatalogProduct(catalog: ProductCatalog, input: any, actor: string): ProductCatalog {

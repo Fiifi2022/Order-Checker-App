@@ -270,9 +270,9 @@ test('mismatch regression identifies actual problems despite equal product count
   assert.doesNotMatch(result.generalAudit.discrepancies.join(' '), /Orderer/);
 });
 
-test('logical source entries remain counted while same-product quantities aggregate consistently', () => {
+test('distinct product counts aggregate duplicates consistently on both sides', () => {
   const result = runProductAudit('ORS - 2\nORS - 3', 'ORS [1/1]\nOral Rehydration Salts [4/4]');
-  assert.deepEqual(result.generalAudit.productCount, { requested: 2, found: 2, status: 'match' });
+  assert.deepEqual(result.generalAudit.productCount, { requested: 1, found: 1, status: 'match' });
   assert.equal(result.allMatch, true);
   const missing = runGeneralAuditor('ORS - 5\nMultivitamin Syrup - 5', 'ORS [5/5]');
   assert.equal(missing.generalAudit.productCount.status, 'mismatch');

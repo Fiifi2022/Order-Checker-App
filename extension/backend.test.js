@@ -71,10 +71,6 @@ test('companion uses all assigned roles and the current deterministic general au
     assert.equal(body.productCatalogRevision, 12);
     assert.equal(body.checkSource, 'companion_extension');
     assert.deepEqual(body.generalOrderLimitDecisions, { item: true });
-    const reopened = auditBody('Customer changed', 'Fulfillment', 12, {}, { id: 'saved-extension-audit', generalAudit: {} });
-    assert.equal(reopened.checkId, 'saved-extension-audit');
-    assert.equal(reopened.restoreProductConfirmations, true);
-    assert.equal(body.restoreProductConfirmations, undefined);
   } finally {
     if (previousCrypto) Object.defineProperty(globalThis, 'crypto', previousCrypto);
     else delete globalThis.crypto;

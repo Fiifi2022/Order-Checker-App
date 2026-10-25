@@ -32,9 +32,9 @@ test('side panel order survives draft clearing; removal and facility switches cl
 });
 test('permissions restrict FS injection and secrets stay out of content scripts', async () => {
  const manifest = JSON.parse(await readFile(new URL('./manifest.json', import.meta.url), 'utf8'));
- assert.equal(manifest.background.type, 'module'); assert.equal(manifest.side_panel.default_path, 'sidepanel.html');
+ assert.equal(manifest.background.type, 'module'); assert.equal(manifest.side_panel.default_path, 'popup.html?sidepanel=true');
  const fs = manifest.content_scripts.find(s => s.js.includes('fs-content.js'));
- assert.deepEqual(fs.matches, ["https://fulfillment-gh1-production.platform.flyzipline.com/*", "https://fulfillment-gh2-production.platform.flyzipline.com/*", "https://fulfillment-gh3-production.platform.flyzipline.com/*"]);
+ assert.deepEqual(fs.matches, ["https://fulfillment-gh1-production.platform.flyzipline.com/*", "https://fulfillment-gh3-production.platform.flyzipline.com/*"]);
  assert.ok(!manifest.host_permissions.some(host => host === 'https://*/*' || host === 'http://*/*'));
  assert.ok(manifest.host_permissions.includes('http://localhost:3000/*'));
  const content = await readFile(new URL('./fs-content.js', import.meta.url), 'utf8');
@@ -45,8 +45,8 @@ test('legacy downloaded config still enables both origins listed in the installe
  const { fsOrigins } = await import('./fs-origins.js');
  const manifest = JSON.parse(await readFile(new URL('./manifest.json', import.meta.url), 'utf8'));
  assert.deepEqual(fsOrigins({ fsOrigin: 'https://fulfillment-gh1-production.platform.flyzipline.com' }, manifest), [
-  'https://fulfillment-gh1-production.platform.flyzipline.com', 'https://fulfillment-gh2-production.platform.flyzipline.com', 'https://fulfillment-gh3-production.platform.flyzipline.com']);
+  'https://fulfillment-gh1-production.platform.flyzipline.com', 'https://fulfillment-gh3-production.platform.flyzipline.com']);
  assert.deepEqual(fsOrigins({ fsOrigins: ['https://unrelated.example'] }, manifest), [
-  'https://fulfillment-gh1-production.platform.flyzipline.com', 'https://fulfillment-gh2-production.platform.flyzipline.com', 'https://fulfillment-gh3-production.platform.flyzipline.com']);
+  'https://fulfillment-gh1-production.platform.flyzipline.com', 'https://fulfillment-gh3-production.platform.flyzipline.com']);
  assert.deepEqual(fsOrigins({}, { content_scripts: [{ js: ['fs-content.js'], matches: ['https://*/*'] }] }), []);
 });

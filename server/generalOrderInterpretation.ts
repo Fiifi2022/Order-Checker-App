@@ -1,4 +1,3 @@
-import { generalAliasRevision } from '../shared/generalProductAliases';
 import { isGeneralKnownProductDescription, matchGeneralClinicalProducts } from '../src/utils/generalProductMatching';
 import { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 import { classifyGeneralText, generalOrderRelevantText } from '../src/utils/generalTextClassification';
@@ -18,11 +17,16 @@ import { geminiUsage } from './geminiUsage';
 import { getGeneralTerminologyAliases, generalCombinationTerminology, relevantGeneralAbbreviations, getGeneralMedicalAmbiguity, isGeneralBiologic, generalApprovedProductIdentities, resolveGeneralApprovedIdentity, stripGeneralLeadingSpecification } from '../src/utils/generalMedicalTerminology';
 import { selectGeneralSemanticContext } from './generalSemanticContext';
 import type { GeneralSemanticReview } from '../src/utils/generalAuditTypes';
+import { getGeneralProductLog, isGeneralProductLogMatch } from '../src/utils/generalProductLog';
+import { catalogProductNames } from '../shared/productCatalog';
 
 // Explicit identities already supplied in OrderCheck requirements, not guessed strengths.
 
-const currentGeneralProductCatalog = () => [...new Set([...Object.entries(CLINICAL_PAIRINGS).flatMap(([name, pairing]) => [name, pairing.accessoryCanonical]), ...getGeneralTerminologyAliases().map(row => row.name), ...packaging.map(row => row.name), ...medicalProductAcronyms.map(row => row.name), ...intentAliases.map(row => row.name), ...generalApprovedProductIdentities.map(row => row.canonicalName)])];
-const currentGeneralProductAliases = () => [...medicalProductAcronyms.map(row => ({ name: row.name, aliases: row.aliases, contextual: !!row.contextual, note: row.note })), ...(getCatalogRevision() ? [] : intentAliases), ...getGeneralTerminologyAliases(), generalCombinationTerminology, ...generalApprovedProductIdentities.map(row => ({ name: row.canonicalName, canonicalId: row.canonicalId, aliases: [...row.aliases], contextual: false }))];
+const currentGeneralProductCatalog = () => getGeneralProductLog()?.map(product => product.name) ?? [...new Set([...Object.entries(CLINICAL_PAIRINGS).flatMap(([name, pairing]) => [name, pairing.accessoryCanonical]), ...getGeneralTerminologyAliases().map(row => row.name), ...packaging.map(row => row.name), ...medicalProductAcronyms.map(row => row.name), ...intentAliases.map(row => row.name), ...generalApprovedProductIdentities.map(row => row.canonicalName)])];
+const currentGeneralProductAliases = () => getGeneralProductLog()?.flatMap(product => [
+  { name: product.name, aliases: catalogProductNames(product).filter(name => !product.contextualAliases.includes(name)), contextual: false, note: product.note },
+  { name: product.name, aliases: product.contextualAliases, contextual: true, note: product.note },
+]) ?? [...medicalProductAcronyms.map(row => ({ name: row.name, aliases: row.aliases, contextual: !!row.contextual, note: row.note })), ...(getCatalogRevision() ? [] : intentAliases), ...getGeneralTerminologyAliases(), generalCombinationTerminology, ...generalApprovedProductIdentities.map(row => ({ name: row.canonicalName, canonicalId: row.canonicalId, aliases: [...row.aliases], contextual: false }))];
 export const generalProductCatalog = currentGeneralProductCatalog();
 export const generalProductAliases = currentGeneralProductAliases();
 const str = { type: Type.STRING };
@@ -77,7 +81,7 @@ Expand only supported whole-token acronyms and catalog aliases. Approved canonic
 let knownVocabulary: { signature: string; names: Set<string>; plainNames: string[] } | undefined;
 function knownProductNames() {
   const catalog = currentGeneralProductCatalog();
-  const signature = JSON.stringify([getCatalogRevision(), generalAliasRevision(), getGeneralVaccineCatalogVersion(), catalog, currentGeneralProductAliases()]);
+  const signature = JSON.stringify([getCatalogRevision(), getGeneralVaccineCatalogVersion(), catalog, currentGeneralProductAliases()]);
   if (!knownVocabulary || knownVocabulary.signature !== signature) {
     knownVocabulary = { signature, names: new Set(catalog.map(normalizeGeneralProductName)), plainNames: [...new Set(catalog.map(key))] };
   }
@@ -109,9 +113,11 @@ function deterministicProduct(product: ReturnType<typeof extractGeneralInput>['p
   if (product.source === 'customer_request' && product.ratioRequestedQuantity !== undefined &&
     /\b(?:syrup|suspension|injection)\b/i.test(product.name) &&
     !hasExplicitGeneralOrderRatio(product)) return false;
+  if (isGeneralProductLogMatch(product.name, normalizeGeneralProductName)) return true;
+  const loggedIdentity = !getGeneralProductLog() || knownSpecifiedIdentity(product.name, product.normalizedName, known);
   const counterparts = product.source === 'customer_request' ? inputs.fulfillment.products : inputs.customer.products;
   const approvedWholeAlias = currentGeneralProductAliases().some(row => !('contextual' in row && row.contextual) && row.aliases.some(alias => key(alias) === key(product.name)));
-  if ((!interpretationIntent.test(product.name) || approvedWholeAlias) && !getGeneralMedicalAmbiguity(product.name) && counterparts.some(other => matchGeneralClinicalProducts(product.name, other.name, normalizeGeneralProductName).confident)) return true;
+  if (loggedIdentity && (!interpretationIntent.test(product.name) || approvedWholeAlias) && !getGeneralMedicalAmbiguity(product.name) && counterparts.some(other => matchGeneralClinicalProducts(product.name, other.name, normalizeGeneralProductName).confident)) return true;
   const paired = inputs.customer.products.some(other => other.normalizedName === product.normalizedName) &&
     inputs.fulfillment.products.some(other => other.normalizedName === product.normalizedName);
   // A child/children qualifier is clinical product text when both sides supply
@@ -122,7 +128,7 @@ function deterministicProduct(product: ReturnType<typeof extractGeneralInput>['p
     !interpretationIntent.test(qualifiedBase) && !getGeneralMedicalAmbiguity(qualifiedBase) &&
     knownSpecifiedIdentity(qualifiedBase, normalizeGeneralProductName(qualifiedBase), known);
   return !getGeneralMedicalAmbiguity(product.name) && (!interpretationIntent.test(product.name) || explicitQualifiedPair) &&
-    (paired || knownSpecifiedIdentity(product.name, product.normalizedName, known));
+    (!getGeneralProductLog() && paired || knownSpecifiedIdentity(product.name, product.normalizedName, known));
 }
 /** Only these source lines may need interpretation; never return the whole order. */
 export function generalInterpretationGaps(customer: string, fulfilment: string, extracted?: GeneralExtractedPair): GeneralSemanticReview[] {
@@ -244,7 +250,7 @@ function interpretRich(value: unknown, customer: string, fulfilment: string, cat
       const canonical = product.status === 'RESOLVED' ? safeCanonical(product, catalog, source) : null;
       const index = lines.findIndex(line => line.trim() === product.originalText.trim());
       if (!canonical) {
-        reviews.push({ originalText: product.originalText, source, possibleMatches: [...new Set([...product.possibleMatches, ...(product.canonicalProductName && catalog.includes(product.canonicalProductName) ? [product.canonicalProductName] : [])])], reason: product.quantity === null ? 'Requested quantity was not specified. Verify product and quantity before dispatch.' : 'Unable to confidently identify the intended product. Verify before dispatch.' });
+        reviews.push({ originalText: product.originalText, source, possibleMatches: product.possibleMatches, reason: product.quantity === null ? 'Requested quantity was not specified. Verify product and quantity before dispatch.' : 'Unable to confidently identify the intended product. Verify before dispatch.' });
         lines[index] = '';
       } else {
         const quantity = quantityFragment(product, source)!;
@@ -354,7 +360,7 @@ export async function interpretGeneralOrder(customer: string, fulfilment: string
   const generalProductCatalog = currentGeneralProductCatalog();
   const generalProductAliases = currentGeneralProductAliases();
   const catalog = [...new Set([...generalProductCatalog, ...Object.keys(vaccineAliases), ...parseGeneralProducts(customer, 'customer_request').map(p => p.name), ...parseGeneralProducts(fulfilment, 'fulfillment_confirmation').map(p => p.name)])];
-  const version = createHash('sha256').update(JSON.stringify([options.cacheScope || 'local', getCatalogRevision(), generalAliasRevision(), generalProductCatalog, generalProductAliases, vaccineAliases])).digest('hex');
+  const version = createHash('sha256').update(JSON.stringify([options.cacheScope || 'local', getCatalogRevision(), generalProductCatalog, generalProductAliases, vaccineAliases])).digest('hex');
   const cacheKey = JSON.stringify([customer, fulfilment, version]);
   if (options.signal?.aborted) return fallback('fallback', 'Audit cancelled; manual review required');
   const existing = cache.get(cacheKey);

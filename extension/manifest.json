@@ -1,9 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "OrderCheck",
-  "version": "2.3.8",
-  "description": "OrderCheck side panel with product-specific General Auditor verification and live FS allocation support.",
-  "minimum_chrome_version": "116",
+  "name": "OrderCheck Compliance Companion",
+  "version": "1.5.14",
+  "description": "Direct Zipline compliance cross-examiner. Scans orders across tabs and matches logs.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -13,39 +12,19 @@
   "host_permissions": [
     "http://localhost:3000/*",
     "https://fulfillment-gh1-production.platform.flyzipline.com/*",
-    "https://fulfillment-gh2-production.platform.flyzipline.com/*",
     "https://fulfillment-gh3-production.platform.flyzipline.com/*",
     "https://identitytoolkit.googleapis.com/*",
     "https://securetoken.googleapis.com/*"
   ],
-  "background": {
-    "service_worker": "background.js",
-    "type": "module"
-  },
-  "side_panel": {
-    "default_path": "sidepanel.html"
-  },
   "action": {
-    "default_title": "OrderCheck",
-    "default_icon": {
-      "16": "icon-16.png",
-      "32": "icon-32.png",
-      "48": "icon-48.png",
-      "128": "icon-128.png"
-    }
-  },
-  "icons": {
-    "16": "icon-16.png",
-    "32": "icon-32.png",
-    "48": "icon-48.png",
-    "128": "icon-128.png"
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
   },
   "content_scripts": [
     {
       "matches": [
         "https://web.whatsapp.com/*",
         "https://fulfillment-gh1-production.platform.flyzipline.com/*",
-        "https://fulfillment-gh2-production.platform.flyzipline.com/*",
         "https://fulfillment-gh3-production.platform.flyzipline.com/*"
       ],
       "js": [
@@ -55,7 +34,6 @@
     {
       "matches": [
         "https://fulfillment-gh1-production.platform.flyzipline.com/*",
-        "https://fulfillment-gh2-production.platform.flyzipline.com/*",
         "https://fulfillment-gh3-production.platform.flyzipline.com/*"
       ],
       "js": [
@@ -63,5 +41,12 @@
       ]
     }
   ],
-  "options_page": "popup.html"
+  "minimum_chrome_version": "116",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "popup.html?sidepanel=true"
+  }
 }

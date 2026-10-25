@@ -1,5 +1,3 @@
-import { generalAuditResult, generalProductResults } from './utils/generalProductResults';
-import ExtensionDownload from './components/ExtensionDownload';
 import GeneralInventory, { generalInventoryRows } from './components/GeneralInventory';
 import { generalInputFingerprint, sameGeneralAuditSources } from '../shared/generalAuditFingerprint';
 import { AUDIT_TARGET_MS, AUDIT_HARD_TIMEOUT_MS, AUDIT_DELAY_MESSAGE, AUDIT_TIMEOUT_MESSAGE, auditTimeoutSetting } from '../shared/auditPerformance';
@@ -16,8 +14,9 @@ import GeneralScreenshotInput, { type GeneralScreenshotHandle } from './componen
 import GeneralMonitoring from './components/GeneralMonitoring';
 import { GeneralOrderLimitPrompt, GeneralProductName } from './components/GeneralFulfillmentSummary';
 import { createGeneralAuditRun, completeGeneralAuditRun, isCurrentGeneralAuditRun, type GeneralAuditRun } from './utils/generalAuditRun';
-import { buildGeneralAuditCheckSummary, enforceGeneralProductAssignments, type runGeneralAuditor } from './utils/generalAuditor';
+import { buildGeneralAuditCheckSummary, type runGeneralAuditor } from './utils/generalAuditor';
 import GeneralVerificationConfidence from './components/GeneralVerificationConfidence';
+import GeneralDiscrepancySubtitle from './components/GeneralDiscrepancySubtitle';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -65,8 +64,7 @@ import {
   FileSpreadsheet,
   Users,
   UserCheck,
-  ChevronDown,
-  Puzzle
+  ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { OrderCheckResult, AuditRecord, AuditAnalytics, VerificationItem, UserRoleRecord, UserRegistration } from './types';
@@ -81,7 +79,7 @@ import GeminiStatus from './components/GeminiStatus';
 export default function App({ authenticatedUser }: { authenticatedUser: UserRoleRecord }) {
   // Navigation tabs - Supports both existing Order Checker & new Vaccine Allocation Module
   const [activeTab, setActiveTab] = useState<
-    'vaccine_blueprint' | 'vaccine_checker' | 'vaccine_dashboard' | 'kpi_dashboard' | 'auditor' | 'history' | 'extension'
+    'vaccine_blueprint' | 'vaccine_checker' | 'vaccine_dashboard' | 'kpi_dashboard' | 'auditor' | 'history'
   >('vaccine_blueprint');
 
   const [checkerBlueprintSheetId, setCheckerBlueprintSheetId] = useState<string>();
@@ -298,7 +296,6 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   // Active verify results (the client receives full AuditRecord back from server)
   const [result, setResult] = useState<AuditRecord | null>(null);
   const generalDetails = (result as (AuditRecord & { generalAudit?: GeneralAuditDetailsPayload }) | null)?.generalAudit;
-  const generalBanner = generalDetails && result ? generalAuditResult(result.items as unknown as import('./utils/generalAuditor').GeneralComparisonItem[], generalDetails, result.allMatch) : null;
   const facilityReviewRequired = generalDetails?.facility.status === 'review required';
   const generalReviewRequired = facilityReviewRequired || Boolean(generalDetails?.auditSummary?.reviewRequiredCount);
 
@@ -364,16 +361,10 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
     setVerificationTime(null);
     setLoading(false);
   };
-  useEffect(() => {
-    let cancelled = false;
-    void authFetch('/api/products').then(async response => { if (!response.ok) return; const catalog = await response.json(); if (!cancelled) applyGeneralCatalog(catalog.products, catalog.productNameAliases); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [activeUser?.id]);
   const pendingSavedAudit = useRef<AuditRecord | null>(null);
   const savedAuditStorageKey = `general-auditor:last-audit:${activeUser?.id}`;
   const openSavedGeneralAudit = (record: AuditRecord) => {
     if (!(record as AuditRecord & { generalAudit?: GeneralAuditDetailsPayload }).generalAudit) return;
-    record = enforceGeneralProductAssignments(record as unknown as ReturnType<typeof runGeneralAuditor>, record.whatsappMessage, record.fulfillmentConfirmation) as unknown as AuditRecord;
     invalidateGeneralAudit();
     if (record.whatsappMessage === currentGeneralInputs.current.whatsappMessage && record.fulfillmentConfirmation === currentGeneralInputs.current.fulfillmentConfirmation) setResult(record);
     else {
@@ -454,7 +445,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
 
   const [savingProductConfirmation, setSavingProductConfirmation] = useState(false);
   const productConfirmationInFlight = useRef(false);
-  const confirmGeneralProduct = async (key: string, productKey: string, rejectSuggestion = false) => {
+  const confirmGeneralProduct = async (key: string, productKey: string) => {
     if (!result || loading || productConfirmationInFlight.current) throw new Error('Wait for the current audit action to finish.');
     const record = result;
     const revision = generalAuditRevision.current;
@@ -464,7 +455,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
     try {
       const response = await authFetch(`/api/audits/${encodeURIComponent(record.id)}/product-confirmation`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key, productKey, rejectSuggestion, previousProductKey: (record as unknown as ReturnType<typeof runGeneralAuditor>).generalAudit?.productVerifications?.find(product => product.key === key)?.confirmation?.productKey, customerContactConfirmed: true, whatsappMessage: record.whatsappMessage,
+        body: JSON.stringify({ key, productKey, previousProductKey: (record as unknown as ReturnType<typeof runGeneralAuditor>).generalAudit?.productVerifications?.find(product => product.key === key)?.confirmation?.productKey, customerContactConfirmed: true, whatsappMessage: record.whatsappMessage,
           fulfillmentConfirmation: record.fulfillmentConfirmation, inputFingerprint: generalInputFingerprint(record) }),
       });
       const updated = await response.json();
@@ -562,7 +553,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
       if (!isCurrent()) return;
       if (!json.productCatalog?.products || !Number.isSafeInteger(json.productCatalog.revision)) throw new Error('The audit service must be updated to return the verified product catalog. Please retry after deployment.');
       setCatalogRevision(json.productCatalog.revision);
-      applyGeneralCatalog(json.productCatalog.products, json.productCatalog.productNameAliases);
+      applyGeneralCatalog(json.productCatalog.products);
       delete json.productCatalog;
       setResult(completeGeneralAuditRun(run, json) as unknown as AuditRecord);
       if (json.semanticAnalysis?.status === 'fallback') setGeneralServiceWarning('AI verification is temporarily unavailable. Available checks have been completed using the standard verification engine. Review highlighted details before dispatch.');
@@ -882,12 +873,6 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
             General Auditor
           </button>
           
-          <button type="button" aria-label="Download Chrome extension" aria-pressed={activeTab === 'extension'}
-            onClick={() => setActiveTab('extension')}
-            className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${activeTab === 'extension' ? 'border-[#5C2D91] text-[#5C2D91]' : 'border-transparent text-slate-500 hover:text-[#5C2D91]'}`}>
-            <Puzzle className="w-4 h-4" aria-hidden="true" />Extension
-          </button>
-
           {isAdministrator && <button
             onClick={() => setActiveTab('history')}
             className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
@@ -918,8 +903,6 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6" id="main-content">
         
-        {activeTab === 'extension' && <ExtensionDownload />}
-
         {/* EXACT 67-COLUMN VACCINE ALLOCATION BLUEPRINT (sample.xlsx) */}
         {activeTab === 'vaccine_blueprint' && (
           <div className="animate-in fade-in duration-300">
@@ -1203,19 +1186,19 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                     
                     {/* Top Banner Verdict Alert */}
                     <div className={`p-5 rounded-2xl border-l-8 border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm bg-white ${
-                      (generalBanner ? generalBanner.tone === 'matched' : result.allMatch)
+                      result.allMatch 
                         ? 'border-green-200 border-l-green-600' 
-                        : (generalBanner ? generalBanner.tone === 'pending' : (generalDetails?.pendingOrderLimitCount || generalReviewRequired) && result.issueCount === 0) ? 'border-amber-200 border-l-amber-500' : 'border-rose-200 border-l-rose-500'
+                        : (generalDetails?.pendingOrderLimitCount || generalReviewRequired) && result.issueCount === 0 ? 'border-amber-200 border-l-amber-500' : 'border-rose-200 border-l-rose-500'
                     }`}>
                       <div className="flex items-start gap-4">
                         <div className={`p-2.5 rounded-full shrink-0 flex items-center justify-center ${
-                          (generalBanner ? generalBanner.tone === 'matched' : result.allMatch) ? 'bg-green-100 text-green-700' : (generalBanner ? generalBanner.tone === 'pending' : (generalDetails?.pendingOrderLimitCount || generalReviewRequired) && result.issueCount === 0) ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700'
+                          result.allMatch ? 'bg-green-100 text-green-700' : (generalDetails?.pendingOrderLimitCount || generalReviewRequired) && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700'
                         }`}>
-                          {(generalBanner ? generalBanner.tone === 'matched' : result.allMatch) ? <CheckCircle className="w-7 h-7" /> : <AlertCircle className="w-7 h-7" />}
+                          {result.allMatch ? <CheckCircle className="w-7 h-7" /> : <AlertCircle className="w-7 h-7" />}
                         </div>
                         <div>
                           <h3 className="font-black text-[#3B1A5E] text-lg leading-tight md:text-xl flex items-center gap-2 flex-wrap">
-                            {generalBanner?.title || result.verdict}
+                            {generalDetails && result.allMatch ? 'ORDER VERIFIED' : generalDetails?.finalStatus || result.verdict}
                             <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-mono font-medium">Session Log</span>
                             {verificationTime !== null && (
                               <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded font-mono font-semibold flex items-center gap-1">
@@ -1224,14 +1207,23 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                               </span>
                             )}
                           </h3>
-                          <p className="text-xs text-slate-500 mt-1 sm:mt-0">{generalBanner?.message || (result.allMatch ? 'Confirmed — No discrepancy. Stock availability and any confirmed order limits are recorded below.' : `Identified ${result.issueCount} genuine discrepanc${result.issueCount === 1 ? 'y' : 'ies'}.`)}</p>
+                          {generalDetails && result.issueCount > 0 ? <GeneralDiscrepancySubtitle discrepancies={generalDetails.discrepancies} /> : (
+                          <p className="text-xs text-slate-500 mt-1 sm:mt-0">
+                            {generalDetails?.message || (result.allMatch
+                              ? 'Confirmed — No discrepancy. Stock availability and any confirmed order limits are recorded below.'
+                              : generalDetails?.pendingOrderLimitCount && result.issueCount === 0
+                                ? 'Answer the Order Limit question for each reduced quantity before confirming.'
+                                : `Identified ${result.issueCount} genuine discrepanc${result.issueCount === 1 ? 'y' : 'ies'}.`
+                            )}
+                          </p>
+                          )}
                         </div>
                       </div>
                       <div className="text-right shrink-0 flex items-center gap-3 flex-wrap sm:flex-nowrap">
                         <span className={`text-[10px] font-mono px-3 py-1.5 rounded-full font-bold shadow-sm uppercase ${
-                          (generalBanner ? generalBanner.tone === 'matched' : result.allMatch) ? 'bg-green-100 text-green-805' : (generalBanner ? generalBanner.tone === 'pending' : generalReviewRequired && result.issueCount === 0) ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+                          result.allMatch ? 'bg-green-100 text-green-805' : generalReviewRequired && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
                         }`}>
-                          {generalBanner?.title || (result.allMatch ? 'VERIFIED MATCH' : result.issueCount > 0 ? 'DISCREPANCY' : 'DISCREPANCY DETECTED')}
+                          {result.allMatch ? generalDetails ? 'MATCH — CLEARED' : 'VERIFIED MATCH' : result.issueCount > 0 ? 'DISCREPANCY' : generalDetails?.auditSummary?.missingRequiredCount ? 'MISSING REQUIRED INFORMATION' : generalReviewRequired && result.issueCount === 0 ? 'CLARIFICATION REQUIRED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
                         </span>
                         {result.allMatch ? (
                           <button
@@ -1275,12 +1267,12 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                             Inventory Cross-Examination
                           </span>
                           <span className="text-xs text-[#5C2D91] font-mono font-medium">
-                            Items Analysed: {generalDetails ? generalProductResults(result.items as unknown as import('./utils/generalAuditor').GeneralComparisonItem[], generalDetails).length : result.items.length}
+                            Items Analysed: {generalDetails ? generalInventoryRows(result.items as unknown as import('./utils/generalAuditor').GeneralComparisonItem[], generalDetails).length : result.items.length}
                           </span>
                         </div>
 
                         <div className="space-y-3">
-                          {generalDetails ? <GeneralInventory auditId={result.id} items={result.items as unknown as import('./utils/generalAuditor').GeneralComparisonItem[]} details={generalDetails} onConfirm={confirmGeneralProduct} onOrderLimit={answerGeneralOrderLimit} disabled={loading || savingProductConfirmation} /> : result.items.map((item, idx) => {
+                          {generalDetails ? <GeneralInventory items={result.items as unknown as import('./utils/generalAuditor').GeneralComparisonItem[]} details={generalDetails} onConfirm={confirmGeneralProduct} onOrderLimit={answerGeneralOrderLimit} disabled={loading || savingProductConfirmation} /> : result.items.map((item, idx) => {
                             const colors = getStatusColor(item.status);
                             const generalProduct = generalDetails?.products.find(product => product.name === item.name);
                             return (
@@ -1389,7 +1381,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         {generalDetails ? <GeneralVerificationConfidence
                           summary={generalDetails.auditSummary ?? buildGeneralAuditCheckSummary(result.items, generalDetails.facility, generalDetails.orderer, generalDetails.phone, result.issueCount)}
                           pendingOrderLimits={generalDetails.pendingOrderLimitCount}
-                          allMatch={result.allMatch && generalBanner?.tone === 'matched'}
+                          allMatch={result.allMatch}
                         /> : (
                         <div className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm flex flex-col items-center text-center">
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Verification Confidence</span>
@@ -1432,10 +1424,10 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         </div>
                         )}
 
-                        {generalDetails && <GeneralAuditDetails items={result.items as unknown as import('./utils/generalAuditor').GeneralComparisonItem[]} details={generalDetails} onConfirmProduct={confirmGeneralProduct} confirmationDisabled={loading || savingProductConfirmation} />}
+                        {generalDetails && <GeneralAuditDetails details={generalDetails} onConfirmProduct={confirmGeneralProduct} confirmationDisabled={loading || savingProductConfirmation} />}
 
                         {/* AI Insights and notes */}
-                        {!generalDetails && <div className="bg-[#3B1A5E] text-white p-5 rounded-2xl shadow-md border border-[#2C1349] relative overflow-hidden">
+                        <div className="bg-[#3B1A5E] text-white p-5 rounded-2xl shadow-md border border-[#2C1349] relative overflow-hidden">
                           <div className="absolute right-0 top-0 translate-x-4 -translate-y-4 opacity-10 bg-purple-200 w-24 h-24 rounded-full"></div>
                           
                           <h4 className="flex items-center gap-2 text-xs font-bold text-white uppercase tracking-widest mb-3 relative z-10">
@@ -1444,15 +1436,15 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                           </h4>
 
                           <ul className="text-xs space-y-2.5 opacity-90 leading-relaxed font-sans relative z-10">
-                            {generalBanner ? <li>{generalBanner.message}</li> : result.insights.length === 0 && <li>{generalReviewRequired ? 'Unverified details require manual review before dispatch.' : generalDetails?.pendingOrderLimitCount ? 'Order Limit validation is pending; no quantity discrepancy has been declared for those products.' : 'No discrepancy in the current inputs.'}</li>}
-                            {!generalBanner && result.insights.map((note, idx) => (
+                            {result.insights.length === 0 && <li>{generalReviewRequired ? 'Unverified details require manual review before dispatch.' : generalDetails?.pendingOrderLimitCount ? 'Order Limit validation is pending; no quantity discrepancy has been declared for those products.' : 'No discrepancy in the current inputs.'}</li>}
+                            {result.insights.map((note, idx) => (
                               <li key={`insight-${idx}`} className="flex gap-2.5 items-start">
                                 <ArrowRight className="w-3.5 h-3.5 text-purple-300 shrink-0 mt-0.5" />
                                 <span>{note}</span>
                               </li>
                             ))}
                           </ul>
-                        </div>}
+                        </div>
 
                       </div>
 

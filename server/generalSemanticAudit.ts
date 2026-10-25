@@ -1,14 +1,11 @@
-import { sameGeneralEvidenceOrigin } from '../src/utils/generalProductEvidence';
-import { bindGeneralExtractionSources } from '../src/utils/generalExtractionSources';
-import { matchGeneralClinicalProducts } from '../src/utils/generalProductMatching';
-import { attachGeneralAiProductSuggestions } from './generalAiProductSuggestions';
 import { resolveGeneralOrdererName } from './generalOrdererFallback';
+import { getGeneralProductLog, isGeneralProductLogMatch } from '../src/utils/generalProductLog';
 import { getGeneralMedicalAmbiguity, resolveGeneralApprovedIdentity } from '../src/utils/generalMedicalTerminology';
 import { generalEssentialReviewNotices, generalReviewField } from '../src/utils/generalAuditReviews';
 import { extractGeneralOrderDeterministically, type StructuredGeneralOrder } from './generalOrderExtraction';
 import { resolveGeneralOrderExtraction } from './generalHybridExtraction';
 import { canAuditGeneralWithoutAi, generalInterpretationGaps, interpretGeneralOrder, type GeneralInterpretedAudit } from './generalOrderInterpretation';
-import { runGeneralAuditor, enforceGeneralProductAssignments, parseGeneralProducts, extractGeneralInput, enforceGeneralIdentityMatches, preserveGeneralOutOfStockEvidence, preserveGeneralRequestedStockProducts, summarizeGeneralProducts, normalizeGeneralProductName, type GeneralAuditSupport } from './generalAuditor';
+import { runGeneralAuditor, enforceGeneralProductAssignments, extractGeneralInput, enforceGeneralIdentityMatches, preserveGeneralOutOfStockEvidence, preserveGeneralRequestedStockProducts, summarizeGeneralProducts, normalizeGeneralProductName, type GeneralAuditSupport } from './generalAuditor';
 
 async function auditGeneralExtractedText(customer: string, fulfilment: string, decisions: Record<string, boolean>, support: GeneralAuditSupport, getClient: () => any, override?: GeneralInterpretedAudit) {
   // Always run reference/rule validation before considering optional interpretation.
@@ -28,16 +25,7 @@ async function auditGeneralExtractedText(customer: string, fulfilment: string, d
     if (first?.generalAudit.productVerifications?.length) {
       const lines = interpreted.customerRequest.split(/\r?\n/);
       for (const verification of first.generalAudit.productVerifications) {
-        for (const product of verification.requestedProducts) {
-          // The original document line can differ from the cleaned/AI line.
-          // Resolve the consumed source instead of inserting at a card/line index.
-          const recognized = parseGeneralProducts(interpreted.customerRequest, 'customer_request').filter(candidate => {
-            const bound = support.canonicalProductEvidence?.([candidate], 'customer_request') || [candidate];
-            return bound.some(evidence => sameGeneralEvidenceOrigin(evidence, product));
-          });
-          if (recognized.length) for (const candidate of recognized) lines[candidate.line - 1] = product.originalText;
-          else lines.push(product.originalText);
-        }
+        for (const product of verification.requestedProducts) lines[product.line - 1] = product.originalText;
       }
       interpreted.customerRequest = lines.join('\n');
     }
@@ -119,11 +107,16 @@ function deferUncertainProducts<T extends ReturnType<typeof runGeneralAuditor>>(
 function finalStructuredOrder(order: StructuredGeneralOrder, source: 'customer_request' | 'fulfillment_confirmation', result: ReturnType<typeof runGeneralAuditor>): StructuredGeneralOrder {
   const details = result.generalAudit;
   const field = source === 'customer_request' ? 'whatsappValue' : 'fulfillmentValue';
-  const sources = details.sourceEntries?.filter(product => product.source === source && !product.sourceReview &&
-    (order.products.some(known => matchGeneralClinicalProducts(product.name, known.name, normalizeGeneralProductName).confident &&
-      product.quantity === known.quantity && product.unit === (known.unit || '')) ||
-      result.items.some(item => item.provenance.some(evidence => evidence.sourceEntryId === product.sourceEntryId))));
-  const products = sources?.length ? sources.map(product => ({ name: resolveGeneralApprovedIdentity(product.name)?.canonicalName || product.name, quantity: product.quantity, unit: product.unit })) : order.products;
+  const products = result.items.flatMap(item => item.provenance.filter(product => product.source === source)
+    .map(product => ({ name: resolveGeneralApprovedIdentity(item.name)?.canonicalName || item.name, quantity: product.quantity, unit: product.unit })));
+  // A source can be fully extracted even when comparisons against an unclear
+  // opposite source are deferred. Retain that independent evidence in its output.
+  for (const product of order.products) {
+    const represented = result.items.some(item => item.provenance.some(evidence => evidence.source === source &&
+      evidence.normalizedName === normalizeGeneralProductName(product.name) && evidence.quantity === product.quantity && evidence.unit === (product.unit || '')));
+    if (!represented && !products.some(other => normalizeGeneralProductName(other.name) === normalizeGeneralProductName(product.name) &&
+      other.quantity === product.quantity && other.unit === product.unit)) products.push(product);
+  }
   const facilityName = details.facility[field] === 'N/A' ? null : details.facility[field];
   const ordererName = details.orderer[field] === 'N/A' ? null : details.orderer[field];
   const unresolvedFields = [!facilityName ? 'facilityName' : '', !ordererName ? 'ordererName' : '',
@@ -133,7 +126,6 @@ function finalStructuredOrder(order: StructuredGeneralOrder, source: 'customer_r
 
 /** General-only preprocessing. Vaccine audits and spreadsheets never enter this path. */
 export async function runGeneralSemanticAudit(customer: string, fulfilment: string, decisions: Record<string, boolean>, support: GeneralAuditSupport, getClient: () => any) {
-  support = { ...support, canonicalProductEvidence: (products, source) => bindGeneralExtractionSources(products, source === 'customer_request' ? customer : fulfilment, source) };
   let a = extractGeneralOrderDeterministically(customer, 'customer_request', support.facilityContext);
   let b = extractGeneralOrderDeterministically(fulfilment, 'fulfillment_confirmation', support.facilityContext, a.order);
   // Exact, explicit product names on both sides do not require a catalogue
@@ -141,7 +133,7 @@ export async function runGeneralSemanticAudit(customer: string, fulfilment: stri
   // make a previously auditable product ambiguous. Quantities remain independent.
   const requested = extractGeneralInput(a.text, 'customer_request').products;
   const supplied = extractGeneralInput(b.text, 'fulfillment_confirmation').products;
-  const explicitNames = requested.filter(product => !getGeneralMedicalAmbiguity(product.name) &&
+  const explicitNames = requested.filter(product => (!getGeneralProductLog() || isGeneralProductLogMatch(product.name, normalizeGeneralProductName)) && !getGeneralMedicalAmbiguity(product.name) &&
     !/\b(?:need|want|send|give|please|pls|request|instead|replace|change)\b/i.test(product.name) &&
     supplied.some(other => other.normalizedName === product.normalizedName && !getGeneralMedicalAmbiguity(other.name)))
     .map(product => product.name);
@@ -159,7 +151,7 @@ export async function runGeneralSemanticAudit(customer: string, fulfilment: stri
     let result = deferUncertainProducts(audited, reviews.some(review => review.source === 'customer_request' && !review.dosageFormKey && !['ordererName', 'facilityName'].includes(generalReviewField(review))), reviews.some(review => review.source === 'fulfillment_confirmation' && !review.dosageFormKey && !['ordererName', 'facilityName'].includes(generalReviewField(review))));
     result = await resolveGeneralOrdererName(result, support, getClient);
     result = enforceGeneralProductAssignments(result, customer, fulfilment, support);
-    return { ...attachGeneralAiProductSuggestions(result, customer, fulfilment), extractedOrder: finalStructuredOrder(a.order, 'customer_request', result), fulfilledOrder: finalStructuredOrder(b.order, 'fulfillment_confirmation', result) };
+    return { ...result, extractedOrder: finalStructuredOrder(a.order, 'customer_request', result), fulfilledOrder: finalStructuredOrder(b.order, 'fulfillment_confirmation', result) };
   }
   const extraction = await resolveGeneralOrderExtraction(a, b, getClient, support);
   // Unreadable text is review evidence, never a fabricated product comparison.
@@ -175,5 +167,5 @@ export async function runGeneralSemanticAudit(customer: string, fulfilment: stri
   result = deferUncertainProducts(result, customerUncertain, fulfillmentUncertain);
   result = await resolveGeneralOrdererName(result, support, getClient);
   result = enforceGeneralProductAssignments(result, customer, fulfilment, support);
-  return { ...attachGeneralAiProductSuggestions(result, customer, fulfilment), extractedOrder: finalStructuredOrder(extraction.customer.order, 'customer_request', result), fulfilledOrder: finalStructuredOrder(extraction.fulfillment.order, 'fulfillment_confirmation', result) };
+  return { ...result, extractedOrder: finalStructuredOrder(extraction.customer.order, 'customer_request', result), fulfilledOrder: finalStructuredOrder(extraction.fulfillment.order, 'fulfillment_confirmation', result) };
 }

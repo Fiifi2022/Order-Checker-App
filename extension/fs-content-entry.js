@@ -71,9 +71,7 @@ const observer = new MutationObserver(mutations => { if (mutations.some(m => m.t
 observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
 const change = () => { clearTimeout(timer); safeScan(); };
 const click = event => {
-  if (adapter.isNewOrder(event.target)) {
-    try { void chrome.runtime.sendMessage({ type: 'FS_OPEN_PANEL' }).catch(() => {}); } catch { /* An extension reload may end the old context. */ }
-    adapter.resetOrder(); pending = null; suppressed = ''; change(); }
+  if (adapter.isNewOrder(event.target)) { adapter.resetOrder(); pending = null; suppressed = ''; change(); }
   if (adapter.isAdd(event.target)) { pending = cleanSelection(adapter.read()); }
   schedule();
 };

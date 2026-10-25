@@ -1,8 +1,8 @@
-import { generalLearnedAliasAmbiguous } from '../../shared/generalProductAliases';
 import { intentAliases } from '../../shared/generalIntentAliases';
 import { getCatalogRevision } from '../../shared/productCatalog';
 import { generalMedicalTerminology, getGeneralMedicalAmbiguity, isGeneralBiologic } from './generalMedicalTerminology';
 import { isGeneralBloodProduct } from './medicalProductAcronyms';
+import { resolveGeneralProductLogName } from './generalProductLog';
 
 export type GeneralMatchingStage = 'exact' | 'synonym' | 'attributes' | 'fuzzy' | 'verification' | 'distinct';
 export interface GeneralClinicalAttributes {
@@ -111,12 +111,15 @@ export function matchGeneralClinicalProducts(requested: string, fulfilled: strin
   fulfilled = cleanGeneralProductDescription(fulfilled);
   const result = (stage: GeneralMatchingStage, reason: string): GeneralProductMatch => ({ stage,
     confident: ['exact', 'synonym', 'attributes', 'fuzzy'].includes(stage), plausible: stage !== 'distinct', reason });
+  const requestedLog = resolveGeneralProductLogName(requested), fulfilledLog = resolveGeneralProductLogName(fulfilled);
+  if (requestedLog && fulfilledLog && requestedLog.product.id === fulfilledLog.product.id && (requestedLog.conflict || fulfilledLog.conflict)) {
+    return result('verification', 'The saved Product Log alias points to this product, but the written clinical specifications conflict with its catalogue identity. Verify and correct the wording or alias before accepting it.');
+  }
   if (!getCatalogRevision()) {
     const written = (name: string) => name.toLowerCase().replace(/\s+/g, ' ').trim();
     const alias = intentAliases.find(row => row.aliases.some(alias => written(alias) === written(requested)) && normalize(row.name) === normalize(fulfilled));
     if (alias) return result('synonym', 'An approved whole-source catalogue alias defines this complete clinical identity.');
   }
-  if (generalLearnedAliasAmbiguous(requested) || generalLearnedAliasAmbiguous(fulfilled)) return result('verification', 'An approved alias has competing catalogue targets. Review the product identity.');
   if (normalize(requested) === normalize(fulfilled)) {
     const surface = (name: string) => name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9.]+/g, ' ').trim().split(/\s+/).sort().join(' ');
     return result(surface(requested) === surface(fulfilled) ? 'exact' : 'synonym', 'Complete identities agree after approved synonym and formatting normalization.');
@@ -131,10 +134,7 @@ export function matchGeneralClinicalProducts(requested: string, fulfilled: strin
     !known.has(b.ingredient) && known.has(a.ingredient) && containsKnownFamily(b.ingredient, a.ingredient);
   if (!sameIngredient && !fuzzy && !partialFamily) return result('distinct', 'No verified ingredient identity or uniquely bounded OCR variant.');
   if (a.measurements.length > 1 && b.measurements.length > 1 && !a.measurements.some(value => value.includes('/')) && !b.measurements.some(value => value.includes('/')) && !equal((normalize(requested).split('|').at(-1)!.match(measurement) || []).map(normalizedMeasurement), (normalize(fulfilled).split('|').at(-1)!.match(measurement) || []).map(normalizedMeasurement))) return result('distinct', 'Compound measurement assignments differ.');
-  if (a.measurements.length && b.measurements.length && !equal(a.measurements, b.measurements)) {
-    if (sameIngredient && a.measurements.some(value => value.includes('/')) && b.measurements.some(value => value.includes('/')) && equal(a.forms, b.forms) && a.forms.length === 1 && a.forms[0] === 'injection' && equal(a.routes, b.routes) && equal(a.releases, b.releases)) return result('verification', 'Concentrations differ. Confirm the exact concentration and formulation with the customer; quantities are checked independently.');
-    return result('distinct', 'Explicit strengths, concentrations or container specifications conflict.');
-  }
+  if (a.measurements.length && b.measurements.length && !equal(a.measurements, b.measurements)) return result('distinct', 'Explicit strengths, concentrations or container specifications conflict.');
   if (a.routes.length && b.routes.length && !equal(a.routes, b.routes) || !equal(a.releases, b.releases)) return result('distinct', 'Explicit routes or release types conflict.');
   const injectionInfusion = a.forms.length === 1 && b.forms.length === 1 &&
     [a.forms[0], b.forms[0]].sort().join('|') === 'infusion|injection';
@@ -176,9 +176,7 @@ export function assignGeneralProductGroups<T>(requested: GeneralProductGroup<T>[
   for (const group of requested) {
     const counterpart = canonical.get(normalize(group.name))?.find(other => !usedFulfilled.has(other.key));
     if (!counterpart || usedRequest.has(group.key)) continue;
-    const match = matchGeneralClinicalProducts(group.name, counterpart.name, normalize);
-    if (!match.confident) continue;
-    pairs.push({ requested: group, fulfilled: counterpart, match });
+    pairs.push({ requested: group, fulfilled: counterpart, match: matchGeneralClinicalProducts(group.name, counterpart.name, normalize) });
     usedRequest.add(group.key); usedFulfilled.add(counterpart.key);
   }
   const decisions = requested.filter(group => !usedRequest.has(group.key)).flatMap(a =>

@@ -21,7 +21,7 @@ export function resolveExtensionBackendUrl({ appUrl, renderUrl, host }: { appUrl
   throw new Error('Extension download needs a valid app address. Set APP_URL to your app’s HTTPS base URL, or download from localhost.');
 }
 
-export const extensionAssets = ['manifest.json', 'popup.html', 'popup.js', 'backend.js', 'auth.js', 'catalog.js', 'screenshots.js', 'audit.js', 'audit-contract.js', 'vaccine.js', 'vaccine-api.js', 'vaccine-display.js', 'order-limits.js', 'content.js', 'fs-content.js', 'fs-state.js', 'fs-script.js', 'fs-origins.js', 'fs-messaging.js', 'fs-connection.js', 'fs-panel.js', 'background.js', 'icon.png', 'sidepanel.html', 'sidepanel.css', 'sidepanel.js', 'sidepanel-vaccine.js', 'sidepanel-vaccine-api.js', 'report.js', 'explain.js', 'capture.js', 'general-auditor.js', 'general-report.js', 'general-report.css', 'general-session.js', 'icon-16.png', 'icon-32.png', 'icon-48.png', 'icon-128.png', 'logo-mark.png', 'logo-white.png'];
+export const extensionAssets = ['manifest.json', 'popup.html', 'popup.js', 'backend.js', 'auth.js', 'catalog.js', 'screenshots.js', 'audit.js', 'audit-contract.js', 'vaccine.js', 'vaccine-api.js', 'vaccine-display.js', 'order-limits.js', 'content.js', 'fs-content.js', 'fs-state.js', 'fs-script.js', 'fs-origins.js', 'fs-messaging.js', 'fs-connection.js', 'fs-panel.js', 'background.js', 'icon.png'];
 export async function buildExtensionPackage(backendUrl: string, firebaseApiKey: string, directory = path.join(process.cwd(), 'extension')) {
   const zip = new AdmZip();
   for (const file of extensionAssets) {
