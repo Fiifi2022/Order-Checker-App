@@ -1,5 +1,10 @@
 import { normalizeCompanionAuditMode, companionVerificationReference } from './audit-contract.js';
 
+function refreshAllocationAdvice() {
+  try { void globalThis.chrome?.runtime?.sendMessage({ type: 'FS_REFRESH_ALL' })?.catch(() => {}); }
+  catch { /* Other tabs also refresh periodically if the extension is reloading. */ }
+}
+
 export async function auditVaccineOrder(request, { mode, facilityId, whatsappMessage, fulfillmentConfirmation }) {
   const auditMode = normalizeCompanionAuditMode(mode);
   if (!auditMode) throw new Error('Select WhatsApp + Fulfilment or Fulfilment Only.');
@@ -44,7 +49,7 @@ export async function commitVaccineOrder(request, audit) {
     const data = await request('/api/vaccine/allocations/commit', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orderId, facilityId: audit.facilityId }) });
     const saved = verifiedDeductionReceipt(data, audit);
-    if (saved) return saved;
+    if (saved) { refreshAllocationAdvice(); return saved; }
   } catch (error) {
     // Input/permission conflicts are definitive rejections; retain their reason.
     if ([400, 401, 403, 404, 409, 422].includes(error.status)) throw error;
@@ -62,7 +67,7 @@ export async function getDeductionStatus(request, audit) {
   try {
     const data = await request(`/api/vaccine/allocations/commit/${encodeURIComponent(orderId)}`);
     const saved = verifiedDeductionReceipt(data, audit);
-    if (saved) return saved;
+    if (saved) { refreshAllocationAdvice(); return saved; }
     if (data?.allocationStatus === 'awaiting_confirmation' && data.orderId === orderId && data.facilityId === audit.facilityId && !data.transaction) return data;
   } catch { /* A failed lookup cannot establish whether the write committed. */ }
   throw pendingDeductionStatus();

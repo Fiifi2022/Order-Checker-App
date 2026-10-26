@@ -988,7 +988,7 @@ export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateT
 
         {/* Commodity Category Segmented Selector */}
         <div className="flex items-center justify-between gap-3 pb-1 flex-wrap">
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200/80">
+          <div className="grid min-w-0 max-w-full grid-cols-1 sm:flex sm:flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200/80">
             <button
               type="button"
               onClick={() => {

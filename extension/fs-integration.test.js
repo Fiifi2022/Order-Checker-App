@@ -9,12 +9,13 @@ const fixture = await readFile(new URL('./fixtures/fs-add-order.html', import.me
 const tick = () => new Promise(resolve => setTimeout(resolve, 150));
 function browser(html, send) {
  const { document, window } = parseHTML(html);
- let observer, shadow;
+ let observer, shadow, refreshCallback;
  const attach = window.Element.prototype.attachShadow;
- window.Element.prototype.attachShadow = function(options) { const result = attach.call(this, options); if (this.id === 'ordercheck-allocation') shadow = result; return result; };
+ window.Element.prototype.attachShadow = function(options) { const result = attach.call(this, options); if (this.id === 'order-checker-vaccine-allocation') shadow = result; return result; };
  let listener;
  const messageListeners = new Set();
- const sandbox = { document, window, innerWidth: 1200, innerHeight: 800, console, setTimeout, clearTimeout,
+ const scheduleTimeout = (callback, ms) => { if (ms === 30000) { refreshCallback = callback; return { unref() {} }; } return setTimeout(callback, ms); };
+ const sandbox = { document, window, innerWidth: 1200, innerHeight: 800, console, setTimeout: scheduleTimeout, clearTimeout,
   MutationObserver: class { constructor(callback) { observer = callback; } observe() {} disconnect() {} },
   chrome: { runtime: { sendMessage: send, onMessage: { addListener(fn) { listener = fn; messageListeners.add(fn); }, removeListener(fn) { messageListeners.delete(fn); } } } } };
  for (const el of document.querySelectorAll('input,select,button,[role="combobox"],[role="alert"],[aria-live]')) el.getBoundingClientRect = () => ({ top: 200, left: 250, right: 400, bottom: 230 });
@@ -22,10 +23,37 @@ function browser(html, send) {
  const context = vm.createContext(sandbox);
  vm.runInContext(code, context);
  return { document, window, notify(target = document.querySelector('form') || document.documentElement) { observer([{ target }]); }, message(data, respond = () => {}) { return listener(data, {}, respond); },
-  reinject() { vm.runInContext(code, context); }, get listenerCount() { return messageListeners.size; },
-  get shadow() { return shadow; }, get host() { return document.getElementById('ordercheck-allocation'); } };
+  reinject() { vm.runInContext(code, context); }, refresh() { assert.ok(refreshCallback); refreshCallback(); }, get listenerCount() { return messageListeners.size; },
+  get shadow() { return shadow; }, get host() { return document.getElementById('order-checker-vaccine-allocation'); } };
 }
 const allocate = message => ({ selection: message.selection, allocation: { status: 'matched', facility: { facilityName: 'Mumford HC', district: 'Gomoa West' }, products: [...message.selection.order, ...(message.selection.draft ? [message.selection.draft] : [])].map(p => ({ ...p, canonical: p.name.includes('Polio') ? 'OPV' : 'BCG', balance: p.name.includes('Polio') ? 9 : 12, status: 'available' })) } });
+test('automatic refresh replaces changed Blueprint balances, clears while checking and recovers after failure', async () => {
+ let balance = 120, failed = false;
+ const messages = [];
+ const page = browser(fixture, async message => {
+   messages.push(message);
+   if (failed) throw Error('Network disconnected');
+   const state = allocate(message);
+   state.allocation.products.forEach(product => { product.balance = balance; });
+   return state;
+ });
+ await tick();
+ page.document.getElementById('product').dataset.selectedName = 'BCG';
+ page.document.getElementById('quantity').value = '1';
+ page.notify(); await tick();
+ assert.match(page.shadow.querySelector('div').textContent, /Available: 120/);
+ balance = 90; page.refresh();
+ assert.ok(!page.shadow.querySelector('div').textContent.includes('Available: 120'));
+ await tick();
+ assert.match(page.shadow.querySelector('div').textContent, /Available: 90/);
+ assert.equal(messages.at(-1).refresh, true);
+ failed = true; page.refresh(); await tick();
+ assert.match(page.shadow.querySelector('div').textContent, /Allocation unavailable/);
+ assert.ok(!page.shadow.querySelector('div').textContent.includes('Available: 90'));
+ failed = false; balance = 80; page.window.dispatchEvent(new page.window.Event('online')); await tick();
+ assert.match(page.shadow.querySelector('div').textContent, /Available: 80/);
+ assert.ok(messages.every(message => message.type === 'FS_SELECTION'));
+});
 test('Add New Order adapter reads only confirmed accessible selections and relevant product rows', () => {
  const { document } = parseHTML(fixture), adapter = createFsAdapter(document);
  assert.equal(adapter.read().facility.name, 'Mumford HC'); assert.equal(adapter.read().facility.region, 'Central');
@@ -38,14 +66,14 @@ test('Add New Order adapter reads only confirmed accessible selections and relev
  product.replaceWith(Object.assign(document.createElement('input'), { id: 'product', value: 'BCG search query' }));
  assert.equal(adapter.read().draft, null);
 });
-test('floating indicator stays during quantity and failed Add, hides on confirmed row, next vaccine updates; added items stay in panel context', async () => {
+test('inline indicator stays during quantity and failed Add, hides on confirmed row, next vaccine updates; added items stay in panel context', async () => {
  const messages = [], page = browser(fixture, async message => { messages.push(message); return allocate(message); });
  await tick(); assert.equal(page.host.style.display, 'none');
  const product = page.document.getElementById('product'), quantity = page.document.getElementById('quantity');
  product.dataset.selectedName = 'Bacille Calmette-Guerin Vaccine'; quantity.value = '5'; page.notify(); await tick();
- assert.equal(page.host.style.display, 'block'); assert.match(page.shadow.querySelector('div').textContent, /Available: 12/); assert.match(page.shadow.querySelector('div').textContent, /Within available/);
+ assert.equal(page.host.style.display, 'block'); assert.match(page.shadow.querySelector('div').textContent, /Available: 12/); assert.match(page.shadow.querySelector('div').textContent, /Available: 12/);
  quantity.value = '15'; quantity.dispatchEvent(new page.window.Event('input', { bubbles: true })); await tick();
- assert.equal(page.host.style.display, 'block'); assert.match(page.shadow.querySelector('div').textContent, /exceeds allocation/);
+ assert.equal(page.host.style.display, 'block'); assert.match(page.shadow.querySelector('div').textContent, /Available: 12/);
  page.document.querySelector('button').dispatchEvent(new page.window.Event('click', { bubbles: true }));
  page.document.getElementById('fs-validation').textContent = 'Out of stock'; page.notify(); await tick();
  assert.equal(page.host.style.display, 'block');
@@ -55,7 +83,7 @@ test('floating indicator stays during quantity and failed Add, hides on confirme
  assert.equal(page.host.style.display, 'none'); assert.equal(messages.at(-1).selection.order[0].quantity, '5'); assert.equal(messages.at(-1).selection.draft, null);
  page.notify(); await tick(); assert.equal(page.host.style.display, 'none');
  product.dataset.selectedName = 'Oral Polio Vaccine (1&3)'; quantity.value = '3'; page.notify(); await tick();
- assert.equal(page.host.style.display, 'block'); assert.match(page.shadow.querySelector('div').textContent, /OPV — Available: 9/);
+ assert.equal(page.host.style.display, 'block'); assert.match(page.shadow.querySelector('div').textContent, /Available: 9/);
  page.document.querySelector('button').dispatchEvent(new page.window.Event('click', { bubbles: true }));
  page.document.querySelector('tbody').innerHTML += '<tr><td>Oral Polio Vaccine (1&3)</td><td>3</td></tr>'; page.notify(); await tick();
  assert.equal(page.host.style.display, 'none'); assert.equal(messages.at(-1).selection.order.length, 2);
@@ -71,17 +99,17 @@ test('a slow previous allocation cannot overwrite a newer facility or vaccine; n
  });
  await tick(); const product = page.document.getElementById('product'); product.dataset.selectedName = 'BCG'; page.notify(); await tick();
  product.dataset.selectedName = 'Oral Polio Vaccine (1&3)'; page.notify(); await tick(); finish(); await tick();
- assert.match(page.shadow.querySelector('div').textContent, /OPV — Available: 9/);
+ assert.match(page.shadow.querySelector('div').textContent, /Available: 9/);
  page.document.getElementById('facility').dataset.selectedName = 'Unavailable HC'; page.notify(); await tick();
- assert.match(page.shadow.querySelector('div').textContent, /unavailable/); assert.ok(!page.shadow.querySelector('div').textContent.includes('Available: 9'));
+ assert.match(page.shadow.querySelector('div').textContent, /unavailable/i); assert.ok(!page.shadow.querySelector('div').textContent.includes('Available: 9'));
 });
 
 test('background uses authenticated read-only lookup, rejects other websites, discards stale responses and reuses balance for typing', async () => {
- let handle, finishOld, calls = [];
+ let handle, finishOld, installed, calls = [], injections = [];
  const stored = { authSession: { idToken: 'test-only-token', expiresAt: Date.now() + 600000 } };
  const area = { async get(key) { return key === null ? { ...stored } : { [key]: stored[key] }; }, async set(data) { Object.assign(stored, data); }, async remove(key) { delete stored[key]; } };
  const listeners = { addListener() {} };
- const chrome = { storage: { session: area, local: { async get() { return {}; } }, onChanged: listeners }, tabs: { onRemoved: listeners, onUpdated: listeners, async sendMessage() {} }, runtime: { getURL: () => 'chrome-extension://test/', onMessage: { addListener(fn) { handle = fn; } } } };
+ const chrome = { storage: { session: area, local: { async get() { return {}; } }, onChanged: listeners }, tabs: { onRemoved: listeners, onUpdated: listeners, async sendMessage() {}, async query() { return [{ id: 7, url: 'https://fulfillment-gh3-production.platform.flyzipline.com/v3/orders/Draft' }, { id: 9, url: 'https://unrelated.example' }]; } }, permissions: { async contains() { return true; } }, scripting: { async executeScript(options) { injections.push(options); } }, runtime: { onInstalled: { addListener(fn) { installed = fn; } }, getURL: () => 'chrome-extension://test/', onMessage: { addListener(fn) { handle = fn; } } } };
  const fetch = async (url, options) => {
    calls.push({ url, options });
    const input = JSON.parse(new URL(url).searchParams.get('selection'));
@@ -89,6 +117,8 @@ test('background uses authenticated read-only lookup, rejects other websites, di
    return { ok: true, async json() { return { status: 'matched', products: input.products.map(p => ({ ...p, balance: 12 })) }; } };
  };
  vm.runInNewContext(buildSync({ entryPoints: ['extension/background.js'], bundle: true, write: false, format: 'iife' }).outputFiles[0].text, { chrome, fetch, URL, URLSearchParams, AbortController, setTimeout, clearTimeout, console });
+ installed(); await new Promise(resolve => setImmediate(resolve));
+ assert.equal(injections.length, 1); assert.equal(injections[0].target.tabId, 7); assert.equal(injections[0].files[0], 'fs-content.js');
  const sender = { url: 'https://fulfillment-gh1-production.platform.flyzipline.com/v3/orders/Draft', tab: { id: 7 } };
  const selection = name => ({ facility: { name: 'Mumford HC' }, draft: { name, quantity: '5' }, order: [] });
  const rejection = await new Promise(resolve => handle({ type: 'FS_SELECTION', selection: selection('BCG') }, { ...sender, url: 'https://unrelated.example' }, resolve)); assert.match(rejection.error, /not enabled/);
@@ -119,7 +149,7 @@ test('side panel renders draft separately, retains added products, removes delet
  const live = { tabId: 7, selection: { facility: { name: 'Mumford HC' }, draft: { name: 'OPV', quantity: '3' }, order: [{ name: 'BCG', quantity: '5' }] }, allocation: { status: 'matched', facility: { facilityName: 'Mumford HC', district: 'Gomoa West' }, products: [{ name: 'BCG', canonical: 'BCG', quantity: '5', balance: 12 }, { name: 'OPV', canonical: 'OPV', quantity: '3', balance: 9 }] } };
  state = live;
  globalThis.document = document;
- globalThis.chrome = { tabs: { async query() { return [{ id: 7, url: 'https://fulfillment-gh1-production.platform.flyzipline.com/v3/orders/Draft' }]; }, async get() { return { id: 7, url: 'https://fulfillment-gh1-production.platform.flyzipline.com/v3/orders/Draft' }; }, async sendMessage(id, message) { return message.type === 'FS_DIAGNOSTICS' ? { formFound: true, selection: state.selection, bridgeVersion: '1.5.14' } : state; }, onActivated: { addListener() {} }, onUpdated: { addListener() {} } }, storage: { session: { async get() { return { 'fsContext:7': state }; } }, onChanged: { addListener(fn) { changed = fn; } } }, runtime: { getManifest() { return { content_scripts: [{ js: ['fs-content.js'], matches: ['https://fulfillment-gh1-production.platform.flyzipline.com/*'] }] }; }, async sendMessage(message) { manualRequest = message; return state; } } };
+ globalThis.chrome = { tabs: { async query() { return [{ id: 7, url: 'https://fulfillment-gh1-production.platform.flyzipline.com/v3/orders/Draft' }]; }, async get() { return { id: 7, url: 'https://fulfillment-gh1-production.platform.flyzipline.com/v3/orders/Draft' }; }, async sendMessage(id, message) { return message.type === 'FS_DIAGNOSTICS' ? { formFound: true, selection: state.selection, bridgeVersion: '2.3.21' } : state; }, onActivated: { addListener() {} }, onUpdated: { addListener() {} } }, storage: { session: { async get() { return { 'fsContext:7': state }; } }, onChanged: { addListener(fn) { changed = fn; } } }, runtime: { getManifest() { return { content_scripts: [{ js: ['fs-content.js'], matches: ['https://fulfillment-gh1-production.platform.flyzipline.com/*'] }] }; }, async sendMessage(message) { manualRequest = message; return state; } } };
  try {
    setupFsPanel({ onFacility(facility) { facilities.push(facility); } }); await new Promise(resolve => setImmediate(resolve));
    const box = document.getElementById('fsLiveContext'); assert.match(box.textContent, /In order: BCG/); assert.match(box.textContent, /Draft: OPV/); assert.ok(!box.textContent.includes('PCV'));
@@ -129,7 +159,7 @@ test('side panel renders draft separately, retains added products, removes delet
    changed({ 'fsContext:7': { newValue: state } }, 'session'); assert.ok(!box.textContent.includes('BCG'));
    state = { ...state, allocation: { status: 'ambiguous', message: 'Select manually', candidates: [{ id: 'a:b', facilityName: 'Mumford HC', district: 'Gomoa West', cycle: 'October 2026' }] } };
    changed({ 'fsContext:7': { newValue: state } }, 'session'); const manual = document.getElementById('fsManualFacility'); assert.equal(manual.hidden, false); manual.querySelector('option[value="a:b"]').selected = true; manual.dispatchEvent(new document.defaultView.Event('change')); await new Promise(resolve => setImmediate(resolve));
-   assert.equal(manualRequest.type, 'FS_MANUAL'); assert.equal(manualRequest.facilityId, 'a:b'); assert.equal(facilities.at(-1), null);
+   assert.equal(manualRequest.type, 'FS_MANUAL'); assert.equal(manualRequest.facilityId, 'a:b'); assert.equal(facilities.at(-1).name, 'Mumford HC'); assert.equal(facilities.at(-1).allocationStatus, 'ambiguous');
    state = { ...live, selection: { ...live.selection, draft: null, order: [] }, allocation: { ...live.allocation, products: [] } };
    changed({ 'fsContext:7': { newValue: state } }, 'session');
    assert.match(box.textContent, /No requested products yet/);
@@ -255,7 +285,7 @@ test('same-version reinjection after extension reload replaces the bridge and it
  await tick();
  page.reinject(); await tick();
  assert.equal(page.listenerCount, 1);
- assert.equal(page.document.querySelectorAll('#ordercheck-allocation').length, 1);
+ assert.equal(page.document.querySelectorAll('#order-checker-vaccine-allocation').length, 1);
  assert.equal(messages.length, 2);
  page.document.getElementById('product').dataset.selectedName = 'BCG';
  page.document.getElementById('quantity').value = '5';

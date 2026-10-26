@@ -36,7 +36,7 @@ export default forwardRef<GeneralScreenshotHandle, { label: string; inputsKey: s
   };
   return <div className="rounded-xl border border-dashed border-purple-200 p-3 space-y-2 text-xs" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) acceptFile(file); }}>
     <label className="block cursor-pointer font-semibold">{label}: upload, drop, or paste an image (Ctrl+V)
-      <input aria-label={`${label} screenshot`} type="file" accept="image/*" className="block mt-2" onChange={event => { const file = event.target.files?.[0]; if (file) acceptFile(file); event.target.value = ''; }} />
+      <input aria-label={`${label} screenshot`} type="file" accept="image/*" className="block min-w-0 w-full mt-2" onChange={event => { const file = event.target.files?.[0]; if (file) acceptFile(file); event.target.value = ''; }} />
     </label>
     {image && <div className="flex items-center gap-3"><img src={image} alt={`${label} screenshot preview`} className="w-16 h-16 object-contain" /><button type="button" disabled={busy} onClick={scan} className="bg-purple-700 text-white rounded-lg p-2">{busy ? 'Scanning…' : 'Scan screenshot'}</button><button type="button" onClick={() => { revision.current++; request.current?.abort(); setImage(''); setMessage(''); setBusy(false); }}>Remove image</button></div>}
     {message && <p role="status">{message}</p>}

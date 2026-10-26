@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+/* Keep wide grids in their scroll containers instead of widening the page. */
+.app-shell { --sticky-chrome-height: 0px; }
+.app-shell #main-content > * { min-width: 0; max-width: 100%; }
+.app-navigation { overscroll-behavior-x: contain; scrollbar-width: thin; }
+.app-navigation button { flex-shrink: 0; white-space: nowrap; }
+.app-navigation button:focus-visible { outline: 2px solid #5c2d91; outline-offset: -4px; }
+.app-shell input, .app-shell select, .app-shell textarea { max-width: 100%; }
+@media (min-width: 1280px) {
+  .app-shell { --sticky-chrome-height: var(--app-chrome-height, 0px); }
+}
+@media (max-width: 639px) {
+  .app-shell input, .app-shell select, .app-shell textarea { font-size: 16px; }
+}

@@ -21,7 +21,7 @@ export function resolveExtensionBackendUrl({ appUrl, renderUrl, host }: { appUrl
   throw new Error('Extension download needs a valid app address. Set APP_URL to your app’s HTTPS base URL, or download from localhost.');
 }
 
-export const extensionAssets = ['manifest.json', 'popup.html', 'popup.js', 'backend.js', 'auth.js', 'catalog.js', 'screenshots.js', 'audit.js', 'audit-contract.js', 'vaccine.js', 'vaccine-api.js', 'vaccine-display.js', 'order-limits.js', 'content.js', 'fs-content.js', 'fs-state.js', 'fs-script.js', 'fs-origins.js', 'fs-messaging.js', 'fs-connection.js', 'fs-panel.js', 'background.js', 'icon.png'];
+export const extensionAssets = ['manifest.json', 'icon-48.png', 'icon-128.png', 'popup.html', 'sidepanel.html', 'logo-white.png', 'general-report.css', 'icon-32.png', 'general-session.js', 'logo-mark.png', 'sidepanel-vaccine.js', 'fs-origins.js', 'sidepanel.css', 'vaccine.js', 'vaccine-display.js', 'icon.png', 'vaccine-api.js', 'general-auditor.js', 'icon-16.png', 'explain.js', 'backend.js', 'fs-connection.js', 'fs-panel.js', 'fs-script.js', 'fs-state.js', 'fs-messaging.js', 'auth.js', 'report.js', 'audit-contract.js', 'capture.js', 'screenshots.js', 'sidepanel-vaccine-api.js', 'content.js', 'general-report.js', 'catalog.js', 'popup.js', 'background.js', 'fs-content.js', 'audit.js', 'sidepanel.js', 'order-limits.js'];
 export async function buildExtensionPackage(backendUrl: string, firebaseApiKey: string, directory = path.join(process.cwd(), 'extension')) {
   const zip = new AdmZip();
   for (const file of extensionAssets) {
@@ -35,6 +35,8 @@ export async function buildExtensionPackage(backendUrl: string, firebaseApiKey: 
   }
   const manifest = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8'));
   const fsOrigins = manifest.content_scripts.filter((script: any) => script.js?.includes('fs-content.js')).flatMap((script: any) => script.matches.map((pattern: string) => new URL(pattern).origin));
-  zip.addFile('config.js', Buffer.from(`export const extensionConfig = ${JSON.stringify({ backendUrl, firebaseApiKey, fsOrigins }, null, 2)};\n`));
+  const allocationLowThreshold = Number(process.env.FS_ALLOCATION_LOW_THRESHOLD ?? 10);
+  const allocationRefreshMs = Number(process.env.FS_ALLOCATION_REFRESH_MS ?? 30000);
+  zip.addFile('config.js', Buffer.from(`export const extensionConfig = ${JSON.stringify({ backendUrl, firebaseApiKey, fsOrigins, allocationLowThreshold, allocationRefreshMs }, null, 2)};\n`));
   return zip.toBuffer();
 }

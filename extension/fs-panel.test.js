@@ -7,6 +7,32 @@ const url = 'https://fulfillment-gh3-production.platform.flyzipline.com/v3/order
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const makeState = (id = 7, name = 'Gbangu CHPS') => ({ tabId: id, selection: { facility: { name, district: 'East Mamprusi', region: 'North East' }, draft: null, order: [] }, allocation: { status: 'matched', facility: { id: `sheet:${name}`, facilityName: name, district: 'East Mamprusi', region: 'North East' }, products: [] } });
 
+test('opening the panel repairs a missing bridge and shows the installed build', async () => {
+ const { document } = parseHTML('<details><span id="fsBuildVersion"></span><div id="fsLiveContext"></div><div id="fsConnectionStatus"></div><select id="fsManualFacility"></select><button id="fsRefresh"></button><button id="fsCheckConnection"></button></details>');
+ const previous = { document: globalThis.document, chrome: globalThis.chrome };
+ let connected = false, injections = 0;
+ const events = { addListener() {} };
+ globalThis.document = document;
+ globalThis.chrome = {
+   runtime: { getManifest: () => ({ version: '2.3.21', content_scripts: [{ js: ['fs-content.js'], matches: ['https://fulfillment-gh3-production.platform.flyzipline.com/*'] }] }) },
+   tabs: { async query() { return [{ id: 7, url }]; }, async get() { return { id: 7, url }; },
+     async sendMessage(_id, message) {
+       if (!connected) throw Error('Receiving end does not exist');
+       return message.type === 'FS_DIAGNOSTICS' ? { formFound: true, bridgeVersion: '2.3.21', selection: makeState().selection } : makeState();
+     }, onActivated: events, onUpdated: events, onRemoved: events },
+   permissions: { async contains() { return true; } },
+   scripting: { async executeScript() { injections++; connected = true; } },
+   storage: { session: { async get() { return {}; } }, onChanged: events },
+ };
+ try {
+   setupFsPanel({ onFacility() {} });
+   await tick(); await tick();
+   assert.equal(injections, 1);
+   assert.equal(document.getElementById('fsBuildVersion').textContent, 'v2.3.21');
+   assert.equal(document.getElementById('fsConnectionStatus').textContent, 'Connected to FS');
+ } finally { globalThis.document = previous.document; globalThis.chrome = previous.chrome; }
+});
+
 test('side panel snapshots the active FS tab, follows facility changes and clears disconnected state', async () => {
  const { document } = parseHTML('<div id="fsLiveContext"></div><div id="fsConnectionStatus"></div><select id="fsManualFacility"></select><button id="fsRefresh"></button><button id="fsCheckConnection"></button>');
  const previous = { document: globalThis.document, chrome: globalThis.chrome };
@@ -19,7 +45,7 @@ test('side panel snapshots the active FS tab, follows facility changes and clear
      async sendMessage(id, message, options) {
        sent.push({ id, type: message.type, options });
        if (failure) throw new Error(failure);
-       if (message.type === 'FS_DIAGNOSTICS') return { formFound: true, bridgeVersion: '1.5.14', selection: state.selection };
+       if (message.type === 'FS_DIAGNOSTICS') return { formFound: true, bridgeVersion: '2.3.21', selection: state.selection };
        if (pending) { const saved = state; await new Promise(resolve => { release = resolve; }); return saved; }
        return state;
      },
@@ -41,7 +67,8 @@ test('side panel snapshots the active FS tab, follows facility changes and clear
    state = { ...makeState(), allocation: { status: 'not_found', products: [] } };
    changed({ 'fsContext:7': { newValue: state } }, 'session');
    assert.equal(status.textContent, 'Facility not found in Allocation Blueprint');
-   assert.equal(synced.at(-1), null);
+   assert.equal(synced.at(-1).name, 'Gbangu CHPS');
+   assert.equal(synced.at(-1).allocationStatus, 'not_found');
    state = { ...makeState(), code: 'BACKEND_UNREACHABLE', error: 'localhost connection refused', allocation: null };
    changed({ 'fsContext:7': { newValue: state } }, 'session');
    assert.match(status.textContent, /Backend unreachable/);

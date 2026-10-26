@@ -8,7 +8,15 @@ test('downloaded companion includes every module and only the selected public co
   const zip = new AdmZip(await buildExtensionPackage('http://localhost:3000', 'public-browser-key'));
   const names = zip.getEntries().map(entry => entry.entryName);
   assert.deepEqual(new Set(names), new Set([...extensionAssets, 'config.js']));
-  assert.equal(JSON.parse(zip.readAsText('manifest.json')).version, '1.5.14');
+  const manifest = JSON.parse(zip.readAsText('manifest.json'));
+  assert.equal(manifest.version, '2.3.21');
+  assert.equal(manifest.side_panel.default_path, 'sidepanel.html');
+  assert.match(zip.readAsText('sidepanel.html'), /<details class="fs-connection-check" aria-label="FS connection"/);
+  assert.ok(!/<(?:section|details)[^>]*aria-label="(?:Live FS allocation|FS connection)"[^>]*(?:\bhidden\b|display:\s*none)/.test(zip.readAsText('sidepanel.html')));
+  assert.ok(manifest.host_permissions.includes('https://fulfillment-gh2-production.platform.flyzipline.com/*'));
+  for (const file of [manifest.background.service_worker, manifest.side_panel.default_path, manifest.options_page, ...Object.values(manifest.icons) as string[]]) {
+    assert.ok(names.includes(file), `Missing manifest asset ${file}`);
+  }
   assert.match(zip.readAsText('config.js'), /http:\/\/localhost:3000/);
   assert.match(zip.readAsText('config.js'), /public-browser-key/);
   assert.match(zip.readAsText('config.js'), /fulfillment-gh3-production/);
@@ -20,8 +28,14 @@ test('downloaded companion includes every module and only the selected public co
   assert.match(zip.readAsText('popup.html'), /receivingDetails/);
   assert.match(zip.readAsText('popup.html'), /Check allocation status/);
   assert.ok(!zip.readAsText('popup.html').includes('id="fulfilmentDialog"'));
-  for (const name of ['popup.js', 'popup.html', 'vaccine.js', 'vaccine-api.js', 'vaccine-display.js', 'backend.js']) {
-    assert.equal(zip.readAsText(name), await readFile(new URL('../extension/' + name, import.meta.url), 'utf8'), `Download must contain the current workspace ${name}`);
+  for (const name of extensionAssets.filter(name => name !== 'manifest.json')) {
+    assert.deepEqual(zip.readFile(name), await readFile(new URL('../extension/' + name, import.meta.url)), `Download must contain the current workspace ${name}`);
+  }
+  for (const name of names.filter(name => /\.(html|css)$/.test(name))) {
+    for (const match of zip.readAsText(name).matchAll(/(?:src|href)=["']([^"']+)["']/g)) {
+      if (/^(?:https?:|data:|#)/.test(match[1])) continue;
+      assert.ok(names.includes(match[1].replace(/^\.\//, '').split(/[?#]/)[0]), `Missing asset ${match[1]} in ${name}`);
+    }
   }
 });
 

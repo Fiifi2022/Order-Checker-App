@@ -75,11 +75,23 @@ import VaccineAllocationBlueprint from './components/VaccineAllocationBlueprint'
 import SystemAuditLogView from './components/SystemAuditLogView';
 import RoleManagementModal, { ROLE_DEFINITIONS } from './components/RoleManagementModal';
 import GeminiStatus from './components/GeminiStatus';
+import ExtensionSetup from './components/ExtensionSetup';
 
 export default function App({ authenticatedUser }: { authenticatedUser: UserRoleRecord }) {
+  const chromeRef = useRef<HTMLDivElement>(null);
+  const [chromeHeight, setChromeHeight] = useState(0);
+  useEffect(() => {
+    const chrome = chromeRef.current;
+    if (!chrome) return;
+    const measure = () => setChromeHeight(Math.ceil(chrome.getBoundingClientRect().height));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(chrome);
+    return () => observer.disconnect();
+  }, []);
   // Navigation tabs - Supports both existing Order Checker & new Vaccine Allocation Module
   const [activeTab, setActiveTab] = useState<
-    'vaccine_blueprint' | 'vaccine_checker' | 'vaccine_dashboard' | 'kpi_dashboard' | 'auditor' | 'history'
+    'vaccine_blueprint' | 'vaccine_checker' | 'vaccine_dashboard' | 'kpi_dashboard' | 'auditor' | 'history' | 'extension'
   >('vaccine_blueprint');
 
   const [checkerBlueprintSheetId, setCheckerBlueprintSheetId] = useState<string>();
@@ -738,16 +750,17 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   // No registration or sign-in block required - runs directly once opened
 
   return (
-    <div className="min-h-screen bg-[#FDFBFF] font-sans text-slate-800 antialiased flex flex-col">
+    <div className="app-shell min-h-screen min-w-0 bg-[#FDFBFF] font-sans text-slate-800 antialiased flex flex-col" style={{ '--app-chrome-height': `${chromeHeight}px` } as React.CSSProperties}>
+      <div ref={chromeRef} className="app-chrome min-w-0 w-full xl:sticky top-0 z-40">
       
       {/* Upper Corporate Navigation Header */}
-      <header className="bg-[#3B1A5E] text-white py-4 px-6 shadow-md border-b border-[#2C1349] sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3">
+      <header className="bg-[#3B1A5E] text-white py-3 sm:py-4 px-4 sm:px-6 shadow-md border-b border-[#2C1349]">
+        <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-3 sm:gap-4">
+          <div className="flex min-w-0 w-full xl:w-auto items-center gap-3">
             <div className="bg-[#5C2D91] p-2.5 rounded-xl text-white shadow-inner flex items-center justify-center">
               <ShieldCheck className="w-6 h-6 text-purple-100 animate-pulse" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h1 id="app-title" className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
                 OrderCheck 
                 <span className="text-[10px] bg-purple-500 text-white px-2 py-0.5 rounded-full font-bold tracking-wide">COMPLIANCE</span>
@@ -758,18 +771,18 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
           
           <button type="button" onClick={() => setIsCatalogOpen(true)} className="rounded-xl bg-white/10 border border-white/20 px-3 py-2 text-xs font-bold hover:bg-white/20">Product Catalog</button>
           {/* Operator Profile Badge & Role Manager */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex min-w-0 max-w-full flex-1 flex-wrap items-center justify-end gap-2 sm:gap-3">
             <GeminiStatus />
             <div 
               onClick={() => { if (hasRole(activeUser, 'admin')) setIsRoleModalOpen(true); }}
-              className="flex items-center gap-2.5 bg-[#2C1349] hover:bg-[#39185e] p-1.5 sm:p-2 px-3 sm:px-4 rounded-2xl border border-purple-900/80 text-xs shadow-inner cursor-pointer transition-all"
+              className="flex min-w-0 max-w-full items-center gap-2.5 bg-[#2C1349] hover:bg-[#39185e] p-1.5 sm:p-2 px-3 sm:px-4 rounded-2xl border border-purple-900/80 text-xs shadow-inner cursor-pointer transition-all"
               title="Click to manage team roles and permissions"
             >
-              <div className="text-right">
+              <div className="min-w-0 text-right break-words">
                 <span className="block font-black text-white text-xs leading-tight">
                   {activeUser?.name || 'Mary Alhassan'}
                 </span>
-                <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                <div className="flex flex-wrap items-center justify-end gap-1.5 mt-0.5">
                   <span className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded ${
                     hasRole(activeUser, 'admin') ? 'bg-amber-400 text-slate-900' :
                     (activeUser?.role === 'warehouse' || activeUser?.role === 'dco') ? 'bg-emerald-400 text-slate-900' :
@@ -811,7 +824,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
       </header>
 
       {/* Tab bar Navigation */}
-      <div className="bg-white border-b border-purple-100 sticky top-[68px] z-30 shadow-sm overflow-x-auto">
+      <nav aria-label="Main navigation" className="app-navigation min-w-0 max-w-full bg-white border-b border-purple-100 shadow-sm overflow-x-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-2 sm:gap-4 min-w-max">
           {/* Vaccine Allocation Blueprint (sample.xlsx 67-Column Grid) */}
           <button
@@ -886,6 +899,15 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
           </button>}
 
+          <button
+            type="button"
+            onClick={() => setActiveTab('extension')}
+            className={`py-4 px-3 text-xs md:text-sm font-bold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${activeTab === 'extension' ? 'border-[#5C2D91] text-[#5C2D91]' : 'border-transparent text-slate-500 hover:text-[#5C2D91]'}`}
+          >
+            <Upload className="w-4 h-4" />
+            <span>Extension</span>
+          </button>
+
           {/* Team Roles & Access Control modal trigger */}
           {hasRole(activeUser, 'admin') && <button
             onClick={() => { if (hasRole(activeUser, 'admin')) setIsRoleModalOpen(true); }}
@@ -898,10 +920,12 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
             </span>
           </button>}
         </div>
+      </nav>
       </div>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6" id="main-content">
+      <main className="flex-1 min-w-0 max-w-7xl w-full mx-auto p-3 sm:p-6 lg:p-8 flex flex-col gap-6" id="main-content">
+        {activeTab === 'extension' && <ExtensionSetup />}
         
         {/* EXACT 67-COLUMN VACCINE ALLOCATION BLUEPRINT (sample.xlsx) */}
         {activeTab === 'vaccine_blueprint' && (
@@ -1019,10 +1043,10 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
             {isAdministrator && <GeneralMonitoring onOpenAudit={openSavedGeneralAudit} />}
             {generalServiceWarning && <p role="status" className="text-xs text-amber-800">{generalServiceWarning}</p>}
             {/* Inputs Layout */}
-            <div id="editor-grid" className="grid md:grid-cols-2 gap-6">
+            <div id="editor-grid" className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-6">
               
               {/* Customer Input Column */}
-              <div data-general-source="customer" className="bg-white rounded-2xl p-5 border border-purple-100 shadow-sm flex flex-col gap-4">
+              <div data-general-source="customer" className="min-w-0 bg-white rounded-2xl p-3 sm:p-5 border border-purple-100 shadow-sm flex flex-col gap-4">
                 <div className="flex justify-between items-center flex-wrap gap-2">
                   <label htmlFor="whatsapp-input" className="flex items-center gap-2 text-sm font-bold text-[#3B1A5E]">
                     <div className="bg-[#25D366] text-white p-1.5 rounded-lg flex items-center justify-center">
@@ -1055,8 +1079,8 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
               </div>
 
               {/* Fulfillment Input Column */}
-              <div data-general-source="fulfillment" className="bg-white rounded-2xl p-5 border border-purple-100 shadow-sm flex flex-col gap-3">
-                  <div className="flex justify-between items-center">
+              <div data-general-source="fulfillment" className="min-w-0 bg-white rounded-2xl p-3 sm:p-5 border border-purple-100 shadow-sm flex flex-col gap-3">
+                  <div className="flex flex-wrap gap-2 justify-between items-center">
                     <label htmlFor="fulfillment-input" className="flex items-center gap-2 text-sm font-bold text-[#3B1A5E]">
                       <div className="bg-[#5C2D91] text-white p-1.5 rounded-lg flex items-center justify-center">
                         <ClipboardCheck size={16} className="text-purple-100" />

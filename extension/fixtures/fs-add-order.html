@@ -3,8 +3,8 @@
 <form data-testid="add-order-form">
 <label for="facility">Facility</label><div id="facility" role="combobox" aria-label="Facility" data-selected-name="Mumford HC" data-selected-id="FS-12" data-district="Gomoa West" data-region="Central"></div>
 <section aria-label="Requested Products">
-<label for="product">Product</label><div id="product" role="combobox" aria-label="Product"></div>
-<label for="quantity">Quantity</label><input id="quantity" name="quantity" aria-label="Quantity" type="number">
-<button type="button">Add</button><p id="fs-validation" role="alert"></p>
+<div class="form-row"><div class="form-group col"><label for="product">Product</label><div id="product" role="combobox" aria-label="Product"></div>
+</div><div class="form-group"><label for="quantity">Quantity</label><input id="quantity" name="quantity" aria-label="Quantity" type="number">
+</div><button type="button">Add</button><button type="reset">Reset</button></div><p id="fs-validation" role="alert"></p>
 <table aria-label="Requested Products"><thead><tr><th>Product</th><th>Quantity</th></tr></thead><tbody></tbody></table>
 </section></form></main></body></html>

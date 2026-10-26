@@ -1,6 +1,8 @@
+import { setupGeneralProductReview } from './general-report.js';
+import { restoreGeneralAudit, rememberGeneralAudit } from './general-session.js';
 import { setupFsPanel } from './fs-panel.js';
 import { createFsScriptSync } from './fs-script.js';
-import { acknowledgeOrderLimit, applyAuditProductLog, generalProductDisplayName } from './order-limits.js';
+import { acknowledgeOrderLimit } from './order-limits.js';
 import { setupCatalog } from './catalog.js';
 import { setupScreenshots } from './screenshots.js';
 import { auditBody, profileRoles } from './audit.js';
@@ -82,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const input = source === 'whatsapp' ? whatsappText : fulfillmentText; input.value = text;
     chrome.storage.local.set({ [source === 'whatsapp' ? 'whatsappText' : 'fulfillmentText']: text }); invalidate();
   } });
-  const resetContext = () => { auditController?.abort(); contextRevision++; inputRevision++; activeResult = null; limitDecisions = {}; catalogUI.reset(); screenshots.reset(); vaccines.reset(); clearHints(); };
+  const resetContext = () => { lastGeneralAudit = null; auditController?.abort(); contextRevision++; inputRevision++; activeResult = null; limitDecisions = {}; catalogUI.reset(); screenshots.reset(); vaccines.reset(); clearHints(); };
   document.getElementById('openPortal').addEventListener('click', () => {
     try { chrome.tabs.create({ url: normalizeBackendUrl(savedBackendUrl) }); } catch (error) { showError(error); }
   });
@@ -165,6 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // State variables for dynamic interactive flows
   let activeResult = null;
+  let lastGeneralAudit = null;
   let declinedLimitItems = [];
   let limitDecisions = {};
 
@@ -175,8 +178,26 @@ document.addEventListener('DOMContentLoaded', () => {
       const warning = document.createElement('p'); warning.textContent = 'Decision acknowledged here, but could not be saved to history.'; results.append(warning);
     } }
   };
+  const productReview = setupGeneralProductReview({ root: results, request, getResult: () => activeResult,
+    getSources: () => ({ whatsappMessage: whatsappText.value, fulfillmentConfirmation: fulfillmentText.value }),
+    contextKey: () => `${contextRevision}:${inputRevision}:${savedBackendUrl}`,
+    onSaved: updated => { activeResult = updated; lastGeneralAudit = updated; }, rerender: () => renderResults(), onBusy: busy => { btnVerify.disabled = busy; },
+  });
+  results.addEventListener('click', event => {
+    const button = event.target.closest('[data-general-limit]');
+    if (!button || !activeResult || productReview.isBusy()) return;
+    const answer = button.dataset.generalLimit === 'yes'; const key = button.dataset.key;
+    if (!activeResult.generalAudit.products.some(product => product.key === key && product.orderLimitEligible)) return;
+    limitDecisions[key] = answer; activeResult = acknowledgeOrderLimit(activeResult, key, answer);
+    renderResults(); void saveLimitAcknowledgement(activeResult.id, key, answer);
+  });
   const renderResults = () => {
     if (!activeResult) return;
+    if (activeResult.generalAudit) {
+      document.getElementById('auditStatus').textContent = activeResult.allMatch ? 'Audit passed' : 'Audit requires review';
+      document.getElementById('allocationStatus').textContent = 'Not applicable';
+      results.innerHTML = productReview.render(activeResult); void rememberGeneralAudit(activeResult, savedBackendUrl); return;
+    }
 
     const escape = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     let html = '';
@@ -196,12 +217,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const itemColor = ['match', 'order limit applied'].includes(it.status) ? '#047857' : (it.status === 'out of stock' ? '#D97706' : '#DC2626');
       const itemSymbol = ['match', 'order limit applied'].includes(it.status) ? '✓' : (it.status === 'out of stock' ? '⚠' : '✗');
       
-      html += '<details style="border-bottom:1px solid #FAF5FF; padding:6px 0; font-size:10.5px;">';
-      html += '<summary style="cursor:pointer;color:#3B1A5E;font-weight:bold;overflow-wrap:anywhere;">' + escape(generalProductDisplayName(it.name));
-      html += '<span style="display:block;margin-top:4px;color:' + itemColor + ';font-size:10px;">' + itemSymbol + ' ' + escape(it.status.toUpperCase()) + '</span>';
-      html += '<span style="display:block;margin-top:4px;color:#475569;font-size:10px;font-weight:normal;">Requested: ' + escape(it.requested) + ' · Fulfilled: ' + escape(it.found) + '</span></summary><div style="padding-top:6px;">';
-      html += '<span style="color:' + itemColor + ';">' + itemSymbol + '</span>';
-      if (it.category) html += ' <span style="display:inline-block;border:1px solid #DDD6FE;border-radius:8px;padding:1px 5px;font-size:9px;color:#5C2D91;">' + escape(it.category) + '</span>';
+      html += '<div style="border-bottom:1px solid #FAF5FF; padding:6px 0; font-size:10.5px;">';
+      html += '<strong style="color:#3B1A5E;">' + itemSymbol + ' ' + escape(it.name) + '</strong>';
+      html += ' (Req: ' + escape(it.requested) + ' | Sys: ' + escape(it.found) + ')';
       html += '<br/><span style="color:' + itemColor + '; font-size:9.5px; font-weight:600;">Status: ' + escape(it.status.toUpperCase()) + '</span>';
       
       if (it.action) {
@@ -220,15 +238,8 @@ document.addEventListener('DOMContentLoaded', () => {
         html += '</div>';
       }
 
-      html += '</div></details>';
+      html += '</div>';
     });
-    for (const product of activeResult.generalAudit?.productVerifications || []) {
-      if (product.status !== 'review required') continue;
-      html += '<details style="border-bottom:1px solid #FAF5FF;padding:6px 0;font-size:10.5px;">';
-      html += '<summary style="cursor:pointer;color:#3B1A5E;font-weight:bold;overflow-wrap:anywhere;">' + escape(generalProductDisplayName(product.productName)) + '<span style="display:block;color:#92400E;margin-top:4px;">Review Required</span></summary>';
-      html += '<div style="padding-top:6px;overflow-wrap:anywhere;"><p>Customer: ' + escape(product.requestedProducts.map(source => source.name).join('; ')) + '</p>';
-      html += '<p>Fulfilment: ' + escape(product.fulfillmentProducts.map(source => source.name).join('; ')) + '</p><p style="color:#92400E;">' + escape(product.reason) + '</p></div></details>';
-    }
     html += '</div>';
 
     // Key insights
@@ -309,7 +320,11 @@ document.addEventListener('DOMContentLoaded', () => {
     checkConnection();
     const { authSession } = await chrome.storage.session.get('authSession');
     if (authSession && savedBackendUrl) {
-      try { await loadProfile(); } catch (error) { showError(error); await updateAuth(); }
+      try { await loadProfile();
+        const restoreVersion = inputRevision;
+        const savedAudit = await restoreGeneralAudit(request, savedBackendUrl, { whatsappMessage: whatsappText.value, fulfillmentConfirmation: fulfillmentText.value });
+        if (savedAudit && restoreVersion === inputRevision) { activeResult = savedAudit; lastGeneralAudit = savedAudit; renderResults(); }
+      } catch (error) { showError(error); await updateAuth(); }
     }
   });
 
@@ -347,6 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Clear inputs action
   if (btnClear) {
     btnClear.addEventListener('click', () => {
+      lastGeneralAudit = null;
       whatsappText.value = '';
       fulfillmentText.value = '';
       invalidate(); screenshots.reset(); clearHints();
@@ -445,7 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
   btnCapture.addEventListener('click', captureSelection);
 
   const verify = async () => {
-    if (btnVerify.disabled || vaccines.isBusy()) return;
+    if (btnVerify.disabled || vaccines.isBusy() || productReview.isBusy()) return;
     if (vaccines.vaccineMode()) {
       activeResult = null; btnVerify.disabled = true;
       try {
@@ -487,17 +503,17 @@ document.addEventListener('DOMContentLoaded', () => {
         signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(auditBody(wa, ff, undefined, limitDecisions)),
+        body: JSON.stringify(auditBody(wa, ff, undefined, limitDecisions, lastGeneralAudit)),
       });
       if (!Array.isArray(data.items) || typeof data.allMatch !== 'boolean') {
         throw new Error('Unexpected audit response from the backend.');
       }
 
       if (version !== inputRevision || context !== contextRevision) return;
-      applyAuditProductLog(data.productCatalog);
       void refreshHints();
       // Initialize active results and render dynamically
       activeResult = data;
+      lastGeneralAudit = data.generalAudit ? data : null;
       renderResults();
 
     } catch (err) {

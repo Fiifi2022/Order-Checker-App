@@ -1,0 +1,29 @@
+<!doctype html><html><head></head><body><main>
+<h1>Add New Order</h1>
+<div class="form-group"><label class="form-label">Facility</label>
+  <div class="d-flex input-group"><div class="flex-grow-1 css-2b097c-container">
+    <span aria-live="polite" class="css-a11yText"></span>
+    <div class="css-yk16xz-control"><div class="css-1hwfws3">
+      <div class="css-rendered-facility">Mumford HC</div><div><input id="react-select-facility-input" autocomplete="off" value=""></div>
+    </div><div class="css-1wy0on6"></div></div>
+  </div></div><input name="facility" class="d-none form-control" value="FS-12">
+</div>
+<section><h2>Requested Products</h2>
+<div class="d-flex justify-content-between"><button>Emergency</button><button>Fast</button><button>Scheduled</button></div>
+<div class="form-row">
+  <div class="form-group col" style="flex: 1 0 400px;" id="product-group">
+    <label class="form-label">Product</label>
+    <div class="d-flex input-group"><div class="flex-grow-1 css-2b097c-container">
+      <span aria-live="polite" aria-atomic="false" aria-relevant="additions text" class="css-a11yText">Option BCG focused</span>
+      <div class="css-yk16xz-control"><div class="css-1hwfws3">
+        <div class="css-rendered-product">BCG</div><div><input id="react-select-product-input" autocomplete="off" value=""></div>
+      </div><div class="css-1wy0on6"></div></div>
+    </div></div>
+    <input name="sku" class="d-none form-control is-invalid" value="SKU-BCG">
+    <div class="invalid-feedback">Product is required</div>
+  </div>
+  <div class="form-group"><label class="form-label">Quantity</label><input name="quantity" class="form-control" type="number" value="1"></div>
+  <div class="form-group"><button type="button">Add</button><button type="reset">Reset</button></div>
+</div>
+<table><thead><tr><th>Priority</th><th>Product</th><th>Expiration Date</th><th>Unit Price</th><th>Prog/Bdgt Holder</th><th>Inventory / Quantity</th><th>Remove</th></tr></thead><tbody><tr><td colspan="7">No requested products</td></tr></tbody></table>
+</section></main></body></html>

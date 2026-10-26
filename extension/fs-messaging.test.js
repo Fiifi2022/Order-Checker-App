@@ -10,9 +10,11 @@ const fsUrl = 'https://fulfillment-gh3-production.platform.flyzipline.com/v3/ord
 const sender = { url: fsUrl, tab: { id: 7 } };
 const panelSender = { url: 'chrome-extension://test/popup.html' };
 const selection = { facility: { name: 'Gbangu CHPS', district: 'East Mamprusi', region: 'North East' }, draft: null, order: [] };
-function worker({ stored = {}, fail = '', fetchError = false, missingTab = false, delaySet } = {}) {
+function worker({ stored = {}, fail = '', fetchError = false, missingTab = false, delaySet, beforeFetch } = {}) {
   stored.authSession ||= { idToken: 'fixture-token', email: 'test@example.com', expiresAt: Date.now() + 600000 };
   let listener, removed, updated, changed, fetches = 0;
+  let now = Date.now();
+  class Clock extends Date { static now() { return now; } }
   const area = {
     async get(key) { if (fail === 'get') throw new Error('Session read failed'); return key === null ? { ...stored } : { [key]: stored[key] }; },
     async set(data) { if (fail === 'set') throw new Error('Session write failed'); if (delaySet) await delaySet(data); Object.assign(stored, data); },
@@ -29,16 +31,40 @@ function worker({ stored = {}, fail = '', fetchError = false, missingTab = false
   };
   const fetch = async () => {
     fetches++;
+    if (beforeFetch) await beforeFetch();
     if (fetchError) throw new Error('localhost connection refused');
     return { ok: true, async json() { return { status: 'matched', facility: { id: 'sheet:gbangu', facilityName: 'Gbangu CHPS', district: 'East Mamprusi', region: 'North East' }, products: [] }; } };
   };
-  vm.runInNewContext(workerCode, { chrome, fetch, URL, URLSearchParams, AbortController, setTimeout, clearTimeout, console: { warn() {} } });
+  vm.runInNewContext(workerCode, { chrome, fetch, URL, URLSearchParams, AbortController, Date: Clock, setTimeout, clearTimeout, console: { warn() {} } });
   return {
     request: (message, from = sender) => new Promise(resolve => { assert.equal(listener(message, from, resolve), true); }),
     listener, stored, removed: id => removed(id), updated: (id, info) => updated(id, info), changed: (data, areaName) => changed(data, areaName),
     get fetches() { return fetches; },
+    advance(ms) { now += ms; },
   };
 }
+
+test('allocation cache expires and concurrent identical lookups share a single authenticated read', async () => {
+  const service = worker();
+  await service.request({ type: 'FS_SELECTION', selection });
+  await service.request({ type: 'FS_SELECTION', selection });
+  assert.equal(service.fetches, 1);
+  service.advance(30001);
+  await service.request({ type: 'FS_SELECTION', selection });
+  assert.equal(service.fetches, 2);
+  await service.request({ type: 'FS_SELECTION', selection, refresh: true });
+  assert.equal(service.fetches, 3);
+  let finish;
+  const blocked = worker({ beforeFetch: () => new Promise(resolve => { finish = resolve; }) });
+  const first = blocked.request({ type: 'FS_SELECTION', selection });
+  await new Promise(resolve => setImmediate(resolve));
+  const second = blocked.request({ type: 'FS_SELECTION', selection });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(blocked.fetches, 1);
+  finish();
+  assert.equal((await first).stale, true);
+  assert.equal((await second).allocation.status, 'matched');
+});
 
 test('capture listener never claims FS messages and reports capture exceptions', async () => {
   let listener, response;

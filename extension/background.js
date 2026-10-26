@@ -59,6 +59,7 @@ async function fetchJson(url, options = {}, timeoutMs = 9e4) {
 // extension/auth.js
 async function signOut() {
   await chrome.storage.session.remove("authSession");
+  await chrome.storage.local?.remove("persistedAuth");
 }
 async function getToken() {
   const { authSession } = await chrome.storage.session.get("authSession");
@@ -70,12 +71,15 @@ async function getToken() {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: authSession.refreshToken }).toString()
     }, 3e4);
-    await chrome.storage.session.set({ authSession: {
+    const refreshed = {
       ...authSession,
       idToken: data.id_token,
       refreshToken: data.refresh_token,
       expiresAt: Date.now() + Number(data.expires_in) * 1e3
-    } });
+    };
+    await chrome.storage.session.set({ authSession: refreshed });
+    const { persistedAuth } = await chrome.storage.local?.get("persistedAuth") || {};
+    if (persistedAuth) await chrome.storage.local.set({ persistedAuth: refreshed });
     return data.id_token;
   } catch (error) {
     if (error.status === 400 || error.status === 401) await signOut();
@@ -162,6 +166,12 @@ async function sendFsMessage(chromeApi, tabId, message, timeoutMs = 18e3) {
 // extension/background-entry.js
 var versions = /* @__PURE__ */ new Map();
 var writes = /* @__PURE__ */ new Map();
+var lookups = /* @__PURE__ */ new Map();
+var configuredNumber = (value, fallback, min, max) => Number.isFinite(Number(value)) && Number(value) >= min && Number(value) <= max ? Number(value) : fallback;
+var displaySettings = {
+  lowThreshold: configuredNumber(extensionConfig2.allocationLowThreshold, 10, 0, 1e6),
+  refreshMs: configuredNumber(extensionConfig2.allocationRefreshMs, 3e4, 15e3, 3e5)
+};
 function enqueueWrite(tabId, task) {
   const pending = (writes.get(tabId) || Promise.resolve()).catch(() => {
   }).then(task);
@@ -193,20 +203,31 @@ async function update(tabId, selection, manualFacilityId, refresh = false) {
   if (versions.get(tabId) !== version) return { stale: true };
   if (manualFacilityId === void 0) manualFacilityId = JSON.stringify(prior?.selection?.facility) === JSON.stringify(selection.facility) ? prior?.manualFacilityId || "" : "";
   const identity = (s) => JSON.stringify([s.facility, selectionProducts(s).map((p) => [p.name, p.id])]);
-  if (!refresh && prior?.allocation?.status === "matched" && prior.manualFacilityId === manualFacilityId && identity(prior.selection) === identity(selection)) {
+  if (!refresh && prior?.allocation?.status === "matched" && Date.now() - prior.checkedAt < displaySettings.refreshMs && prior.manualFacilityId === manualFacilityId && identity(prior.selection) === identity(selection)) {
     const allocation = { ...prior.allocation, products: prior.allocation.products.map((p, i) => ({ ...p, quantity: selectionProducts(selection)[i].quantity })) };
     const state2 = { ...prior, selection, allocation };
     if (versions.get(tabId) !== version) return { stale: true };
     return await persist(tabId, state2, version) ? state2 : { stale: true };
   }
-  const state = { tabId, selection, manualFacilityId, loading: true, allocation: null };
+  const state = { tabId, selection, manualFacilityId, displaySettings, loading: true, allocation: null };
   if (!await persist(tabId, state, version)) return { stale: true };
   try {
     const { customBackendUrl } = await chrome.storage.local.get("customBackendUrl");
     const base = customBackendUrl || extensionConfig2.backendUrl;
-    const allocation = selection.facility.name || selection.facility.id ? await withTimeout(() => backendRequest(base, "/api/vaccine/companion/context?selection=" + encodeURIComponent(JSON.stringify({ facility: selection.facility, products: selectionProducts(selection), manualFacilityId })), {}, 1e4), 12e3, "Backend unreachable: allocation lookup timed out. Check the localhost OrderCheck server and sign-in session.") : { status: "no_facility", products: [] };
+    const lookupKey = JSON.stringify([tabId, base, manualFacilityId, identity(selection)]);
+    let lookup = lookups.get(lookupKey);
+    if (!lookup) {
+      lookup = selection.facility.name || selection.facility.id ? withTimeout(() => backendRequest(base, "/api/vaccine/companion/context?selection=" + encodeURIComponent(JSON.stringify({ facility: selection.facility, products: selectionProducts(selection), manualFacilityId })), {}, 1e4), 12e3, "Backend unreachable: allocation lookup timed out. Check the OrderCheck server and sign-in session.") : Promise.resolve({ status: "no_facility", products: [] });
+      lookups.set(lookupKey, lookup);
+      const cleanup = () => {
+        if (lookups.get(lookupKey) === lookup) lookups.delete(lookupKey);
+      };
+      void lookup.then(cleanup, cleanup);
+    }
+    const found = await lookup;
+    const allocation = { ...found, products: found.products?.map((p, i) => ({ ...p, quantity: selectionProducts(selection)[i]?.quantity })) || [] };
     if (versions.get(tabId) !== version) return { stale: true };
-    Object.assign(state, { allocation, loading: false });
+    Object.assign(state, { allocation, loading: false, checkedAt: Date.now() });
   } catch (error) {
     if (versions.get(tabId) !== version) return { stale: true };
     const message = error?.message || String(error);
@@ -257,6 +278,17 @@ var clearTab = (tabId) => {
   void enqueueWrite(tabId, () => chrome.storage.session.remove(`fsContext:${tabId}`)).catch((error) => console.warn("FS state cleanup failed:", error.message));
 };
 chrome.tabs.onRemoved.addListener(clearTab);
+chrome.runtime.onInstalled?.addListener(() => {
+  void (async () => {
+    const tabs = await chrome.tabs.query({ url: allowedOrigins.map((origin) => origin + "/*") });
+    const results = await Promise.allSettled(tabs.filter((tab) => allowed({ tab })).map(async (tab) => {
+      const origin = new URL(tab.url).origin;
+      if (!await chrome.permissions.contains({ origins: [origin + "/*"] })) return;
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["fs-content.js"] });
+    }));
+    for (const result of results) if (result.status === "rejected") console.warn("FS activation failed:", result.reason?.message);
+  })().catch((error) => console.warn("FS activation failed:", error.message));
+});
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   if (info.status === "loading" || info.url && !allowed({ tab: { id: tabId }, url: info.url })) clearTab(tabId);
 });
@@ -264,6 +296,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   const auth = changes.authSession;
   const accountChanged = auth && (!auth.oldValue || !auth.newValue || auth.oldValue.email !== auth.newValue.email);
   if (area === "session" && accountChanged || area === "local" && changes.customBackendUrl) {
+    lookups.clear();
     void chrome.storage.session.get(null).then(async (saved) => {
       for (const [key, state] of Object.entries(saved)) if (key.startsWith("fsContext:")) {
         versions.set(state.tabId, (versions.get(state.tabId) || 0) + 1);
@@ -273,3 +306,4 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }).catch((error) => console.warn("FS session invalidation failed:", error.message));
   }
 });
+chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch((error) => console.warn("Side panel behavior failed:", error.message));

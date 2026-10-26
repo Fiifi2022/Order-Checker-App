@@ -4,8 +4,13 @@ import { quantityStatus } from './fs-state.js';
 export function setupFsPanel({ onFacility, onScript = () => {} }) {
   const panel = document.getElementById('fsLiveContext'), manual = document.getElementById('fsManualFacility');
   const connection = document.getElementById('fsConnectionStatus');
+  const version = document.getElementById('fsBuildVersion');
+  if (version) version.textContent = `v${chrome.runtime.getManifest().version || 'unknown'}`;
   let activeTabId, current, facilityKey, revision = 0;
-  const status = text => { if (connection) connection.textContent = text; };
+  const status = (text, reveal = false) => {
+    if (connection) connection.textContent = text;
+    if (reveal) connection?.closest('details')?.setAttribute('open', '');
+  };
   const line = text => { const p = document.createElement('p'); p.textContent = text; panel.append(p); };
   const render = state => {
     current = state; panel.replaceChildren(); manual.hidden = true;
@@ -13,11 +18,11 @@ export function setupFsPanel({ onFacility, onScript = () => {} }) {
     const data = state.allocation, selection = state.selection;
     onScript(selection.script);
     const nextFacilityKey = JSON.stringify([state.tabId, selection.facility]);
-    if (facilityKey !== nextFacilityKey || !state.loading) onFacility(data?.status === 'matched' ? data.facility : null);
+    if (facilityKey !== nextFacilityKey || !state.loading) onFacility(data?.status === 'matched' ? { ...data.facility, allocationStatus: 'matched' } : selection.facility?.name || selection.facility?.id ? { ...selection.facility, allocationStatus: state.loading ? 'loading' : data?.status || 'unavailable' } : null);
     facilityKey = nextFacilityKey;
     line([data?.facility?.facilityName || selection.facility.name || 'No facility selected', data?.facility?.district || selection.facility.district, data?.facility?.region || selection.facility.region].filter(Boolean).join(' · '));
     if (state.loading) { status('Connected to FS · Loading current Allocation Blueprint…'); line('Loading current Allocation Blueprint…'); return; }
-    if (state.error) { status(state.code === 'BACKEND_UNREACHABLE' ? `Backend unreachable · ${state.error}` : state.error); line(state.error); return; }
+    if (state.error) { status(state.code === 'BACKEND_UNREACHABLE' ? `Backend unreachable · ${state.error}` : state.error, true); line(state.error); return; }
     status(data?.status === 'not_found' ? 'Facility not found in Allocation Blueprint' : data?.status === 'ambiguous' ? 'Connected to FS · Multiple Blueprint matches; select the exact facility/cycle.' : !selection.facility.name && !selection.facility.id ? 'Waiting for facility selection' : 'Connected to FS');
     if (data?.message) line(data.message);
     if (!selection.draft && !selection.order.length) line('No requested products yet. Open the product picker in FS to view allocation advice.');
@@ -57,7 +62,7 @@ export function setupFsPanel({ onFacility, onScript = () => {} }) {
       const observed = current?.selection;
       activeTabId = undefined;
       render(observed ? { selection: observed, loading: false, error: error.message } : null);
-      status(error.message);
+      status(error.message, true);
       if (!observed) line(error.message);
     } }
   }
@@ -83,5 +88,5 @@ export function setupFsPanel({ onFacility, onScript = () => {} }) {
     if (info.status === 'complete') void checkConnection(false);
   });
   chrome.tabs.onRemoved?.addListener(id => { if (id === activeTabId) { revision++; activeTabId = undefined; render(null); status('FS tab not found · The connected FS tab was closed.'); } });
-  void checkConnection(false);
+  void checkConnection(true);
 }

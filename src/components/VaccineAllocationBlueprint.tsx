@@ -4162,18 +4162,18 @@ export default function VaccineAllocationBlueprint({
   }
 
   return (
-    <div id="allocation-blueprint-print-root" className="flex flex-col gap-4 w-full bg-white rounded-3xl border border-slate-200 shadow-md p-4 sm:p-6 text-slate-800 antialiased">
+    <div id="allocation-blueprint-print-root" className="flex min-w-0 max-w-full flex-col gap-4 w-full bg-white rounded-3xl border border-slate-200 shadow-md p-3 sm:p-6 text-slate-800 antialiased">
       <style>{`@media print { body * { visibility: hidden !important; } #allocation-blueprint-print-root, #allocation-blueprint-print-root * { visibility: visible !important; } #allocation-blueprint-print-root { position: absolute; inset: 0; width: 100%; padding: 0; border: 0; box-shadow: none; } #allocation-blueprint-sheet { position: static !important; height: auto !important; } #allocation-blueprint-grid-scroll { max-height: none !important; overflow: visible !important; } }`}</style>
       {liveSheetWarning ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{liveSheetWarning}</p>
         : liveSheetCheckedAt && <p role="status" className="text-xs text-slate-500">Allocation balances last checked at {new Date(liveSheetCheckedAt).toLocaleTimeString()}. Live updates every 3 seconds while this sheet is visible.</p>}
       {/* Top Banner & Blueprint Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#ED7D31] text-white flex items-center justify-center shadow-md font-bold">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-2xl bg-[#ED7D31] text-white flex items-center justify-center shadow-md font-bold">
             <FileSpreadsheet className="w-6 h-6" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
                 Vaccine Allocation Blueprint
               </h2>
@@ -4190,7 +4190,7 @@ export default function VaccineAllocationBlueprint({
 
       </div>
 
-      <section ref={blueprintControlsRef} aria-label="Allocation Blueprint spreadsheet controls" className="sticky top-0 z-50 rounded-xl border-2 border-slate-300 bg-white shadow-md print:hidden">
+      <section ref={blueprintControlsRef} aria-label="Allocation Blueprint spreadsheet controls" className="min-w-0 lg:sticky top-[var(--sticky-chrome-height,0px)] z-20 rounded-xl border-2 border-slate-300 bg-white shadow-md print:hidden">
         <div role="menubar" aria-label="Spreadsheet menus" className="relative z-10 flex min-h-12 flex-wrap items-center gap-1.5 overflow-visible border-b border-slate-200 bg-slate-50 px-3 py-1.5">
           {['File', 'Edit', 'View', 'Insert', 'Format', 'Data', 'Tools', 'Help'].map(menu => (
             <div className="relative shrink-0" key={menu}>
