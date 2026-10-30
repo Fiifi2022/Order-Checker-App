@@ -12,8 +12,9 @@ import { compareGeneralFacilities, prepareGeneralFacilityContext } from '../src/
 import { normalizeGeneralOrdererName } from '../src/utils/generalOrdererName';
 import { waitForAudit } from '../shared/auditPerformance';
 import { geminiUsage } from './geminiUsage';
-import { classifyGeneralText } from '../src/utils/generalTextClassification';
+import { classifyGeneralText, classifyGeneralAuditLine } from '../src/utils/generalTextClassification';
 import { extractGeneralOrderDeterministically } from './generalOrderExtraction';
+import { assertGeneralProductEvidence } from '../src/utils/generalProductEvidence';
 import { resolveGeneralOrderExtraction } from './generalHybridExtraction';
 import type { GeneralSemanticReview, GeneralOrderExtractionSnapshot } from '../src/utils/generalAuditTypes';
 
@@ -48,7 +49,7 @@ export function generalProductNameLabel(value: string) {
 export const generalProductNameKey = (value: string) => catalogKey(generalProductNameLabel(expandGeneralProductAcronyms(value))).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 export interface LearnedNameAlias { alias: string; productId: string }
 
-function extractNames(text: string, source: GeneralProductEvidence['source']): GeneralProductEvidence[] {
+function extractNames(text: string, source: GeneralProductEvidence['source'], resolve?: (name: string) => ReturnType<typeof resolveGeneralCatalogIdentity>): GeneralProductEvidence[] {
   const originalLines = text.split(/\r?\n/);
   const numbered = originalLines.map(line => line.match(/^\s*(\d+)\s+([a-z].*?\s+\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?\s*)$/i));
   const indices = numbered.filter(Boolean).map(match => Number(match![1]));
@@ -56,11 +57,12 @@ function extractNames(text: string, source: GeneralProductEvidence['source']): G
   const parseText = numberedList ? originalLines.map((line, index) => numbered[index] ? `${numbered[index]![1]}. ${numbered[index]![2]}` : line).join('\n') : text;
   const quantityText=parseText.replace(/([^\n]+?)\s+(?:qty|quantity)\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(units?)?\s*$/gim, '$1 - $2 $3');
   const parsed = parseGeneralProducts(quantityText, source).map(product => ({ ...product, originalText: originalLines[product.line - 1] || product.originalText }));
-  const document = recognizeGeneralDocument(generalOrderRelevantText(text));
+  const document = recognizeGeneralDocument(generalOrderRelevantText(text), classifyGeneralText);
   const represented = new Set(parsed.map(p => p.line));
   for (const line of document.lines) {
     if (represented.has(line.line) || !['PRODUCT_ENTRY', 'AMBIGUOUS_CONTENT'].includes(line.kind)) continue;
     const name = cleanGeneralProductDescription(stripGeneralListPrefix(line.auditText));
+    if (line.kind !== 'PRODUCT_ENTRY' && !resolve?.(name).product) continue;
     if (!name || name.length > 160 || /[:!?]|\b(?:please|hello|thank|patient|age|diagnosis|contact|district|facility|orderer|delivery|received|tomorrow)\b/i.test(name) || !/[a-z]/i.test(name)) continue;
     parsed.push({ name, quantity: 0, quantityReview: 'Quantity not provided.', unit: '', originalText: line.originalText, source, line: line.line, normalizedName: generalProductNameKey(name) });
   }
@@ -82,7 +84,7 @@ export async function runGeneralProductNameAudit(customer: string, fulfillment: 
   let extraction: GeneralOrderExtractionSnapshot | undefined;
   let extractionReviews: GeneralSemanticReview[] = [];
   let extractionStatus: 'used' | 'fallback' | 'skipped' = 'skipped';
-  if (narrative.test(customer) || narrative.test(fulfillment)) {
+  if (narrative.test(customer) || narrative.test(fulfillment) || [customer, fulfillment].some(text => text.split('\n').some(line => classifyGeneralAuditLine(line) === 'product_quantity'))) {
     const names = rows.filter(row => row.scope === 'general').flatMap(catalogProductNames);
     let a = extractGeneralOrderDeterministically(customer, 'customer_request', support.facilityContext, undefined, names);
     let b = extractGeneralOrderDeterministically(fulfillment, 'fulfillment_confirmation', support.facilityContext, undefined, names);
@@ -125,7 +127,7 @@ export async function runGeneralProductNameAudit(customer: string, fulfillment: 
     return resolutions.get(name)!;
   };
   const resolve = (name: string) => lookup(name).product;
-  const requested = extractNames(customer, 'customer_request'), supplied = extractNames(fulfillment, 'fulfillment_confirmation');
+  const requested = extractNames(customer, 'customer_request', resolveCatalog), supplied = extractNames(fulfillment, 'fulfillment_confirmation', resolveCatalog);
   // Use uniquely resolved counterparts as catalogue context for omitted details,
   // before deciding that any product needs AI. Never invent a new product ID.
   const initial = new Map([...requested,...supplied].map(p=>[p.name,lookup(p.name)]));
@@ -211,7 +213,10 @@ export async function runGeneralProductNameAudit(customer: string, fulfillment: 
     matchedProductKey: identity(p) + (conflictKeys.has(identity(p)) ? `:${p.source}` : ''),
     matchingStage: 'synonym' as const });
   const assigned = compareAssignedGeneralProducts(requested.map(evidence), supplied.map(evidence), support.generalOrderLimitDecisions || {}, support);
-  for (const item of assigned) item.provenance = item.provenance.map(p=>({...p,...originals.get(`${p.source}:${p.line}`)}));
+  for (const item of assigned) item.provenance = item.provenance.map(p=>{
+    const original = originals.get(`${p.source}:${p.line}`) || p;
+    return {...p,...original, canonicalId: resolvedProduct(original)?.id, catalogMatchMethod: lookup(original.name).source};
+  });
   let items: GeneralComparisonItem[] = assigned.map(item => {
     const customerLines = item.provenance.filter(p => p.source === 'customer_request');
     const supplyLines = item.provenance.filter(p => p.source === 'fulfillment_confirmation');
@@ -277,11 +282,12 @@ export async function runGeneralProductNameAudit(customer: string, fulfillment: 
     const representative=after[0] || before[0];
     const name=generalProductDisplayName(representative.name);
     const conflict=sources.some(a=>sources.some(b=>a.source!==b.source && generalCatalogAttributeConflict(a.name,b.name)));
+    const confirmedConflict=conflict && sources.some(p=>!!resolvedProduct(p));
     const vaccineConflict=before.some(a=>after.some(b=>vaccineAliasConflict(a,b) && resolvedProduct(a)?.id!==resolvedProduct(b)?.id));
     const identityError=vaccineConflict ? 'Conflicting vaccine catalogue mappings — confirm the intended product.' : conflict ? 'Product identity conflict — no approved repository mapping for these specifications.' : 'Product identity unresolved — confirm the repository mapping.';
     const {conversion:_unverifiedConversion,...quantity}=grouped.fulfillment;
     reviews.push({...grouped,name,status:'product identity discrepancy',action:identityError,provenance:sources,
-      fulfillment:{...quantity,key,name,fulfillmentStatus:'discrepancy',discrepancyKind:'identity',identityError,
+      fulfillment:{...quantity,key,name,fulfillmentStatus:'discrepancy',discrepancyKind:'identity',identityError,identityConflictConfirmed:confirmedConflict || vaccineConflict,
         orderLimitEligible:false,orderLimitDecision:undefined,
         requestedQuantityMissing:before.some(p=>!!p.quantityReview || !Number.isFinite(p.quantity)),
         suppliedQuantityMissing:after.some(p=>!!p.quantityReview || !Number.isFinite(p.quantity)),quantityError:'Not verified — resolve product identity.',registeredOutOfStock:false}});
@@ -289,6 +295,24 @@ export async function runGeneralProductNameAudit(customer: string, fulfillment: 
   const reviewedKeys=new Set(reviews.flatMap(item=>item.provenance.map(p=>`${p.source}:${p.line}`)));
   items=items.filter(item=>!item.provenance.some(p=>reviewedKeys.has(`${p.source}:${p.line}`)));
   items.push(...reviews);
+  // An absent customer product list cannot establish that a real FS item is
+  // extra. Retain the FS evidence, and request identity confirmation instead.
+  if (!requested.length) items = items.map(item => ({...item, status: 'product identity discrepancy' as const,
+    action: 'Confirm the product requested by the customer; no customer product identity was provided.',
+    fulfillment: {...item.fulfillment, identityReviewRequired: true, requestedQuantityMissing: true,
+      identityError: 'Customer product identity not provided. Confirm the original request.',
+      fulfillmentStatus: 'discrepancy' as const, orderLimitEligible: false}}));
+  const originalSourceLines = {
+    customer_request: facilitySourceCustomer.split(/\r?\n/).map(generalOrderRelevantText).filter(Boolean),
+    fulfillment_confirmation: facilitySourceSystem.split(/\r?\n/).map(generalOrderRelevantText).filter(Boolean),
+  };
+  for (const item of items) item.provenance = item.provenance.map(p => {
+    const namePattern = new RegExp(`(?<![\\p{L}\\p{N}])${p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'iu');
+    const original = originalSourceLines[p.source].filter(line => namePattern.test(line));
+    return {...p, canonicalId: resolvedProduct(p)?.id, catalogMatchMethod: lookup(p.name).source,
+      ...(original.length === 1 ? {sourceOriginalText: original[0]} : {})};
+  });
+  assertGeneralProductEvidence(items);
   const groups = new Map<string, {requested:GeneralProductEvidence[];supplied:GeneralProductEvidence[]}>();
   for (const item of items) groups.set(item.fulfillment.key, {requested:item.provenance.filter(p=>p.source==='customer_request'),supplied:item.provenance.filter(p=>p.source==='fulfillment_confirmation')});
   const productMatchingDiagnostics = items.map(item => {

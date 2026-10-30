@@ -38,10 +38,11 @@ function labelField(value: string): GeneralDocumentField | undefined {
   if (/^(?:delivery(?: and)? drop(?: off)? area|delivery(?: area| location)?|drop(?: off)? (?:area|location|site))$/.test(key)) return 'delivery';
   if (/^district(?: name)?$/.test(key)) return 'district';
   if (/^(?:order )?date$/.test(key)) return 'date';
-  if (/^(?:quantity|quantities|qty|amount)$/.test(key)) return 'quantity';
+  if (/^(?:quantity|quantities|qty|amount)(?: (?:needed|required|requested|ordered))?$/.test(key)) return 'quantity';
   if (/^(?:(?:requested|ordered|requisitioned) )?(?:products?|medicines?|items?|drugs?|vaccines?|supplies)(?: (?:and )?(?:quantit(?:y|ies)|qty|requested|ordered|requisition|details|list|needed|for delivery)){0,3}$/.test(key) || /^(?:order|requisition|request) (?:details|items|list)$/.test(key)) return 'products';
 }
 const productSignal = /\b(?:\d+(?:\.\d+)?\s*(?:mg|mcg|ml|miu|iu|g|vials?|vails?|bottles?|packs?|tablets?|doses?)|injection|infusion|tablets?|capsules?|syrup|suspension|vaccine|syringes?|needles?|cream|ointment|diluent|dropper)\b/i;
+export const generalStandaloneQuantity = /^\d+(?:,\d{3})*(?:\.\d+)?\s*(?:vials?|boxes?|packs?|blisters?|strips?|doses?|units?|bottles?|tablets?|capsules?|sachets?|tests?|pieces?)\s*[.!]?$/i;
 function productLike(value: string) { return /[a-z]/i.test(value) && (/\d/.test(value) || productSignal.test(value) || /\s(?:[-–—:=]\s*)?(?:(?:currently )?out of stock|(?:not )?(?:currently )?in stock|(?:currently )?unavailable|oos)[.!]?$/i.test(value)); }
 const stockHeading = /^(?:(?:we are )?(?:currently )?(?:out of stock|not currently in stock|not in stock|currently unavailable|unavailable|oos)(?: for (?:the )?following (?:items|products))?|we (?:will now|can) prepare the following items(?: we have in stock)? for delivery|available(?: products| items)?|in stock|(?:items|products) (?:in stock|available))\s*[:.!]?$/i;
 const note = /^(?:(?:please|pls|kindly)\s+)?(?:deliver(?: it| the order| these items)?|make (?:it|the order) available)\s+(?:on time|(?:by|on|at|before|after)\s+)?(?:tomorrow|today|tonight|(?:this |next )?(?:morning|afternoon|evening)|as soon as possible)(?:\s+(?:morning|afternoon|evening))?(?:[, ]+(?:please|thanks|thank you))?[.!]?$/i;
@@ -113,6 +114,9 @@ export function recognizeGeneralDocument(text: string, classify?: (line: string)
       line.auditText = phrase.value || (phrase.boundary ? 'Available products:' : '');
       if (phrase.boundary || phrase.kind === 'INTRODUCTORY_TEXT') section = 'products';
       continue;
+    }
+    if (generalStandaloneQuantity.test(value)) {
+      finish(); line.kind = 'FIELD_VALUE'; line.field = 'quantity'; line.auditText = `Qty: ${value}`; continue;
     }
     if (pending && !productSignal.test(value) && !/[:;=：]|[-–—]\s*\d|\d\s*\/\s*\d/.test(value) && !stockHeading.test(value) && !note.test(value) && classified?.category !== 'administrative' && (!label || pending.field === 'delivery' && /^facility$/i.test(value))) {
       line.kind = 'FIELD_VALUE'; line.field = pending.field; line.labelLine = pending.labelLine;

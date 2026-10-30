@@ -1,5 +1,6 @@
-import { compareGeneralProducts, enforceGeneralProductAssignments, enforceGeneralIdentityMatches, normalizeGeneralProductName, parseGeneralProducts, runGeneralAuditor, summarizeGeneralProducts, type GeneralAuditSupport } from './generalAuditor';
+import { compareGeneralProducts, enforceGeneralProductAssignments, enforceGeneralIdentityMatches, normalizeGeneralProductName, parseGeneralProducts, runGeneralAuditor, summarizeGeneralProducts, type GeneralAuditSupport, type GeneralComparisonItem } from './generalAuditor';
 import { traceGeneralAudit } from './generalAuditDebug';
+import { assertGeneralProductEvidence } from './generalProductEvidence';
 
 export interface GeneralAuditInputs {
   whatsappMessage: string;
@@ -26,6 +27,7 @@ export function completeGeneralAuditRun<T extends Record<string, unknown>>(run: 
       (record.auditEngine === 'general-catalog-v3' && record.comparisonMode === 'product_names_quantities')) &&
     record.whatsappMessage === run.inputs.whatsappMessage.trim() && record.fulfillmentConfirmation === run.inputs.fulfillmentConfirmation.trim() &&
     Array.isArray(record.items) && record.generalAudit && record.meta && typeof record.allMatch === 'boolean' && typeof record.issueCount === 'number') {
+    assertGeneralProductEvidence(record.items as GeneralComparisonItem[]);
     return { ...record, ...run.inputs } as unknown as T & ReturnType<typeof runGeneralAuditor>;
   }
   const serverResult = record.auditEngine === 'general-deterministic-v1' &&

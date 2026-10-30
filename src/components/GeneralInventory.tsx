@@ -3,6 +3,7 @@ import { generalProductDisplayName, type GeneralComparisonItem } from '../utils/
 import type { GeneralAuditDetails, GeneralProductVerification as Verification } from '../utils/generalAuditTypes';
 import GeneralProductVerification from './GeneralProductVerification';
 import { GeneralOrderLimitPrompt } from './GeneralFulfillmentSummary';
+import { generalProductDecisionEvidence } from '../utils/generalProductEvidence';
 
 // Source evidence binds deferred and confirmed products to the same inventory card.
 export function generalInventoryRows(items: GeneralComparisonItem[], details: GeneralAuditDetails) {
@@ -67,11 +68,16 @@ export default function GeneralInventory({ items, details, onConfirm, onOrderLim
         {quantity?.outOfStockQuantity !== undefined && <p className="text-amber-800">Out of stock: {quantity.outOfStockQuantity} {quantity.conversion?.unit || quantity.requestedUnit}</p>}
         <div className="pt-3 space-y-3">
         <div className="space-y-1 text-slate-700">
-          <p>Customer: {product?.productName || [...new Set(requested.map(source => source.name))].join('; ') || 'Not requested'}</p>
+          <p>Customer: {product?.productName || [...new Set(requested.map(source => source.name))].join('; ') || (quantity?.identityReviewRequired ? 'Not provided' : 'Not requested')}</p>
           <p>Fulfilment: {[...new Set(fulfilled.map(source => source.name))].join('; ') || 'Not fulfilled'}</p>
         </div>
+        <dl className="space-y-2 text-slate-600" aria-label="Product decision evidence">
+          {generalProductDecisionEvidence(compared).map(row => <div key={row.label}>
+            <dt className="font-semibold">{row.label}</dt><dd className="whitespace-pre-wrap">{row.value}</dd>
+          </div>)}
+        </dl>
         <p role="status" className={`font-semibold ${requiresReview || pendingConfirmation ? 'text-amber-800' : discrepancy ? 'text-red-800' : 'text-green-700'}`}>Product: {productStatus}</p>
-        {requiresReview && product.reason && <p className="text-amber-800">{product.reason}</p>}
+        {requiresReview && product?.reason && <p className="text-amber-800">{product.reason}</p>}
         {details.productComparisonMode !== 'names_only' && <p className={/Required|Awaiting|OUT OF STOCK/.test(quantityStatus) ? 'text-amber-800' : /Discrepancy/.test(quantityStatus) ? 'text-red-800' : 'text-slate-700'}>Quantity: {quantity?.quantityError || (pendingConfirmation && comparable && suppliedQuantity > 0 && suppliedQuantity < requestedQuantity ? 'Order Limit Verification Required — confirm product first' : quantityStatus)}</p>}
         {!details.productComparisonMode && <p className="text-slate-600">Dosage / formulation: {requiresReview ? 'Review Product Log alias' : pendingConfirmation ? 'Customer confirmation required' : discrepancy ? 'Review product discrepancy' : product?.confirmation ? 'Confirmed with customer' : 'No confirmation required'}</p>}
         {quantity?.conversion && <p>Packaging conversion: {quantity.conversion.description}</p>}

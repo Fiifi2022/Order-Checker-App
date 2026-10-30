@@ -1257,7 +1257,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         </div>
                         <div>
                           <h3 className="font-black text-[#3B1A5E] text-lg leading-tight md:text-xl flex items-center gap-2 flex-wrap">
-                            {generalDecisionReview ? 'REVIEW REQUIRED' : generalDetails?.finalStatus || result.verdict}
+                            {result.allMatch && generalDetails ? 'ORDER CONFIRMED, CLEAR TO LAUNCH' : generalDecisionReview ? 'REVIEW REQUIRED' : generalDetails?.finalStatus || result.verdict}
                             <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-mono font-medium">{result.storage?.status==='saved'?'Saved audit':'Session Log'}</span>
                             {verificationTime !== null && (
                               <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded font-mono font-semibold flex items-center gap-1">
@@ -1268,7 +1268,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                           </h3>
                           {generalDetails && result.issueCount > 0 ? <GeneralDiscrepancySubtitle discrepancies={generalDetails.discrepancies} /> : (
                           <p className="text-xs text-slate-500 mt-1 sm:mt-0">
-                            {generalDetails?.message || (result.allMatch
+                            {result.allMatch && generalDetails ? 'All audit checks cleared.' : generalDetails?.message || (result.allMatch
                               ? 'Confirmed — No discrepancy. Stock availability and any confirmed order limits are recorded below.'
                               : generalDetails?.pendingOrderLimitCount && result.issueCount === 0
                                 ? 'Answer the Order Limit question for each reduced quantity before confirming.'
@@ -1282,7 +1282,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         <span className={`text-[10px] font-mono px-3 py-1.5 rounded-full font-bold shadow-sm uppercase ${
                           result.allMatch ? 'bg-green-100 text-green-805' : generalDecisionReview || (generalReviewRequired || generalDetails?.pendingOrderLimitCount) && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
                         }`}>
-                          {result.allMatch ? generalDetails ? 'NO DISCREPANCY' : 'VERIFIED MATCH' : generalDecisionReview ? 'REVIEW REQUIRED' : result.issueCount > 0 ? 'DISCREPANCY' : generalDetails?.auditSummary?.missingRequiredCount ? 'MISSING REQUIRED INFORMATION' : generalDetails?.productTotals?.quantityReview && result.issueCount===0 ? 'QUANTITY REVIEW REQUIRED' : generalReviewRequired && result.issueCount === 0 ? 'CLARIFICATION REQUIRED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
+                          {result.allMatch ? generalDetails ? 'ORDER CONFIRMED' : 'VERIFIED MATCH' : generalDecisionReview ? 'REVIEW REQUIRED' : result.issueCount > 0 ? 'DISCREPANCY' : generalDetails?.auditSummary?.missingRequiredCount ? 'MISSING REQUIRED INFORMATION' : generalDetails?.productTotals?.quantityReview && result.issueCount===0 ? 'QUANTITY REVIEW REQUIRED' : generalReviewRequired && result.issueCount === 0 ? 'CLARIFICATION REQUIRED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
                         </span>
                         {result.allMatch ? (
                           <button

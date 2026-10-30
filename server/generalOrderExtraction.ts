@@ -1,4 +1,4 @@
-import { recognizeGeneralDocument } from '../src/utils/generalDocumentStructure';
+import { recognizeGeneralDocument, generalDocumentLabel, generalStandaloneQuantity } from '../src/utils/generalDocumentStructure';
 import { isGeneralKnownProductDescription } from '../src/utils/generalProductMatching';
 import { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 import { getCatalogRevision } from '../shared/productCatalog';
@@ -130,7 +130,8 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
   const output: string[] = [];
   const quantityReviews: NonNullable<DeterministicGeneralOrder['quantityReviews']> = [];
   const pending: { index: number; name: string }[] = [];
-  const quantities: { index: number; value: string }[] = [];
+  const quantities: { index: number; value: string; originalText: string }[] = [];
+  const originalQuantities = raw.split(/\r?\n/).filter(line => generalDocumentLabel(line)?.field === 'quantity' || generalStandaloneQuantity.test(line.trim()));
   for (const rawLine of prepared.split(/\r?\n/)) {
     if (!rawLine.trim()) continue;
     const normalized = normalizeGeneralQuantityText(rawLine);
@@ -142,7 +143,7 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
     if (isMetadataLabel(line.split(/[:=]/)[0]) && !/^(?:quantity|qty|amount)\b/i.test(line)) { output.push(line.replace(/[.!]+$/, '')); continue; }
     const amount = line.match(quantityOnly);
     if (amount && (/^(?:quantity|qty|amount)\b/i.test(line) || amount[2])) {
-      quantities.push({ index: output.length, value: `${amount[1]}${amount[2] ? ` ${amount[2]}` : ''}` });
+      quantities.push({ index: output.length, value: `${amount[1]}${amount[2] ? ` ${amount[2]}` : ''}`, originalText: originalQuantities[quantities.length] || rawLine });
       output.push(line); continue;
     }
     const requested = cleanRequest(line);
@@ -167,11 +168,12 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
   // Pair nearby labelled products/quantities in sequence; never zip two product lists
   // to an unrelated block of numbers. A single product may span metadata/clinical lines.
   const used = new Set<number>();
+  const quantifiedProducts = output.flatMap(line => parseGeneralProducts(line, source));
   for (const item of pending) {
     // A block of product names followed by a block of quantities has no explicit pairing.
     if (pending.some(other => other.index < item.index && !quantities.some(q => q.index > other.index && q.index < item.index))) continue;
     const candidates = quantities.filter(q => !used.has(q.index) &&
-      (q.index === item.index + 1 || q.index === item.index - 1 || pending.length === 1 && quantities.length === 1));
+      (q.index === item.index + 1 || q.index === item.index - 1 || pending.length === 1 && quantities.length === 1 && !quantifiedProducts.length));
     if (candidates.length !== 1) continue;
     const q = candidates[0];
     if (q.index !== item.index + 1 && pending.some(other => other !== item && other.index === q.index - 1)) continue;
@@ -180,6 +182,8 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
     output[q.index] = '';
     used.add(q.index);
   }
+  for (const q of quantities.filter(q => !used.has(q.index))) quantityReviews.push({originalText: q.originalText,
+    reason: 'A quantity is stated, but its requested product is not uniquely established. Confirm the product and quantity association.'});
   text = improved ? output.join('\n') : raw;
   let extracted = extractGeneralInput(text, source, reference?.ordererName || 'N/A', reference?.facilityName || 'N/A');
   if (extracted.facilityName === 'N/A') {

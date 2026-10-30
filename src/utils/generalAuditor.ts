@@ -27,6 +27,8 @@ export interface GeneralProductEvidence {
   matchedProductKey?: string;
   matchingStage?: GeneralMatchingStage;
   canonicalId?: string;
+  catalogMatchMethod?: string;
+  sourceOriginalText?: string;
   normalizedName: string;
   quantity: number;
   ratioRequestedQuantity?: number;
@@ -935,8 +937,8 @@ export function reconcileGeneralProductReviews(items: GeneralComparisonItem[], r
 
 /** Rebuild every product-derived total while retaining authoritative header checks. */
 export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFacilityResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = [], parameters: Pick<GeneralAuditDetails, 'dropArea' | 'district' | 'productVerifications' | 'extraction' | 'decision'> = {}) {
-  const unresolvedProduct = (item: GeneralComparisonItem) => item.fulfillment.fulfillmentStatus === 'discrepancy' &&
-    item.provenance.length > 0 && item.provenance.some(p => p.matchedProductKey?.startsWith('unresolved:'));
+  const unresolvedProduct = (item: GeneralComparisonItem) => item.fulfillment.fulfillmentStatus === 'discrepancy' && !item.fulfillment.identityConflictConfirmed &&
+    (item.fulfillment.identityReviewRequired || item.provenance.length > 0 && item.provenance.some(p => p.matchedProductKey?.startsWith('unresolved:')));
   parameters = {...parameters,
     ...(parameters.dropArea ? {dropArea: {...parameters.dropArea, status: 'informational' as const}} : {}),
     ...(parameters.district ? {district: {...parameters.district, status: 'informational' as const}} : {})};
@@ -1027,6 +1029,7 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   const facilityReview = facilityName.status === 'review required';
   const reviewRequiredCount = quantityReviewCount + Number(facilityReview) + Number(ordererReview && !reviewNotices.some(notice => notice.field === 'ordererName')) + essentialReviewCount + missingRequired.length + optionalReviews.length;
   if (reviewRequiredCount) auditSummary.reviewRequiredCount = reviewRequiredCount;
+  if (reviewRequiredCount || pendingOrderLimitCount) auditSummary.confidence = Math.min(99, auditSummary.confidence);
   const allMatch = summary.allMatch && !items.some(unresolvedProduct) && quantityReviewCount === 0 && pendingOrderLimitCount === 0 && !facilityReview && !ordererReview && essentialReviewCount === 0 && missingRequired.length === 0;
   const decision = summary.issueCount > 0 ? 'discrepancy' : allMatch ? 'match' : 'review';
   const finalStatus = decision === 'discrepancy' ? 'DISCREPANCY DETECTED' : allMatch ? 'NO DISCREPANCY' : 'REVIEW REQUIRED';

@@ -1,8 +1,9 @@
-import { generalDocumentLabel, generalNonProductPhrase, recognizeGeneralDocument } from './generalDocumentStructure';
+import { generalDocumentLabel, generalNonProductPhrase, recognizeGeneralDocument, generalStandaloneQuantity } from './generalDocumentStructure';
 /** General Auditor only. Unknown text remains unresolved; a date, number or
  * delivery keyword by itself never proves that a line is administrative. */
 export type GeneralTextCategory = 'mandatory_order' | 'optional_order' | 'administrative' | 'unresolved_order';
 export interface GeneralTextClassification { category: GeneralTextCategory; reason: string; orderChange?: boolean }
+export type GeneralAuditLineKind = 'facility_identity' | 'orderer_identity' | 'product_request' | 'product_quantity' | 'product_amendment' | 'optional_metadata' | 'administrative' | 'unknown';
 
 const change = /\b(?:change(?:d)?|amend(?:ed)?|correct(?:ed)?|increase(?:d)?|decrease(?:d)?|reduce(?:d)?|replace(?:d)?|switch(?:ed)?|substitute(?:d)?|cancel(?:led|ed)?|remove(?:d)?)\b[^.!?\n]*\b(?:orders?|quantit(?:y|ies)|\d+|from\s+\d|\d+\s+(?:to|instead)|products?|medicin(?:e|es)|tablets?|bottles?|vials?|doses?|facility|hospital|clinic|chps|orderer|recipient|destination|district|drop\s*(?:site|area)|drop[- ]?off|location)\b/i;
 const revisedQuantity = /\b(?:send|deliver|use|supply)\b[^.!?\n]*\b(?:instead(?: of)?|rather than)\b/i;
@@ -16,9 +17,10 @@ const nonOrderHeading = /^(?:(?:patient|client)(?:\s*\/\s*(?:patient|client))?(?
 // Four compulsory parameters only. Optional metadata is retained in the raw
 // source, but cannot become product evidence or a compulsory review.
 const excludedMetadata = /^(?:(?:district|region|sub[- ]?district|dropsite|drop site|delivery\s*\/\s*drop area|delivery drop area|delivery area|drop area|drop location|delivery location|delivery instructions?|delivery date|delivery time|gps(?: coordinates)?|coordinates?|latitude|longitude|tracking(?: link| number)?|order\s*(?:id|number|reference)|reference(?: number)?|date|contact(?: details?| numbers?)?|phone(?: numbers?)?|telephone|tel|mobile(?: numbers?)?|priority(?: reason)?|delivery priority|budget holder|notes?)\s*[:;=–—-]|(?:(?:please|kindly)\s+)?(?:deliver|dispatch)(?:\s+(?:it|them|the order|these items))?\s+(?:to|at|behind|before|after|between|on|tomorrow|today|urgently)\b)/i;
+const patientContactOrInsurance = /^(?:(?:patient|client)(?:['’]s)?\s+(?:contact|phone|telephone|tel|mobile)(?:\s+(?:details?|numbers?))?\s*[:;=–—-]|nhis(?:\s|[-:;=–—]|$)|(?:non[- ]?)?insured\s*$|insurance\s+(?:status|details?)\s*[:;=–—-])/i;
 export function generalCompulsoryText(value: string): string {
   const optionalChange = /^(?:(?:please|kindly)\s+)?(?:use|change|update|correct)\s+(?:the\s+)?(?:(?:new|different|updated)\s+)?(?:district|region|dropsite|drop site|drop area|delivery location|delivery instructions?|date|phone|contact|gps|coordinates?)\b/i;
-  if (!excludedMetadata.test(value.trim()) && !optionalChange.test(value.trim())) return value;
+  if (!excludedMetadata.test(value.trim()) && !optionalChange.test(value.trim()) && !patientContactOrInsurance.test(value.trim())) return value;
   // Keep the actual order clause in mixed text, without interpreting the
   // surrounding location, date or contact number as part of the product.
   const directives = /\b(?:(?:please|pls|kindly)\s+)?(?:(?:we|i)\s+(?:need|want|require|request)|send|supply|include|add|replace|substitute|increase|decrease|reduce|remove|cancel|change|amend|correct)\b/gi;
@@ -35,6 +37,7 @@ export function generalCompulsoryText(value: string): string {
 export function isGeneralNonOrderInformation(value: string): boolean {
   const text = value.trim().replace(/^[•*]\s*/, '').replace(/[.!]+$/, '').trim();
   if (!text || essentialInstruction.test(text)) return false;
+  if (patientContactOrInsurance.test(text)) return true;
   if (nonOrderLabel.test(text) || nonOrderHeading.test(text)) return true;
   if (/^(?:(?:patient|client)(?:['’]s)?\s+(?:name|age|sex|gender)|name of (?:patient|client)|status(?: description)?|clinical(?:\s+(?:condition|history|observations?))?|symptoms?|observations?|test results?)\s+.+$/i.test(text)) return true;
   if (/^\d{1,3}\s*(?:years?|yrs?)(?:\s*old)?$/i.test(text)) return true;
@@ -163,6 +166,22 @@ export function classifyGeneralText(raw: string): GeneralTextClassification {
   const clauses = sentences(text);
   if (text && clauses.length && clauses.every(administrativeClause)) return { category: 'administrative', reason: 'Routine notification, service contact or courtesy text; no order instruction.' };
   return { category: 'unresolved_order', reason: 'Text is not confidently classified as administrative information.' };
+}
+
+/** Shared pre-audit roles; quantity declarations never establish a product identity. */
+export function classifyGeneralAuditLine(raw: string): GeneralAuditLineKind {
+  const text = raw.trim().replace(/^(?:[-*•]\s+|\d+[.)]\s+)/, '');
+  const classified = classifyGeneralText(text);
+  if (classified.orderChange) return 'product_amendment';
+  if (isGeneralNonOrderInformation(text) || !generalCompulsoryText(text).trim()) return 'optional_metadata';
+  if (classified.category === 'administrative') return 'administrative';
+  const label = generalDocumentLabel(text);
+  if (label?.field === 'facility') return 'facility_identity';
+  if (label?.field === 'orderer') return 'orderer_identity';
+  if (label?.field === 'quantity' || generalStandaloneQuantity.test(text)) return 'product_quantity';
+  if (label && ['district', 'delivery', 'date'].includes(label.field)) return 'optional_metadata';
+  const line = recognizeGeneralDocument(text, classifyGeneralText).lines[0];
+  return line?.kind === 'PRODUCT_ENTRY' ? 'product_request' : 'unknown';
 }
 /** Preserve line positions for quantity provenance; never rewrite source orders. */
 export function generalOrderRelevantText(text: string) {

@@ -6,6 +6,7 @@ import { getGeneralVaccineCatalogVersion } from '../shared/generalVaccineCatalog
 import { getCatalogRevision } from '../shared/productCatalog';
 import { extractGeneralOrderDeterministically, redactGeneralClinicalText, structuredGeneralOrderSchema, validateStructuredGeneralOrder, type DeterministicGeneralOrder, type StructuredGeneralOrder } from './generalOrderExtraction';
 import { parseGeneralProducts, type GeneralAuditSupport } from './generalAuditor';
+import { stripGeneralNonOrderInformation } from '../src/utils/generalTextClassification';
 import { generalEssentialReviewNotices } from '../src/utils/generalAuditReviews';
 import type { GeneralSemanticReview } from '../src/utils/generalAuditTypes';
 import { findGeneralFacilityNames, normalizeGeneralFacilityName, generalFacilityContextSignature } from '../src/utils/generalFacility';
@@ -52,7 +53,7 @@ export async function resolveGeneralOrderExtraction(customer: DeterministicGener
   if ((support.semanticTimeoutMs ?? 3000) <= 0 || support.signal?.aborted) return base('fallback', 'AI time budget unavailable; deterministic fields retained for manual review');
   const requests = Object.fromEntries(needed.map(([side, input]) => {
     const snippets = input.unresolvedText.length ? input.unresolvedText : input.text.split('\n').filter(line => !parseGeneralProducts(line, side === 'customer' ? 'customer_request' : 'fulfillment_confirmation').length && !/^\s*(?:facility|orderer|name of orderer|name of health facility|contact|phone|district|delivery|drop area)\s*:/i.test(line));
-    const safeSnippets = redactGeneralClinicalText(snippets.join('\n')).split('\n').filter(Boolean);
+    const safeSnippets = redactGeneralClinicalText(stripGeneralNonOrderInformation(snippets.join('\n'))).split('\n').filter(Boolean);
     const words = new Set(safeSnippets.join(' ').toLowerCase().match(/[\p{L}]{5,}/gu) || []);
     const facilityCandidates = input.order.unresolvedFields.includes('facilityName')
       ? (support.facilityContext?.records || []).filter(record => [record.name, ...(record.verifiedAliases || [])].some(name =>

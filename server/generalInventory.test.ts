@@ -7,6 +7,8 @@ import { runGeneralAuditor, applyGeneralProductConfirmation } from './generalAud
 import { restoreGeneralProductConfirmations } from '../src/utils/generalProductConfirmationPersistence';
 import Inventory, { generalInventoryRows } from '../src/components/GeneralInventory';
 import { generalProductConfirmationHandler } from './generalProductConfirmation';
+import { runGeneralProductNameAudit } from './generalProductNameAudit';
+import { completeGeneralAuditRun, createGeneralAuditRun } from '../src/utils/generalAuditRun';
 
 const customer = 'Orderer: John Mensah\nFacility: Alpha HC\nParacetamol 500mg 20/20\nORS - 10';
 const fulfillment = 'Orderer: John Mensah\nFacility: Alpha HC\nParacetamol 500mg Tablet — 2 supplied\nORS [5/10]';
@@ -17,6 +19,77 @@ function audit(request = customer, supplied = fulfillment) {
 const markup = (record: ReturnType<typeof audit>) => renderToStaticMarkup(createElement(Inventory, {
   items: record.items, details: record.generalAudit, onConfirm: async () => {}, onOrderLimit() {},
 })).replace(/<!--.*?-->/g, '');
+
+async function completedCatalogAudit(product: string) {
+  const catalog = { revision: 1, products: defaultProducts() };
+  applyCatalog(catalog);
+  const inputs = { whatsappMessage: `Orderer: Grace\nFacility: Example HC\n${product} 2`,
+    fulfillmentConfirmation: `Orderer: Grace\nFacility: Example HC\n${product} [2/2]` };
+  const backend = await runGeneralProductNameAudit(inputs.whatsappMessage, inputs.fulfillmentConfirmation,
+    catalog, { semanticTimeoutMs: 0 }, () => { throw new Error('No Gemini expected'); });
+  return completeGeneralAuditRun(createGeneralAuditRun(inputs, 1, {}, {}, true),
+    JSON.parse(JSON.stringify({ ...backend, ...inputs })));
+}
+
+test('catalogue identity review renders without an optional verification record', async () => {
+  const record = await completedCatalogAudit('Unknown remedy');
+  assert.equal(record.generalAudit.decision, 'review');
+  assert.ok(record.items.some(item => item.fulfillment.identityReviewRequired));
+  assert.equal(record.generalAudit.productVerifications?.length || 0, 0);
+  for (const productVerifications of [undefined, []]) {
+    const html = markup({ ...record, id: 'review',
+      generalAudit: { ...record.generalAudit, productVerifications } });
+    assert.match(html, /Review Required/);
+    assert.match(html, /Unknown remedy/);
+    assert.doesNotMatch(html, /Product Discrepancy|Quantity Discrepancy/);
+  }
+});
+
+test('finishing and rerunning an audit keeps the client mounted and preserves source messages', async () => {
+  const { parseHTML } = await import('linkedom');
+  const { window } = parseHTML('<html><body><div id="inventory"></div></body></html>');
+  const previous = { window: globalThis.window, document: globalThis.document, act: (globalThis as any).IS_REACT_ACT_ENVIRONMENT };
+  Object.assign(globalThis, { window, document: window.document, IS_REACT_ACT_ENVIRONMENT: true });
+  const { act, useState } = await import('react');
+  const { createRoot } = await import('react-dom/client');
+  const errors: unknown[] = [];
+  const root = createRoot(window.document.getElementById('inventory')!, { onUncaughtError: error => errors.push(error) });
+  function Harness() {
+    const [record, setRecord] = useState<Awaited<ReturnType<typeof completedCatalogAudit>> | null>(null);
+    const [product, setProduct] = useState('Unknown remedy');
+    return createElement('section', {},
+      createElement('input', { value: product, onChange: (event: any) => setProduct(event.target.value) }),
+      createElement('button', { onClick: async () => setRecord(await completedCatalogAudit(product)) }, 'Run audit'),
+      record && createElement('div', { 'data-audit-result': true },
+        createElement('p', {}, record.whatsappMessage), createElement('p', {}, record.fulfillmentConfirmation),
+        createElement(Inventory, { items: record.items, details: record.generalAudit, onOrderLimit() {} })));
+  }
+  try {
+    await act(async () => root.render(createElement(Harness)));
+    const clickAudit = async () => {
+      const button: any = window.document.querySelector('button');
+      const props = button[Object.keys(button).find(key => key.startsWith('__reactProps'))!];
+      await act(async () => { await props.onClick(); });
+    };
+    await clickAudit();
+    assert.deepEqual(errors, []);
+    assert.ok(window.document.querySelector('input'), 'Audit completion must not unmount the input form');
+    assert.match(window.document.querySelector('[data-audit-result]')!.textContent!, /Review Required/);
+    assert.match(window.document.body.textContent!, /Unknown remedy \[2\/2\]/);
+    const input: any = window.document.querySelector('input');
+    assert.equal(input.value, 'Unknown remedy');
+    const props = input[Object.keys(input).find(key => key.startsWith('__reactProps'))!];
+    await act(async () => props.onChange({ target: { value: 'Malaria Rapid Diagnostic Test Kit' } }));
+    await clickAudit();
+    assert.deepEqual(errors, []);
+    assert.equal(input.value, 'Malaria Rapid Diagnostic Test Kit');
+    assert.match(window.document.querySelector('[data-audit-result]')!.textContent!, /MATCH/);
+    assert.doesNotMatch(window.document.querySelector('[data-audit-result]')!.textContent!, /Unknown remedy|Review Required/);
+  } finally {
+    await act(async () => root.unmount());
+    Object.assign(globalThis, { window: previous.window, document: previous.document, IS_REACT_ACT_ENVIRONMENT: previous.act });
+  }
+});
 
 test('all comparisons include deferred products and summary quantities without a repeated quantity row', () => {
   const record = audit();
