@@ -7,7 +7,8 @@ import { needsProductCatalog } from './server/catalogReadPolicy';
 import { currentBlueprintHandler, facilityQuantitiesHandler } from './server/currentBlueprint';
 import { coalesceFreshRead, readSnapshot, firestoreReadContext, firestoreReadReport } from './server/firestoreReads';
 import { auditReadBudget, auditRemainingMs, startAuditBudget, optionalAuditAi, auditSignal, auditTiming } from './server/auditBudget';
-import { AUDIT_AI_FALLBACK_MS, auditTimeoutSetting } from './shared/auditPerformance';
+import { AUDIT_AI_FALLBACK_MS, AUDIT_BACKGROUND_WAIT_MS, auditTimeoutSetting } from './shared/auditPerformance';
+import { startGeneralAuditReferenceReads } from './server/generalAuditReferenceReads';
 import { activeGeneralFacilities, excludedGeneralFacilities, changeGeneralFacilityDirectory, emptyGeneralFacilityDirectory, generalFacilityDirectoryHandlers } from './server/generalFacilityDirectory';
 import type { GeneralFacilityDirectoryState } from './shared/generalFacilityDirectory';
 import { blueprintFacilityChoices } from './server/fsAllocation';
@@ -274,6 +275,14 @@ app.post('/api/products/suggest-aliases', catalogAliasAssistant({ read: readProd
 app.use('/api', async (req, res, next) => {
   if (!needsProductCatalog(req.method, req.path)) { next(); return; }
   try {
+    if (req.method === 'POST' && req.path === '/verify' &&
+      (req.body?.auditScope === 'general_auditor' || req.body?.auditMode === 'whatsapp_and_fulfillment') &&
+      req.body?.auditScope !== 'vaccine_checker' && normalizeCompanionAuditMode(req.body?.auditMode) !== 'fulfillment_only' &&
+      typeof req.body?.whatsappMessage === 'string' && typeof req.body?.fulfillmentConfirmation === 'string') {
+      res.locals.auditReferenceReads = startGeneralAuditReferenceReads(
+        () => auditReadBudget(req, readManagedGeneralDirectory), readCurrentBlueprintSheets,
+        Math.min(1200, auditRemainingMs(req)));
+    }
     const catalog = await (auditTiming(req)?.measureAsync('catalogRead', () => auditReadBudget(req, readProductCatalog)) ?? auditReadBudget(req, readProductCatalog));
     res.locals.auditCatalog = catalog;
     if (req.path === '/verify' && req.body?.productCatalogRevision !== undefined && req.body.productCatalogRevision !== catalog.revision) {
@@ -1054,12 +1063,17 @@ app.post('/api/verify', async (req, res) => {
       // Do not silently resurrect removed facilities if the saved reference cannot be read.
       const readFacilityContext = async () => {
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const optionalSheets = Promise.race([
+        const optionalSheets = res.locals.auditReferenceReads?.identity || Promise.race([
           readCurrentBlueprintSheets(),
           new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Identity reference unavailable')), Math.min(1200, auditRemainingMs(req))); })
         ]).then(sheets => ({ sheets }), () => ({ sheets: null })).finally(() => clearTimeout(timer));
         const [managedDirectory, identity] = await Promise.all([
-          auditReadBudget(req, readManagedGeneralDirectory).catch(() => { throw Object.assign(new Error('Facility list unavailable. Retry before dispatch.'), { status: 503 }); }), optionalSheets
+          (res.locals.auditReferenceReads?.directory
+            ? res.locals.auditReferenceReads.directory.then((result: {value?: GeneralFacilityDirectoryState; error?: unknown}) => {
+              if (!result.value) throw result.error || new Error('Facility list unavailable');
+              return result.value;
+            }) : auditReadBudget(req, readManagedGeneralDirectory))
+            .catch(() => { throw Object.assign(new Error('Facility list unavailable. Retry before dispatch.'), { status: 503 }); }), optionalSheets
         ]);
         return readGeneralFacilityContext(async () => { if (!identity.sheets) throw new Error('Identity reference unavailable'); return identity.sheets; },
           Math.max(1, auditRemainingMs(req)), activeGeneralFacilities(managedDirectory), excludedGeneralFacilities(managedDirectory))
@@ -1087,7 +1101,7 @@ app.post('/api/verify', async (req, res) => {
         suggestCatalogueAliases: async suggestions => {
           res.locals.auditCatalog=await queueCatalogueAliasSuggestions(suggestions,res.locals.authUser?.email || res.locals.authUser?.id || 'audit');
         },
-        osuItems, facilityContext, semanticTimeoutMs: Math.max(0, Math.min(auditTimeoutSetting(process.env.AUDIT_AI_TIMEOUT_MS, AUDIT_AI_FALLBACK_MS, 100, 15_000), auditRemainingMs(req) - 250)),
+        osuItems, facilityContext, semanticTimeoutMs: Math.max(0, Math.min(AUDIT_AI_FALLBACK_MS, auditTimeoutSetting(process.env.AUDIT_AI_TIMEOUT_MS, AUDIT_AI_FALLBACK_MS, 100, 15_000), auditRemainingMs(req) - 250)),
         signal: auditSignal(req), timing: auditTiming(req), semanticCacheScope: res.locals.authUser?.id,
       }, getGeminiClient))) };
     } else {
@@ -2177,7 +2191,7 @@ app.post('/api/verify', async (req, res) => {
 
     // A timeout means pending confirmation, never an unconfirmed success or
     // a fabricated database failure. The background write updates this record.
-    await auditStorage.persist(auditRecord, Math.max(1, Math.min(1500, auditRemainingMs(req))));
+    await auditStorage.persist(auditRecord, Math.max(1, Math.min(isGeneralAuditor ? AUDIT_BACKGROUND_WAIT_MS : 1500, auditRemainingMs(req))));
 
     return res.json(isGeneralAuditor && body.includeProductCatalog === true ? { ...auditRecord, productCatalog: res.locals.auditCatalog } : auditRecord);
   } catch (error: any) {

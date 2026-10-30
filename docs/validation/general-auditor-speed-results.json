@@ -1,0 +1,216 @@
+{
+  "date": "2026-10-30",
+  "scope": "Synthetic local measurements, not deployed end-to-end latency",
+  "before": {
+    "scope": "Local in-process current catalogue engine; synthetic inputs; no network, authentication, Firestore or browser rendering",
+    "facilityRecords": 1509,
+    "products": 410,
+    "samples": 18,
+    "meanMs": 80.93,
+    "p95Ms": 146.87,
+    "maxMs": 146.87,
+    "geminiCalls": 0,
+    "runs": [
+      {
+        "name": "alias match",
+        "ms": 140.15,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "six products",
+        "ms": 71.56,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "stockout",
+        "ms": 58.15,
+        "decision": "match"
+      },
+      {
+        "name": "quantity discrepancy",
+        "ms": 60.7,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "missing evidence",
+        "ms": 135.76,
+        "decision": "review"
+      },
+      {
+        "name": "natural language",
+        "ms": 146.87,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "alias match",
+        "ms": 48.42,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "six products",
+        "ms": 59.85,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "stockout",
+        "ms": 48.09,
+        "decision": "match"
+      },
+      {
+        "name": "quantity discrepancy",
+        "ms": 48.77,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "missing evidence",
+        "ms": 107.76,
+        "decision": "review"
+      },
+      {
+        "name": "natural language",
+        "ms": 120.23,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "alias match",
+        "ms": 49.81,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "six products",
+        "ms": 60.14,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "stockout",
+        "ms": 48.55,
+        "decision": "match"
+      },
+      {
+        "name": "quantity discrepancy",
+        "ms": 48.71,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "missing evidence",
+        "ms": 97.03,
+        "decision": "review"
+      },
+      {
+        "name": "natural language",
+        "ms": 106.24,
+        "decision": "discrepancy"
+      }
+    ]
+  },
+  "after": {
+    "scope": "Local in-process current catalogue engine; synthetic inputs; no network, authentication, Firestore or browser rendering",
+    "facilityRecords": 1509,
+    "products": 410,
+    "samples": 18,
+    "meanMs": 76.66,
+    "p95Ms": 138.54,
+    "maxMs": 138.54,
+    "geminiCalls": 0,
+    "runs": [
+      {
+        "name": "alias match",
+        "ms": 138.54,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "six products",
+        "ms": 70.8,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "stockout",
+        "ms": 49.72,
+        "decision": "match"
+      },
+      {
+        "name": "quantity discrepancy",
+        "ms": 52.92,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "missing evidence",
+        "ms": 120.44,
+        "decision": "review"
+      },
+      {
+        "name": "natural language",
+        "ms": 109.83,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "alias match",
+        "ms": 53.8,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "six products",
+        "ms": 58.96,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "stockout",
+        "ms": 54.29,
+        "decision": "match"
+      },
+      {
+        "name": "quantity discrepancy",
+        "ms": 51.35,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "missing evidence",
+        "ms": 106.04,
+        "decision": "review"
+      },
+      {
+        "name": "natural language",
+        "ms": 108.61,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "alias match",
+        "ms": 48.08,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "six products",
+        "ms": 58.48,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "stockout",
+        "ms": 47.6,
+        "decision": "match"
+      },
+      {
+        "name": "quantity discrepancy",
+        "ms": 47.63,
+        "decision": "discrepancy"
+      },
+      {
+        "name": "missing evidence",
+        "ms": 97.12,
+        "decision": "review"
+      },
+      {
+        "name": "natural language",
+        "ms": 105.72,
+        "decision": "discrepancy"
+      }
+    ]
+  },
+  "requestPathChanges": {
+    "optionalAiSharedBudgetMs": 4000,
+    "auditHistoryResponseWaitMs": 200,
+    "previousAuditHistoryResponseWaitMs": 1500,
+    "optionalAliasWriteWaitBudgetMs": 200,
+    "referenceReads": "fresh catalogue, required facility directory and optional Blueprint identity reads overlap after authorization"
+  },
+  "heldFirestoreWriteApiTestMs": 218.4
+}

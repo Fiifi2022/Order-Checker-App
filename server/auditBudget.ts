@@ -52,3 +52,23 @@ export async function optionalAuditAi<T>(task: (signal: AbortSignal) => Promise<
     return await waitForAudit(task(controller.signal), controller.signal);
   } finally { clearTimeout(timer); parent?.removeEventListener('abort', cancel); }
 }
+
+/** One allowance across sequential optional stages, rather than one per model call. */
+export function sharedOptionalAuditBudget(milliseconds: number) {
+  let deadline: number | undefined;
+  return () => {
+    deadline ??= performance.now() + Math.max(0, milliseconds);
+    return Math.max(0, deadline - performance.now());
+  };
+}
+
+/** Let an already-authorized write finish; report pending until it actually settles. */
+export async function waitForOptionalAuditWrite<T>(task: Promise<T>, milliseconds: number): Promise<{completed: true; value: T} | {completed: false}> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      task.then(value => ({completed: true as const, value})),
+      new Promise<{completed: false}>(resolve => {timer = setTimeout(() => resolve({completed: false}), Math.max(0, milliseconds));}),
+    ]);
+  } finally {clearTimeout(timer);}
+}

@@ -3,6 +3,8 @@ export const AUDIT_TARGET_MS = 3000;
 export const AUDIT_HARD_TIMEOUT_MS = 20_000;
 export const AUDIT_SERVER_BUDGET_MS = 18_000;
 export const AUDIT_AI_FALLBACK_MS = 4000;
+/** Optional persistence must not delay the verification result. */
+export const AUDIT_BACKGROUND_WAIT_MS = 200;
 export const AUDIT_DELAY_MESSAGE = 'Your audit is taking slightly longer than expected. Please wait while we complete the verification.';
 export const AUDIT_TIMEOUT_MESSAGE = 'The audit could not be completed within the available processing time. Please retry.';
 export function auditTimeoutSetting(value: unknown, fallback: number, minimum = 4000, maximum = 60_000) {

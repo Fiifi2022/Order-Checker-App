@@ -6,7 +6,7 @@ import { runGeneralProductNameAudit } from './generalProductNameAudit';
 import { generalInputFingerprint } from '../shared/generalAuditFingerprint';
 import { restoreGeneralProductConfirmations } from '../src/utils/generalProductConfirmationPersistence';
 import { auditReadBudget, auditRemainingMs, auditSignal, auditTiming } from './auditBudget';
-import { AUDIT_AI_FALLBACK_MS, auditTimeoutSetting } from '../shared/auditPerformance';
+import { AUDIT_AI_FALLBACK_MS, AUDIT_BACKGROUND_WAIT_MS, auditTimeoutSetting } from '../shared/auditPerformance';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -118,7 +118,7 @@ function verifyRoute(app: ReturnType<typeof fixture>) {
     },
     async readCurrentBlueprintSheets() { return [...app.records.entries()].filter(([path]) => path.startsWith('vaccine_districts/')).map(([path, value]) => ({ ...value, id: path.split('/')[1] })); },
     async readManagedGeneralDirectory() { return emptyGeneralFacilityDirectory(); }, activeGeneralFacilities, excludedGeneralFacilities,
-    auditReadBudget, auditRemainingMs, auditSignal, auditTiming, auditTimeoutSetting, process: { env: {} }, AUDIT_AI_FALLBACK_MS,
+    auditReadBudget, auditRemainingMs, auditSignal, auditTiming, auditTimeoutSetting, process: { env: {} }, AUDIT_AI_FALLBACK_MS, AUDIT_BACKGROUND_WAIT_MS,
     readGeneralFacilityContext, collection(_db: unknown, name: string) { return name; },
     async getDocs(name: string) { return { docs: [...app.records.entries()].filter(([path]) => path.startsWith(name + '/')).map(([path, value]) => ({ id: path.slice(name.length + 1), data: () => value })) }; },
     getGeminiClient() { throw new Error('No external AI allowed in this test'); }, osuItems: [], audits: [], createHash, generalInputFingerprint, restoreGeneralProductConfirmations, setTimeout, clearTimeout,
@@ -580,4 +580,26 @@ test('General verify persists four-parameter clearance even when all optional me
   assert.equal(saved.whatsappMessage, body.whatsappMessage);
   assert.equal(saved.fulfillmentConfirmation, body.fulfillmentConfirmation);
   assert.equal(app.balance('IPV'), 20, 'General auditing never deducts a vaccine allocation');
+});
+
+test('General verify returns verified findings while a slow history write remains explicitly pending',async(t)=>{
+  const app=fixture();await app.refresh();
+  const catalog={revision:1700,products:[{id:'rdt',scope:'general' as const,name:'Malaria Rapid Diagnostic Test Kit',aliases:['RDT'],contextualAliases:[],category:'diagnostic',note:''}]};
+  app.records.set('product_catalog/current',catalog);applyCatalog(catalog);
+  const write=app.storage.write;let release!:()=>void;
+  const pending=new Promise<void>(resolve=>release=resolve);
+  app.storage.write=async(path,value)=>{if(path.startsWith('audits/'))await pending;return write(path,value);};
+  const route=verifyRoute(app),started=performance.now();
+  const body={checkId:'AUD-speed-pending',auditScope:'general_auditor',whatsappMessage:'Orderer: Grace Akabati\nFacility: Example HC\nRDT 5',fulfillmentConfirmation:'Orderer: Grace Akabati\nFacility: Example Health Centre\nMalaria Rapid Diagnostic Test Kit [5/5]'};
+  try {
+    const response=await route(body);
+    const elapsed=performance.now()-started;t.diagnostic(`Verified API result with a held Firestore write: ${elapsed.toFixed(1)} ms`);
+    assert.ok(elapsed<10_000);
+    assert.equal(response.status,200);assert.equal(response.body.allMatch,true);
+    assert.equal(response.body.storage.status,'pending');assert.equal(app.records.has('audits/'+body.checkId),false);
+    release();await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(response.body.storage.status,'saved');
+    assert.equal(app.records.get('audits/'+body.checkId).id,body.checkId);
+    assert.equal(app.balance('IPV'),20);
+  } finally {release();}
 });
