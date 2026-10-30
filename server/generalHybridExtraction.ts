@@ -103,7 +103,7 @@ export async function resolveGeneralOrderExtraction(customer: DeterministicGener
         for (const [field, label] of [['facilityName', 'Facility'], ['ordererName', 'Orderer']] as const) {
           const value = proposed[field];
           const namedRoles = safeSource.split('\n').flatMap(line => {
-            const match=line.match(/^(?:signed(?: by)?|duty (?:nurse|officer)(?: is)?|my name is|orderer(?: is)?|ordered by|requested by)\s*[:=,]?\s*(.+)$/i);
+            const match=line.match(/^(?:signed(?: by)?|duty (?:nurse|officer)(?: is)?|my name is|orderer(?: is)?|ordered by|requested by|order placed by)\s*[:=,]?\s*(.+)$/i);
             return match ? [match[1].toLowerCase().replace(/[^\p{L}\s]/gu,'').replace(/\s+/g,' ').trim()] : [];
           });
           const roleEvidence = value && safeSource.split('\n').some(line => {
@@ -111,7 +111,7 @@ export async function resolveGeneralOrderExtraction(customer: DeterministicGener
             const after = line.slice(line.indexOf(value)+value.length);
             return line.includes(value) && !/\b(?:patient|client|recipient)\b/i.test(before) &&
               /^(?:\s*[,.;!]?\s*|\s+(?:from|at)\s+[^;\n]+)$/i.test(after) &&
-              /\b(?:signed(?: by)?|duty (?:nurse|officer)(?: is)?|my name is|orderer(?: is)?|ordered by|requested by|i am|i['’]m|this is)\s*[:=,]?\s*$/i.test(before);
+              /\b(?:signed(?: by)?|duty (?:nurse|officer)(?: is)?|my name is|orderer(?: is)?|ordered by|requested by|order placed by|i am|i['’]m|this is)\s*[:=,]?\s*$/i.test(before);
           });
           const facilityEvidence = value && findGeneralFacilityNames(safeSource,support.facilityContext?.records);
           const supportedIdentity = field==='ordererName' ? new Set(namedRoles).size<=1 && roleEvidence && value && /^[\p{L}][\p{L}'’. -]*\s+[\p{L}][\p{L}'’. -]*$/u.test(value)

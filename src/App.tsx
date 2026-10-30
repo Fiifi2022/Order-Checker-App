@@ -653,7 +653,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
       
       if ((selectedAuditForResolution as AuditRecord & { generalAudit?: GeneralAuditDetailsPayload }).generalAudit) {
         if (resolutionRevision === generalAuditRevision.current && selectedAuditForResolution.whatsappMessage === currentGeneralInputs.current.whatsappMessage && selectedAuditForResolution.fulfillmentConfirmation === currentGeneralInputs.current.fulfillmentConfirmation) setResult(updatedResult);
-        setError('Resolution recorded. Update the confirmation and re-run the audit before dispatch.');
+        setError(updatedResult.storage?.status==='saved' ? 'Resolution recorded. Update the confirmation and re-run the audit before dispatch.' : 'Resolution retained locally; database saving is not confirmed. Retry saving, update the confirmation and re-run the audit before dispatch.');
         fetchHistory(); setSelectedAuditForResolution(null); setResolutionActionNotes(''); return;
       }
       // Clear all discrepancy-related input fields immediately upon successful resolution

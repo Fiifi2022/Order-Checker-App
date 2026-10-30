@@ -16,6 +16,7 @@ import { geminiUsage } from './geminiUsage';
 import { classifyGeneralText, classifyGeneralAuditLine } from '../src/utils/generalTextClassification';
 import { extractGeneralOrderDeterministically } from './generalOrderExtraction';
 import { assertGeneralProductEvidence } from '../src/utils/generalProductEvidence';
+import {projectGeneralOrderSentences} from '../src/utils/generalSentenceExtraction';
 import { resolveGeneralOrderExtraction } from './generalHybridExtraction';
 import type { GeneralSemanticReview, GeneralOrderExtractionSnapshot } from '../src/utils/generalAuditTypes';
 
@@ -87,12 +88,16 @@ export async function runGeneralProductNameAudit(customer: string, fulfillment: 
   let extraction: GeneralOrderExtractionSnapshot | undefined;
   let extractionReviews: GeneralSemanticReview[] = [];
   let extractionStatus: 'used' | 'fallback' | 'skipped' = 'skipped';
-  if (narrative.test(customer) || narrative.test(fulfillment) || [customer, fulfillment].some(text => text.split('\n').some(line => classifyGeneralAuditLine(line) === 'product_quantity'))) {
+  if (narrative.test(customer) || narrative.test(fulfillment) || [customer, fulfillment].some(text =>
+    projectGeneralOrderSentences(text,support.facilityContext)!==text || /\border\s+placed\s+by\b/i.test(text) || text.split('\n').some(line => classifyGeneralAuditLine(line) === 'product_quantity'))) {
     const names = rows.filter(row => row.scope === 'general').flatMap(catalogProductNames);
     let a = extractGeneralOrderDeterministically(customer, 'customer_request', support.facilityContext, undefined, names);
     let b = extractGeneralOrderDeterministically(fulfillment, 'fulfillment_confirmation', support.facilityContext, undefined, names);
-    const usefulFallback = [a,b].some(input => input.order.unresolvedFields.length && input.unresolvedText.some(line =>
-      /\b(?:signed|duty nurse|orderer|my name|calling|ordering|need|request|send|supply|would like)\b/i.test(line)));
+    const usefulFallback = ([a,b] as const).some((input,index) => input.order.unresolvedFields.length && input.unresolvedText.some(line =>
+      /\b(?:signed|duty nurse|orderer|my name|calling|ordering|placed by|need|request|send|supply|would like)\b/i.test(line) ||
+      // Plain unresolved prose also deserves extraction help. Parsed product
+      // descriptions use the separate catalogue-first identity fallback below.
+      !parseGeneralProducts(line,index===0?'customer_request':'fulfillment_confirmation').length && !!line.trim()));
     if (usefulFallback) {
       const hybrid = await resolveGeneralOrderExtraction(a, b, getClient, {...support, semanticTimeoutMs: remainingAiMs()});
       extractionReviews.push(...hybrid.reviews.filter(review => review.field === 'facilityName' && review.possibleMatches.length));
@@ -350,12 +355,13 @@ export async function runGeneralProductNameAudit(customer: string, fulfillment: 
   // A single exact given name can identify the sole named orderer in this
   // order, when the facility agrees. Never extend this to initials, typos,
   // conflicting suffixes or multiple named orderers.
+  // The same given name explicitly stated on both sides also qualifies.
   const nameParts=[details.orderer.whatsappValue,details.orderer.fulfillmentValue].map(normalizeGeneralOrdererName);
   const [short,long]=[...nameParts].sort((a,b)=>a.length-b.length);
   const ordererValues=(text:string)=>[...recognizeGeneralDocument(text).lines.filter(line=>line.field==='orderer' && line.kind==='FIELD_VALUE')
-    .map(line=>line.auditText.replace(/^[^:]+:\s*/,'')),...text.matchAll(/\bthank you\s+(.+?)\s+from\b/gi)].map(value=>normalizeGeneralOrdererName(typeof value==='string' ? value : value[1]).join(' '));
+    .map(line=>line.auditText.replace(/^[^:]+:\s*/,'')),...text.matchAll(/^\s*name\s*[:=]\s*(.+)$/gim),...text.matchAll(/\bthank you\s+(.+?)\s+from\b/gi)].map(value=>normalizeGeneralOrdererName(typeof value==='string' ? value : value[1]).join(' '));
   if(details.orderer.status==='review required' && details.facility.status==='match' && short.length===1 && short[0].length>=3 &&
-    long.length>1 && long[0]===short[0] && new Set(long).size===long.length && !long.some(word=>/^(?:junior|senior|ii|iii|iv)$|\d/.test(word)) &&
+    long.length>=1 && long[0]===short[0] && new Set(long).size===long.length && !long.some(word=>/^(?:junior|senior|ii|iii|iv)$|\d/.test(word)) &&
     [customer,fulfillment].every(text=>new Set(ordererValues(text)).size<=1)) {
     details.orderer={...details.orderer,status:'match',nameMatchMethod:'deterministic',reason:'The exact given name matches the sole orderer named for the same facility.'};
   }
@@ -365,7 +371,7 @@ export async function runGeneralProductNameAudit(customer: string, fulfillment: 
   const summary = summarizeGeneralProducts(items, details.facility, details.orderer, details.phone,
     [...groups.values()].filter(g => g.requested.length).length, [...groups.values()].filter(g => g.supplied.length).length, extractionReviews,
     { dropArea: details.dropArea, district: details.district, productVerifications: [] });
-  const result = { ...base, ...summary,meta:{...base.meta,facility:details.facility,facilityName:details.facility,
+  const result = { ...base, ...summary,meta:{...base.meta,customerName:details.orderer,ordererName:details.orderer,facility:details.facility,facilityName:details.facility,
     dropArea:details.dropArea || base.meta.dropArea,district:details.district || base.meta.district} };
   result.generalAudit.discrepancies = result.generalAudit.discrepancies.map(message => {
     const item = items.find(item => item.fulfillment.quantityError && message.startsWith(item.name + ' quantity mismatch:'));

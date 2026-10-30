@@ -93,13 +93,15 @@ const PRODUCT_DISCREPANCIES = ['quantity mismatch', 'missing item', 'extra item'
 // Every discrepancy on the order, header details first and then products.
 export function buildIssues(result) {
   const audit = result.generalAudit ?? {};
+  const general = Boolean(result.generalAudit);
+  const fieldIssue = (label,field) => general && field?.status !== 'mismatch' ? null : explainField(label,field);
   const issues = [
-    explainField('Orderer name', audit.orderer),
-    explainField('Facility name', audit.facility),
-    explainField('Phone number', audit.phone),
+    fieldIssue('Orderer name', audit.orderer),
+    fieldIssue('Facility name', audit.facility),
+    general ? null : explainField('Phone number', audit.phone),
   ].filter(Boolean);
 
-  for (const review of audit.semanticReviews ?? []) {
+  for (const review of general ? [] : audit.semanticReviews ?? []) {
     const text = clean(review.originalText);
     issues.push({
       type: 'Ambiguous product',
@@ -110,6 +112,7 @@ export function buildIssues(result) {
   }
 
   for (const item of result.items ?? []) {
+    if (general && item.fulfillment?.identityReviewRequired) continue;
     const stage = item.fulfillment?.fulfillmentStatus;
     const isDiscrepancy = stage ? stage === 'discrepancy' : PRODUCT_DISCREPANCIES.includes(item.status);
     if (!isDiscrepancy) continue;

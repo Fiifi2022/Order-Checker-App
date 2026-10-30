@@ -1,6 +1,9 @@
 import {allocationOperationsHandlers,stageAllocationTransition,validateAllocationUpdate} from './server/allocationOperations';
 import {allocationSheetChanges,assertAllocationEditable,planAllocationCycle,applyAllocationAdjustment,type AllocationSheet} from './shared/allocationOperations';
 import { generalInputFingerprint } from './shared/generalAuditFingerprint';
+import {canAccessAuditRecord,assertUnchangedAuditOwner} from './server/auditRecordAccess';
+import {generalAuditMutations} from './server/generalAuditMutation';
+import {auditResolutionHandler} from './server/auditResolution';
 import { restoreGeneralProductConfirmations } from './src/utils/generalProductConfirmationPersistence';
 import { generalProductConfirmationHandler } from './server/generalProductConfirmation';
 import { needsProductCatalog } from './server/catalogReadPolicy';
@@ -100,7 +103,17 @@ function cleanFirestorePayload<T>(obj: T): T {
 }
 
 const auditStorage = createAuditStorage(async (id, record) => {
-  await setDoc(doc(getFirestoreDb(), 'audits', id), cleanFirestorePayload(record));
+  const reference=doc(getFirestoreDb(),'audits',id);
+  await runAdminTransaction(async transaction=>{
+    const current=await transaction.get(reference);
+    try {assertUnchangedAuditOwner(current.exists?current.data():undefined,record);}
+    catch(error) {
+      const index=audits.findIndex(audit=>audit.id===id && audit.createdByUserId===record.createdByUserId);
+      if(index>=0)audits.splice(index,1);
+      throw error;
+    }
+    transaction.set(reference,cleanFirestorePayload(record));
+  });
 });
 
 /**
@@ -959,25 +972,6 @@ app.post('/api/verify', async (req, res) => {
     }
   }
 
-  // Also catch empty object with raw request listeners if any stream chunking occurred
-  if (typeof body === 'object' && Object.keys(body).length === 0) {
-    try {
-      const rawText = await new Promise<string>((resolve) => {
-        let buf = '';
-        req.on('data', chunk => { buf += chunk; });
-        req.on('end', () => resolve(buf));
-      });
-      if (rawText) {
-        const parsed = JSON.parse(rawText.trim());
-        if (parsed && typeof parsed === 'object') {
-          body = parsed;
-        }
-      }
-    } catch (e) {
-      console.warn('[Audit] Invalid request body');
-    }
-  }
-
   const companionMode = normalizeCompanionAuditMode(body.auditMode);
   if (body.auditMode !== undefined && !companionMode) return res.status(400).json({ error: 'Unsupported audit mode. Use whatsapp_and_fulfillment or fulfillment_only.', allMatch: false, items: [] });
   if (companionMode === 'fulfillment_only' || body.auditScope === 'vaccine_checker' || (body.auditMode === 'customer_fulfillment' && body.auditScope !== 'general_auditor')) {
@@ -1046,7 +1040,31 @@ app.post('/api/verify', async (req, res) => {
   const startTime = Date.now();
   const verificationStartedAt = new Date(startTime).toISOString();
   const checkId = String(body.checkId || '');
+  if (body.checkId !== undefined && (typeof body.checkId !== 'string' || !/^[a-zA-Z0-9_-]{1,160}$/.test(body.checkId))) {
+    return res.status(400).json({error:'Invalid audit ID. Run a new audit or retry using the retained audit ID.'});
+  }
+  let existingGeneralAudit: any;
+  let releaseCheck=()=>{};
+  let pendingCheck: Promise<void> | undefined;
+  const previousCheck=checkId ? generalAuditMutations.get(checkId) : undefined;
+  if(checkId) {
+    pendingCheck=new Promise<void>(resolve=>{releaseCheck=resolve;});
+    generalAuditMutations.set(checkId,pendingCheck);
+  }
   try {
+    await previousCheck;
+    if (checkId) {
+      existingGeneralAudit = audits.find(record=>record.id===checkId);
+      if (!existingGeneralAudit) {
+        try {
+          const saved = await auditReadBudget(req,()=>getDoc(doc(getFirestoreDb(),'audits',checkId)));
+          existingGeneralAudit = saved.exists() ? saved.data() : null;
+        } catch {return res.status(503).json({error:'Audit ownership could not be verified. Your inputs remain available; retry before saving.'});}
+      }
+      if (existingGeneralAudit && !canAccessAuditRecord(existingGeneralAudit,res.locals.authUser)) {
+        return res.status(403).json({error:'Only the audit owner or an administrator may reuse this audit ID.'});
+      }
+    }
     let selectedCompanionFacility: vaccineService.FacilityAllocationRecord | undefined;
     if (isGeneralAuditor && companionMode) {
       try { await auditReadBudget(req, loadDistrictsFromFirestore); }
@@ -2149,7 +2167,8 @@ app.post('/api/verify', async (req, res) => {
     // Construct final audit record with database metadata
     let auditRecord = {
       ...payload,
-      ...(isGeneralAuditor ? { createdByUserId:res.locals.authUser?.id, inputFingerprint: generalInputFingerprint({ whatsappMessage, fulfillmentConfirmation }), auditScope: 'general_auditor', orderer: payload.generalAudit.orderer.whatsappValue, finalVerdict: payload.generalAudit.finalStatus, generalCounts: payload.generalAudit.counts } : {}),
+      ...(isGeneralAuditor ? { createdByUserId:existingGeneralAudit?.createdByUserId || res.locals.authUser?.id, inputFingerprint: generalInputFingerprint({ whatsappMessage, fulfillmentConfirmation }), auditScope: 'general_auditor', orderer: payload.generalAudit.orderer.whatsappValue, finalVerdict: payload.generalAudit.finalStatus, generalCounts: payload.generalAudit.counts } : {}),
+      ...(existingGeneralAudit?.createdByUserId ? {createdByUserId:existingGeneralAudit.createdByUserId} : {}),
       id: checkId || ('audit_' + Math.random().toString(36).substring(2, 11)),
       timestamp: new Date().toISOString(),
       verificationStartedAt,
@@ -2205,6 +2224,7 @@ app.post('/api/verify', async (req, res) => {
       const durationSec = Number(((Date.now() - startTime) / 1000).toFixed(2));
       const auditRecord = {
         ...fallbackPayload,
+        ...(existingGeneralAudit?.createdByUserId ? {createdByUserId:existingGeneralAudit.createdByUserId} : {}),
         id: checkId || ('audit_' + Math.random().toString(36).substring(2, 11)),
         timestamp: new Date().toISOString(),
         verificationStartedAt,
@@ -2244,6 +2264,9 @@ app.post('/api/verify', async (req, res) => {
       console.error('[Audit] Deterministic verification failed');
       return res.status(500).json({ error: error.message || 'An error occurred during order audits verification.' });
     }
+  } finally {
+    releaseCheck();
+    if(checkId && generalAuditMutations.get(checkId)===pendingCheck)generalAuditMutations.delete(checkId);
   }
 });
 
@@ -2403,6 +2426,7 @@ app.get('/api/audits/:id', async (req, res) => {
     let record = audits.find(record => record.id === req.params.id);
     if (!record) { const snapshot = await getDoc(doc(getFirestoreDb(), 'audits', req.params.id)); record = snapshot.exists() ? confirmedAuditRead(snapshot.data()) : null; }
     if (!record) return res.status(404).json({ error: 'Audit record not found.' });
+    if (!canAccessAuditRecord(record,res.locals.authUser)) return res.status(403).json({error:'Only the audit owner or an administrator may open this audit.'});
     return res.json(record);
   } catch { return res.status(503).json({ error: 'Saved audit could not be loaded.' }); }
 });
@@ -2425,65 +2449,19 @@ app.post('/api/audits/:id/product-confirmation', generalProductConfirmationHandl
 }));
 
 // Update audit status / resolution notes (discrepancy resolution workflow)
-app.patch('/api/audits/:id', async (req, res) => {
-  const { id } = req.params;
-  const { status, resolutionNotes } = req.body;
-
-  try {
-    let currentData: any = null;
-    const auditIndex = audits.findIndex(a => a.id === id);
-    if (auditIndex !== -1) {
-      currentData = audits[auditIndex];
-    } else {
-      // Try fetching from Firestore if not in-memory
-      try {
-        const db = getFirestoreDb();
-        const docSnap = await getDoc(doc(db, 'audits', id));
-        if (docSnap.exists()) {
-          currentData = docSnap.data();
-        }
-      } catch (dbErr) {
-        console.error('Failed to fetch from Firestore during patch:', dbErr);
-      }
-    }
-
-    if (!currentData) {
-      return res.status(404).json({ error: 'Audit record not found' });
-    }
-
-    const nextStatus = status || currentData.status;
-    const issueItemCount = currentData.generalAudit ? Number(currentData.issueCount) || 0 : Number(currentData.issueCount) || (currentData.items || []).filter((item: any) => item.status !== 'match' && item.status !== 'out of stock').length;
-    const updatedData: any = {
-      ...currentData,
-      status: nextStatus,
-      resolutionNotes: resolutionNotes !== undefined ? resolutionNotes : currentData.resolutionNotes,
-      resolvedAt: nextStatus === 'resolved'
-        ? (currentData.status === 'resolved' && currentData.resolvedAt ? currentData.resolvedAt : new Date().toISOString())
-        : null,
-      resolvedIssueCount: nextStatus === 'resolved' ? issueItemCount : 0
-    };
-
-    // Update in-memory
-    if (auditIndex !== -1) {
-      audits[auditIndex] = updatedData;
-    } else {
-      audits.unshift(updatedData);
-    }
-
-    // Update in Firestore
-    try {
-      const db = getFirestoreDb();
-      await setDoc(doc(db, 'audits', id), cleanFirestorePayload(updatedData), { merge: true });
-      console.log(`Successfully updated audit log ${id} in Firestore.`);
-    } catch (dbErr) {
-      console.error('Failed to update audit log in Firestore:', dbErr);
-    }
-
-    return res.json(updatedData);
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
-  }
-});
+app.patch('/api/audits/:id', auditResolutionHandler({
+  read: async id => {
+    const cached=audits.find(record=>record.id===id);
+    if(cached)return cached;
+    const snapshot=await getDoc(doc(getFirestoreDb(),'audits',id));
+    return snapshot.exists() ? confirmedAuditRead(snapshot.data()) : null;
+  },
+  save: async record => {
+    const index=audits.findIndex(existing=>existing.id===record.id);
+    if(index>=0)audits[index]=record;else audits.unshift(record);
+    await auditStorage.persist(record,3000);
+  },
+}));
 
 // Calculate statistical analytics for discrepancy improvements
 app.get('/api/analytics', async (req, res) => {

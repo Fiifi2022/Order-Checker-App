@@ -31,6 +31,6 @@ export function generalProductDecisionEvidence(items: GeneralComparisonItem[]): 
     {label: 'FS recorded requested quantity', value: quantity?.confirmationRequested === undefined ? 'Not separately stated' : String(quantity.confirmationRequested)},
     {label: 'Fulfilled quantity', value: !quantity || quantity.suppliedQuantityMissing ? 'Not provided' : `${quantity.supplied} ${quantity.suppliedUnit || ''}`.trim()},
     {label: 'Operational exception', value: quantity?.stockStatus || (quantity?.fulfillmentStatus === 'order limit applied' ? 'Approved order limit' : 'None')},
-    {label: 'Decision reason', value: quantity?.identityError || quantity?.quantityError || items.map(item => item.action).filter(action => action && action !== 'None').join('; ') || 'Catalogue identity and quantity verified'},
+    {label: 'Decision reason', value: quantity?.identityError || quantity?.quantityError || items.map(item => item.action).filter(action => action && action !== 'None').join('; ') || (items.length && items.every(item=>['match','out of stock','order limit applied'].includes(item.status)) ? 'Catalogue identity and quantity verified' : 'Product identity or quantity requires review')},
   ];
 }

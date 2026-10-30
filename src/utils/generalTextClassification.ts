@@ -1,4 +1,6 @@
 import { generalDocumentLabel, generalNonProductPhrase, recognizeGeneralDocument, generalStandaloneQuantity } from './generalDocumentStructure';
+import { GENERAL_SENTENCE_BREAK, GENERAL_SENTENCE_BREAK_SOURCE } from './generalSentenceBoundaries';
+const nonOrderClauseBoundary = new RegExp(`(;|${GENERAL_SENTENCE_BREAK_SOURCE}|,\\s*(?=(?:please|pls|kindly|we need|i need|patient|client|age|sex|gender|status|symptoms?|bsct|wbct|contact|phone)\\b))`, 'i');
 /** General Auditor only. Unknown text remains unresolved; a date, number or
  * delivery keyword by itself never proves that a line is administrative. */
 export type GeneralTextCategory = 'mandatory_order' | 'optional_order' | 'administrative' | 'unresolved_order';
@@ -55,7 +57,7 @@ export function stripGeneralNonOrderInformation(text: string): string {
   // WhatsApp emphasis is presentation, never part of an identity or product.
   text = text.replace(/(?<!\d)(\*{1,2}|_{1,2}|`)(?=\S)([^\n]+?\S|\S)\1/g, '$2');
   return text.split(/\r?\n/).map(line => {
-    const filtered = line.split(/(;|(?<=[.!?])\s+(?=[a-z])|,\s*(?=(?:please|pls|kindly|we need|i need|patient|client|age|sex|gender|status|symptoms?|bsct|wbct|contact|phone)\b))/i).map(part => {
+    const filtered = line.split(nonOrderClauseBoundary).map(part => {
       if (part === ';' || !part.trim()) return part;
       const compulsory = generalCompulsoryText(part);
       // Keep empty labels long enough to pair multiline values. Remove inline
@@ -129,7 +131,7 @@ function administrativeClause(value: string): boolean {
 // WhatsApp sentences do not reliably start with capitals. Split only after
 // sentence punctuation followed by whitespace, keeping decimal quantities intact.
 function sentences(text: string) {
-  return text.split(/(?<=[.!?])\s+(?=[a-z])/i).filter(Boolean);
+  return text.split(GENERAL_SENTENCE_BREAK).filter(Boolean);
 }
 /** Only a complete calendar date is metadata; ratios and product quantities
  * with extra words remain available for extraction and validation. */

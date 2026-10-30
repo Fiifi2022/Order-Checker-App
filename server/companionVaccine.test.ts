@@ -1,6 +1,8 @@
 import {createAuditStorage} from './auditStorage';
 import { canManageCatalog } from '../shared/productCatalog';
 import { assignedRoles } from '../shared/roles';
+import {canAccessAuditRecord} from './auditRecordAccess';
+import {generalAuditMutations} from './generalAuditMutation';
 import { defaultProducts, applyCatalog } from './productCatalog';
 import { runGeneralProductNameAudit } from './generalProductNameAudit';
 import { generalInputFingerprint } from '../shared/generalAuditFingerprint';
@@ -108,7 +110,7 @@ function verifyRoute(app: ReturnType<typeof fixture>) {
     vaccineService: service, resolveCompanionFacility, companionFacilityErrors, CompanionFacilityError,
     resolveBlueprintFacility, blueprintDistricts: {},
     async loadDistrictsFromFirestore() { await app.refresh(); context.blueprintDistricts = { test: app.records.get('vaccine_districts/isolated-test-sheet') }; },
-    runGeneralProductNameAudit, canManageCatalog, assignedRoles,
+    runGeneralProductNameAudit, canManageCatalog, assignedRoles, canAccessAuditRecord, generalAuditMutations,
     learnVerifiedCatalogueAliases,runAdminTransaction,catalogReference,catalogSeed,applyCatalog,
     readProductCatalog:{invalidate(){}},
     async queueCatalogueAliasSuggestions(suggestions:any[],actor:string) {
@@ -121,15 +123,16 @@ function verifyRoute(app: ReturnType<typeof fixture>) {
     auditReadBudget, auditRemainingMs, auditSignal, auditTiming, auditTimeoutSetting, process: { env: {} }, AUDIT_AI_FALLBACK_MS, AUDIT_BACKGROUND_WAIT_MS,
     readGeneralFacilityContext, collection(_db: unknown, name: string) { return name; },
     async getDocs(name: string) { return { docs: [...app.records.entries()].filter(([path]) => path.startsWith(name + '/')).map(([path, value]) => ({ id: path.slice(name.length + 1), data: () => value })) }; },
+    async getDoc(path:string) {return {exists:()=>app.records.has(path),data:()=>structuredClone(app.records.get(path))};},
     getGeminiClient() { throw new Error('No external AI allowed in this test'); }, osuItems: [], audits: [], createHash, generalInputFingerprint, restoreGeneralProductConfirmations, setTimeout, clearTimeout,
     auditStorage:createAuditStorage(async(id,record)=>{await app.storage.write('audits/'+id,app.storage.clean(record));}),
     cleanFirestorePayload: app.storage.clean, getFirestoreDb() { return {}; }, doc: app.storage.doc,
     async setDoc(path: string, value: any) { app.records.set(path, value); }
   });
   vm.runInContext(ts.transpile(source.slice(begin, end)), context);
-  return async (body: any) => {
+  return async (body: any, requestOverrides: Record<string,any> = {}) => {
     let status = 200, result: any;
-    await handler({ body, headers: {} }, { locals: { auditCatalog: app.records.get(catalogReference.key)||catalogSeed, authUser: { id: 'cca', name: 'Test CCA', role: 'cca' } },
+    await handler({ body, headers: {}, ...requestOverrides }, { locals: { auditCatalog: app.records.get(catalogReference.key)||catalogSeed, authUser: { id: 'cca', name: 'Test CCA', role: 'cca' } },
       status(code: number) { status = code; return this; }, json(value: any) { result = value; return this; } });
     return { status, body: result };
   };
@@ -602,4 +605,22 @@ test('General verify returns verified findings while a slow history write remain
     assert.equal(app.records.get('audits/'+body.checkId).id,body.checkId);
     assert.equal(app.balance('IPV'),20);
   } finally {release();}
+});
+
+test('verify refuses invalid stable IDs and another user’s persisted audit ID before updating history',async()=>{
+  const app=fixture();await app.refresh();const route=verifyRoute(app);
+  const original={id:'AUD-other-owner',createdByUserId:'other',generalAudit:{},whatsappMessage:'Private request'};
+  app.records.set('audits/'+original.id,structuredClone(original));
+  const body={auditScope:'general_auditor',whatsappMessage:'Orderer: Grace Akabati\nFacility: Example HC\nRDT 5',fulfillmentConfirmation:'Orderer: Grace Akabati\nFacility: Example HC\nRDT [5/5]'};
+  const forbidden=await route({...body,checkId:original.id});
+  assert.equal(forbidden.status,403);assert.deepEqual(app.records.get('audits/'+original.id),original);
+  assert.equal((await route({...body,checkId:'bad/id'})).status,400);
+  assert.equal((await route({...body,checkId:{id:'AUD-object'}})).status,400);
+  assert.equal(app.balance('IPV'),20);
+});
+
+test('an empty, already-consumed request is rejected without waiting for request stream events', {timeout:1000},async()=>{
+  const app=fixture(),route=verifyRoute(app);let listeners=0;
+  const result=await route({}, {readableEnded:true,on(){listeners++;return this;}});
+  assert.equal(result.status,400);assert.equal(listeners,0);
 });

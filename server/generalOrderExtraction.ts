@@ -1,4 +1,5 @@
 import { recognizeGeneralDocument, generalDocumentLabel, generalStandaloneQuantity } from '../src/utils/generalDocumentStructure';
+import { GENERAL_SENTENCE_BREAK } from '../src/utils/generalSentenceBoundaries';
 import { isGeneralKnownProductDescription } from '../src/utils/generalProductMatching';
 import { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 import { getCatalogRevision } from '../shared/productCatalog';
@@ -115,7 +116,7 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
   text = text.split('\n').map(line => {
     const products = parseGeneralProducts(line, source);
     if (products.length === 1 && knownName(products[0].name)) return line;
-    return line.replace(/([.!?])\s+(?=[a-z])/gi, (match, mark, offset, input) => /(?:\b(?:dr|mr|mrs|ms|prof|inj|tab|cap|susp|soln)|\d)$/i.test(input.slice(0, offset)) ? match : `${mark}\n`);
+    return line.replace(GENERAL_SENTENCE_BREAK, '\n');
   }).join('\n');
   const prepared = text.split(/\r?\n/).map(line => {
     const plain = line.trim();
@@ -200,7 +201,13 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
     const evidence = evidenceByLine.get(index + 1);
     const parsed = evidence ? [evidence] : parseGeneralProducts(line, source);
     if (!parsed.length && classifyGeneralText(line).category === 'mandatory_order') return false;
-    if (!parsed.length && (extractGeneralInput(line, source).facilityName !== 'N/A' || extractGeneralInput(line, source).ordererName !== 'N/A')) return false;
+    if (!parsed.length) {
+      const identity = extractGeneralInput(line, source);
+      // Recognising a facility inside a sentence does not establish its sender.
+      // Retain the sentence for AI when its person/role clause is still unread.
+      if (identity.facilityName !== 'N/A' && extracted.ordererName === 'N/A' && /\b(?:from|at|by)\b/i.test(line)) return true;
+      if (identity.facilityName !== 'N/A' || identity.ordererName !== 'N/A') return false;
+    }
     return !parsed.length || parsed.some(product => product.quantityReview || !knownName(product.name) || getGeneralMedicalAmbiguity(product.name));
   });
   const conflictingFields: string[] = [];

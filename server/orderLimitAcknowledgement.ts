@@ -1,6 +1,7 @@
 import { generalAuditMutations } from './generalAuditMutation';
 import type { RequestHandler } from 'express';
 import { acknowledgeOrderLimit } from '../shared/orderLimitAcknowledgement';
+import {canAccessAuditRecord} from './auditRecordAccess';
 
 export function orderLimitAcknowledgementHandler(deps: { read: (id: string) => Promise<any>; save: (record: any) => Promise<void> }): RequestHandler {
   const pending = generalAuditMutations;
@@ -16,6 +17,7 @@ export function orderLimitAcknowledgementHandler(deps: { read: (id: string) => P
     try {
       const record = await deps.read(req.params.id);
       if (!record) { res.status(404).json({ error: 'Audit record not found.' }); return; }
+      if (!canAccessAuditRecord(record,res.locals?.authUser)) {res.status(403).json({error:'Only the audit owner or an administrator may update this audit.'});return;}
       if (!record.generalAudit || !record.items?.some((item: any) => item.fulfillment?.key === key && item.fulfillment.orderLimitEligible)) {
         res.status(400).json({ error: 'This product is not eligible for an order-limit acknowledgement.' }); return;
       }

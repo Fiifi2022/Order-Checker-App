@@ -1,6 +1,7 @@
 import { generalConfirmationPolicy } from './generalProductConfirmationPolicy';
 import { resolveGeneralProductLogName, getGeneralProductLog, resolveGeneralCatalogIdentity } from './generalProductLog';
 import { recognizeGeneralDocument } from './generalDocumentStructure';
+import { GENERAL_IDENTITY_PERIOD_SOURCE } from './generalSentenceBoundaries';
 import { assignGeneralProductGroups, generalClinicalAttributes, generalCatalogSupports, matchGeneralClinicalProducts, type GeneralMatchingStage } from './generalProductMatching';
 import { canonicalGeneralSource, generalInputFingerprint } from '../../shared/generalAuditFingerprint';
 import { compareGeneralOrdererNames, matchGeneralOrdererNames, normalizeGeneralOrdererName } from './generalOrdererName';
@@ -545,8 +546,14 @@ function extractSentenceOrderer(text: string) {
     if (!rawName) continue;
     const name = rawName.split(/\.{2,}|[,;!?]|(?<!\bdr)(?<!\bmr)(?<!\bmrs)(?<!\bms)(?<!\bprof)(?<!\b[a-z])\.(?=\s|$)|\s+(?:at|with|on|for|from)\s+/i)[0].trim();
     const words = name.split(/\s+/);
-    // Two or more explicit name words avoids treating “you” or “delivery” as a person.
-    if (words.length < 2 || words.length > 8 || !words.every(word => /^[\p{L}][\p{L}'’.-]*$/u.test(word))) continue;
+    // A single name is evidence only in the explicit FS ordering greeting with
+    // a complete facility; never infer it from a footer or incidental mention.
+    const greetingFacility = line.match(/\b(?:thank\s+you|thanks\s+to|dear)\s+.+?\s+(?:from|at)\s+(.+?)\s+for\s+ordering\b/iu)?.[1];
+    const catalogue = words.length === 1 ? getGeneralProductLog() : undefined;
+    const singleName = words.length === 1 && greetingFacility && hasGeneralFacilityType(greetingFacility) &&
+      !/^(?:you|all|everyone|team|friend|colleague|nurse|officer|doctor)$/i.test(name) &&
+      !(catalogue && resolveGeneralCatalogIdentity(name, catalogue).product);
+    if ((!singleName && words.length < 2) || words.length > 8 || !words.every(word => /^[\p{L}][\p{L}'’.-]*$/u.test(word))) continue;
     if (hasGeneralFacilityType(name) || /\brch$/i.test(name) || /\b(?:your|our|the|this|order|delivery|tomorrow|today|facility|hospital|clinic|chps|customer|health|center|centre|pickup|collection|dispatch|stock|supplies|items|products)\b/i.test(name)) continue;
     return name;
   }
@@ -615,7 +622,7 @@ function extractSentenceFacility(text: string, customerFacilityName = 'N/A') {
     candidate = candidate.replace(/^(?:delivery\s+to|deliver\s+to)\s+/i, '');
     // In “order for Isaac Awuyem at Gbimsi CHPS”, only the destination is a facility.
     candidate = candidate.split(/\s+at\s+/i).at(-1)!;
-    const name = candidate.split(/\.{2,}|[,;!?]|\.(?=\s|$)|\s+(?:from|with|via|on|by|for)\s+/i)[0].trim();
+    const name = candidate.split(new RegExp(`\\.{2,}|[,;!?]|${GENERAL_IDENTITY_PERIOD_SOURCE}|\\s+(?:from|with|via|on|by|for)\\s+`, 'i'))[0].trim();
     const knownBareFacility = customerFacilityName !== 'N/A' && normalizeGeneralFacility(name) === normalizeGeneralFacility(customerFacilityName);
     if ((hasFacilityType(name) || knownBareFacility || greeting && /^[\p{L}][\p{L}\s'’.-]*$/u.test(name)) && /[a-z]/i.test(name) && !/\b(?:your|our|this|order|delivery|tomorrow|today)\b/i.test(name)) return name;
   }
@@ -936,7 +943,7 @@ export function reconcileGeneralProductReviews(items: GeneralComparisonItem[], r
 }
 
 /** Rebuild every product-derived total while retaining authoritative header checks. */
-export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFacilityResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = [], parameters: Pick<GeneralAuditDetails, 'dropArea' | 'district' | 'productVerifications' | 'extraction' | 'decision'> = {}) {
+export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFacilityResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = [], parameters: Pick<GeneralAuditDetails, 'dropArea' | 'district' | 'productVerifications' | 'extraction' | 'decision' | 'productComparisonMode'> = {}) {
   const unresolvedProduct = (item: GeneralComparisonItem) => item.fulfillment.fulfillmentStatus === 'discrepancy' && !item.fulfillment.identityConflictConfirmed &&
     (item.fulfillment.identityReviewRequired || item.provenance.length > 0 && item.provenance.some(p => p.matchedProductKey?.startsWith('unresolved:')));
   parameters = {...parameters,
@@ -985,6 +992,7 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   items = applyGeneralVaccinePairing(items, normalizeGeneralProductName);
   items = items.map(item => {
     if (unresolvedProduct(item)) item = {...item, fulfillment: {...item.fulfillment, identityReviewRequired: true}};
+    else if (item.fulfillment.identityReviewRequired) item = {...item, fulfillment: {...item.fulfillment, identityReviewRequired: false}};
     const category = generalProductCategory(item.name, normalizeGeneralProductName, item.category);
     const productStatus = ['missing item', 'extra item', 'vaccine pairing mismatch', 'product identity discrepancy'].includes(item.status) ? 'product discrepancy' as const : 'product match' as const;
     if (item.fulfillment.productStatus !== productStatus) item = { ...item, fulfillment: { ...item.fulfillment, productStatus } };
@@ -1041,8 +1049,8 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   const warnings = generalAuditClarifications({ facility: facilityName, orderer: ordererName,
     productCount: { requested: requestedCount, found: systemCount, status: requestedCount === systemCount ? 'match' : 'mismatch' }, semanticReviews }).map(notice => notice.message);
   const requiresFacilityConfirmation = facilityName.requiresDispatchConfirmation !== false || facilityName.identityStatus !== 'resolved';
-  const dispatchReadiness = { requiresFacilityConfirmation, canDispatchAutomatically: allMatch && !requiresFacilityConfirmation };
-  const generalAudit: GeneralAuditDetails = { ...(parameters.extraction ? {extraction:parameters.extraction} : {}), ...(parameters.productVerifications?.length ? { productVerifications: parameters.productVerifications } : {}), dispatchReadiness, facility: facilityName, orderer: ordererName, phone, dropArea: parameters.dropArea, district: parameters.district,
+  const dispatchReadiness = { requiresFacilityConfirmation, canDispatchAutomatically: allMatch && !requiresFacilityConfirmation && !parameters.productComparisonMode };
+  const generalAudit: GeneralAuditDetails = { ...(parameters.productComparisonMode ? {productComparisonMode:parameters.productComparisonMode} : {}), ...(parameters.extraction ? {extraction:parameters.extraction} : {}), ...(parameters.productVerifications?.length ? { productVerifications: parameters.productVerifications } : {}), dispatchReadiness, facility: facilityName, orderer: ordererName, phone, dropArea: parameters.dropArea, district: parameters.district,
     message, warnings, auditSummary, ...(semanticReviews.length ? { semanticReviews } : {}),
     productCount: { requested: requestedCount, found: systemCount, status: requestedCount === systemCount ? 'match' : 'mismatch' }, discrepancies,
     counts: { fullySupplied: items.filter(item => item.fulfillment.fulfillmentStatus === 'fully supplied').length, outOfStock: stockCount, orderLimited: limitedCount, pendingOrderLimits: pendingOrderLimitCount },
@@ -1077,8 +1085,10 @@ export function applyGeneralOrderLimitDecision<T extends ReturnType<typeof runGe
         fulfillmentStatus: answer ? 'order limit applied' : 'discrepancy' } };
   });
   const details = result.generalAudit;
-  return { ...result, ...summarizeGeneralProducts(items, details.facility, details.orderer, details.phone,
-    details.productCount.requested, details.productCount.found, details.semanticReviews, details) };
+  const summary = summarizeGeneralProducts(items, details.facility, details.orderer, details.phone,
+    details.productCount.requested, details.productCount.found, details.semanticReviews, details);
+  return { ...result, ...summary, auditDecision: summary.generalAudit.decision,
+    finalVerdict: summary.generalAudit.finalStatus, generalCounts: summary.generalAudit.counts };
 }
 
 /** Original identity mismatches cannot be waived by semantic interpretation or a server response. */

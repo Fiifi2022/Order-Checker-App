@@ -2,6 +2,7 @@ import { generalInputFingerprint, sameGeneralAuditSources } from '../shared/gene
 import { generalAuditMutations } from './generalAuditMutation';
 import type { RequestHandler } from 'express';
 import { applyGeneralProductConfirmation } from './generalAuditor';
+import {canAccessAuditRecord} from './auditRecordAccess';
 
 export function generalProductConfirmationHandler(deps: {
   read: (id: string) => Promise<any>; save: (record: any) => Promise<void>; refreshCatalog?: () => Promise<void>;
@@ -22,6 +23,7 @@ export function generalProductConfirmationHandler(deps: {
     try {
       const record = await deps.read(id);
       if (!record?.generalAudit) { res.status(404).json({ error: 'General audit not found.' }); return; }
+      if (!canAccessAuditRecord(record,res.locals?.authUser)) {res.status(403).json({error:'Only the audit owner or an administrator may update this audit.'});return;}
       if (!sameGeneralAuditSources(record, body) || body.inputFingerprint && body.inputFingerprint !== generalInputFingerprint(record)) {
         res.status(409).json({ error: 'The audit inputs have changed. Run the audit again and reconfirm the product.' }); return;
       }
