@@ -26,7 +26,7 @@ export function createFsActivation(doc, version, inspect = () => ({})) {
     host,
     render(selection, response) {
       set(facility, selection?.facility?.name ? `Facility: ${selection.facility.name}` : 'Waiting for facility selection in FS');
-      set(connection, response?.error || (!response ? 'Connecting to allocation service…' : response.allocation?.status === 'matched' ? 'Connected · Blueprint facility found' : response.allocation?.message || (selection?.facility?.name ? 'FS selection detected · Waiting for allocation lookup' : 'Facility selection not detected · Open Detection details')));
+      set(connection, response?.error || (!response ? 'Connecting to allocation service…' : response.allocation?.status === 'matched' ? ['Connected · Blueprint facility found', response.allocation.facility?.cycle].filter(Boolean).join(' · ') : response.allocation?.message || (selection?.facility?.name ? 'FS selection detected · Waiting for allocation lookup' : 'Facility selection not detected · Open Detection details')));
     },
     dispose() { host.remove(); },
   };

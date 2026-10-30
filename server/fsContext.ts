@@ -27,8 +27,8 @@ export async function fsReadBudget<T>(req: Request, task: () => Promise<T>): Pro
   } finally { clearTimeout(timer!); }
 }
 
-export function fsContextHandlers({ readSheets, readCatalog, applyCatalog, listFacilities = sheets => activeFsFacilities(sheets).map(({ sheet, row, ...facility }) => facility), log = console.info }: {
-  readSheets: () => Promise<any[]>; readCatalog: () => Promise<any>; applyCatalog: (catalog: any) => void; listFacilities?: (sheets: any[]) => any[]; log?: (entry: any) => void;
+export function fsContextHandlers({ readSheets, readCatalog, applyCatalog, listFacilities = sheets => activeFsFacilities(sheets).map(({ sheet, row, ...facility }) => facility), log = console.info, now = () => new Date() }: {
+  readSheets: () => Promise<any[]>; readCatalog: () => Promise<any>; applyCatalog: (catalog: any) => void; listFacilities?: (sheets: any[]) => any[]; log?: (entry: any) => void; now?: () => Date;
 }) {
   const read = async (req: Request) => {
     const [sheets, catalog] = await fsReadBudget(req, () => Promise.all([readSheets(), readCatalog()]));
@@ -45,10 +45,12 @@ export function fsContextHandlers({ readSheets, readCatalog, applyCatalog, listF
       const raw = req.query.selection;
       if (typeof raw !== 'string' || raw.length > 24000) return void res.status(400).json({ error: 'Invalid or oversized FS selection.' });
       try { selection = JSON.parse(raw); } catch { return void res.status(400).json({ error: 'Invalid FS selection.' }); }
-      if (!selection || Array.isArray(selection) || typeof selection !== 'object' || !Array.isArray(selection.products) || selection.products.length > 101 || selection.products.some((p: any) => !p || typeof p.name !== 'string')) {
+      if (!selection || Array.isArray(selection) || typeof selection !== 'object' ||
+          (selection.allocationCycle !== undefined && (typeof selection.allocationCycle !== 'string' || selection.allocationCycle.length > 160)) ||
+          !Array.isArray(selection.products) || selection.products.length > 101 || selection.products.some((p: any) => !p || typeof p.name !== 'string')) {
         return void res.status(400).json({ error: 'Invalid FS selection. Supply a products array with at most 101 named products.' });
       }
-      const result = lookupFsAllocation(await read(req), selection);
+      const result = lookupFsAllocation(await read(req), selection, { automaticCycle: true, now: now() });
       report({ event: 'fs_context', facility: selection.facility, status: result.status, products: result.products.map((p: any) => ({ name: p.name, status: p.status })), durationMs: Date.now() - started });
       res.json(result);
     } catch (error: any) {
@@ -60,7 +62,8 @@ export function fsContextHandlers({ readSheets, readCatalog, applyCatalog, listF
   };
   const facilities: RequestHandler = async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    try { res.json(listFacilities(await read(req))); }
+    // Facility discovery only needs Blueprint rows, never catalogue seeding or AI.
+    try { res.json(listFacilities(await fsReadBudget(req,readSheets))); }
     catch (error: any) { res.status(503).json({ error: error.message || 'Could not read the current Allocation Blueprint. Please retry.' }); }
   };
   return { context, facilities };

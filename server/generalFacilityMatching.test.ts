@@ -22,6 +22,22 @@ const request = 'Orderer: Mary Mensah\nFacility: KOTOSO RHC\nORS - 5';
 const supplied = 'Orderer: Mary Mensah\nFacility: Kotoso RCH\nORS [5/5]';
 const audit = (data: GeneralFacilityRecord[] = []) => runGeneralAuditor(request, supplied, {}, { facilityContext: { records: data } });
 
+test('directory detects normalized unlabelled names and approved aliases while retaining source wording', () => {
+  const directory: GeneralFacilityRecord[] = [
+    {name: 'Saint Mary Health Centre', verifiedAliases: ['SM Outreach'], source: 'test/saint'},
+    {name: 'Official Yagaba', source: 'test/untyped'},
+  ];
+  for (const mention of ['SAINT-MARY H.C.', 'Saint Mary H. C.', 'Saint Mary Health Center', 'sm-outreach', 'Official-Yagaba']) {
+    const found = findGeneralFacilityNames(`Please prepare the order from ${mention} for collection.`, directory);
+    assert.equal(found.length, 1, JSON.stringify({mention, found}));
+    assert.equal(found[0].replace(/\.$/, ''), mention.replace(/\.$/, ''));
+  }
+  assert.deepEqual(findGeneralFacilityNames('Order from Unofficial-Yagaba or Official-Yagabaville.', directory), []);
+  assert.deepEqual(findGeneralFacilityNames('Official. Yagaba', directory), []);
+  assert.equal(findGeneralFacilityNames('Official-Yagaba and sm-outreach both need supplies.', directory).length, 2);
+  assert.equal(findGeneralFacilityNames('Please send ORS 5.', directory).length, 0);
+});
+
 test('requested case, space, punctuation and Ghana facility abbreviation scenarios normalize without dropping type', () => {
   for (const [left, right] of [
     ['KOTOSO RHC', 'Kotoso RHC'], ['Kotoso RHC', 'KOTOSO RHC'],

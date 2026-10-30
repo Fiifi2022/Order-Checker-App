@@ -58,7 +58,17 @@ const observer = new MutationObserver(mutations => { if (mutations.some(m => m.t
 observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
 const change = () => { clearTimeout(timer); safeScan(); };
 const click = event => {
-  if (adapter.isNewOrder(event.target)) { adapter.resetOrder(); pending = null; suppressed = ''; change(); }
+  if (adapter.isNewOrder(event.target)) {
+    if (event.isTrusted) {
+      // Send first, synchronously inside the click handler, to retain activation.
+      try {
+        void chrome.runtime.sendMessage({ type: 'FS_OPEN_PANEL' }).then(result => {
+          if (result?.error) activation.render(selection, { error: `Unable to open OrderCheck: ${result.error}. Click the OrderCheck toolbar icon.` });
+        }).catch(error => console.warn('OrderCheck panel could not open:', error.message));
+      } catch (error) { console.warn('OrderCheck panel could not open:', error.message); }
+    }
+    adapter.resetOrder(); pending = null; suppressed = ''; change();
+  }
   if (adapter.isAdd(event.target)) { pending = cleanSelection(adapter.read()); }
   schedule();
 };

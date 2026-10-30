@@ -22,7 +22,7 @@ export function isGeneralNonOrderInformation(value: string): boolean {
   if (/^(?:age\s*\/\s*sex\s*[:=]\s*)?(?:\d{1,3}\s*[/,-]\s*(?:m|f|male|female)|(?:m|f|male|female)\s*[/,-]\s*\d{1,3})$/i.test(text)) return true;
   if (/^(?:(?:patient|client)\s+(?:is|has|presents|presented|reports|reported|complains|complained)\b|(?:a\s+)?\d{1,3}\s*[- ]?(?:years?\s*[- ]?old|y\/?o)\b|(?:male|female)(?:\s*[,;/ -]\s*\d{1,3}(?:\s*years?)?)?$|(?:age|sex|gender)\s+(?:\d{1,3}|male|female)\b)/i.test(text)) return true;
   if (/^(?:bsct|wbct|hb|haemoglobin|hemoglobin|bp|blood pressure|pulse|temperature|spo2|blood glucose|rbs|fbs)\s*(?::|;|=|>|<|is\b|of\b|greater\b|less\b|\d)/i.test(text)) return true;
-  if (/^(?:(?:heavy|severe|mild|moderate|profuse|persistent|generalised|generalized|localised|localized|no|with|without)\s+)*(?:swelling|bleeding|clotting|pain|fever|vomiting|diarrhoea|diarrhea|dizziness|sweating|snake\s*bite|snakebite|bite wound)\b/i.test(text) && !/\b(?:vials?|boxes?|packs?|doses?|tablets?|syrup|medicine|drug|vaccine)\b/i.test(text)) return true;
+  if (/^(?:(?:heavy|severe|mild|moderate|profuse|persistent|generalised|generalized|localised|localized|no|with|without)\s+)*(?:swelling|bleeding|clotting|pain|fever|vomiting|diarrhoea|diarrhea|dizziness|sweating|snake\s*bite|snakebite|bite wound)\b/i.test(text) && !/\b(?:vials?|boxes?|packs?|doses?|tablets?|syrup|medicine|drug|vaccine|serum|antiserum|antivenom|antivenin|injection|infusion|suspension)\b/i.test(text)) return true;
   if (/^(?:patient|client)\s+(?:needs?|requires?)\s+(?:close\s+|further\s+|urgent\s+)?(?:monitoring|observation|admission|review|referral|assessment)[.!]?$/i.test(text)) return true;
   if (/^(?:stable|unstable|critical|conscious|unconscious|alert|recovering|improving|deteriorating)(?:\s+(?:patient|client))?$/i.test(text)) return true;
   return /^(?:(?:contact|phone|telephone|tel|mobile)(?:\s+number)?\s*)?(?:\+?\d[\d ().-]{6,}\d)$/.test(text);
@@ -31,7 +31,7 @@ export function isGeneralNonOrderInformation(value: string): boolean {
 export function stripGeneralNonOrderInformation(text: string): string {
   let valueFollows = false;
   // WhatsApp emphasis is presentation, never part of an identity or product.
-  text = text.replace(/(\*{1,2}|_{1,2}|`)(?=\S)([^\n]+?\S|\S)\1/g, '$2');
+  text = text.replace(/(?<!\d)(\*{1,2}|_{1,2}|`)(?=\S)([^\n]+?\S|\S)\1/g, '$2');
   return text.split(/\r?\n/).map(line => {
     const filtered = line.split(/(;|(?<=[.!?])\s+(?=[a-z])|,\s*(?=(?:please|pls|kindly|we need|i need|patient|client|age|sex|gender|status|symptoms?|bsct|wbct|contact|phone)\b))/i).map(part => {
       if (part === ';' || !part.trim()) return part;
@@ -75,6 +75,8 @@ function administrativeClause(value: string): boolean {
   const text = value.trim().replace(/^[•*]\s*/, '').replace(/[.!]+$/, '').trim();
   if (!text) return true;
   if (isGeneralNonOrderInformation(text)) return true;
+  if (/^to accurately process your request,? kindly complete the (?:below|following) form\s*:?$/i.test(text)) return true;
+  if (/^(?:we have|we've) received your order\s*\(\s*id\s*:\s*[a-z0-9_-]{1,80}\s*\)$/i.test(text)) return true;
   if (genericStockCommunication(text)) return true;
   if (clinical.test(text)) return false;
   if (/^(?:(?:i|we) )?hope (?:you (?:are|have been) (?:doing )?well|all is well|you are having a (?:good|great|nice) day)[.!]?$/i.test(text)) return true;

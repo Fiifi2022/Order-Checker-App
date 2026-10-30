@@ -9,10 +9,10 @@ test('downloaded companion includes every module and only the selected public co
   const names = zip.getEntries().map(entry => entry.entryName);
   assert.deepEqual(new Set(names), new Set([...extensionAssets, 'config.js']));
   const manifest = JSON.parse(zip.readAsText('manifest.json'));
-  assert.equal(manifest.version, '2.3.21');
+  assert.equal(manifest.version, '2.3.47');
   assert.equal(manifest.side_panel.default_path, 'sidepanel.html');
   assert.match(zip.readAsText('sidepanel.html'), /<details class="fs-connection-check" aria-label="FS connection"/);
-  assert.ok(!/<(?:section|details)[^>]*aria-label="(?:Live FS allocation|FS connection)"[^>]*(?:\bhidden\b|display:\s*none)/.test(zip.readAsText('sidepanel.html')));
+  assert.match(zip.readAsText('sidepanel.html'), /<details[^>]*aria-label="FS connection"[^>]*\bhidden\b[^>]*display:none/);
   assert.ok(manifest.host_permissions.includes('https://fulfillment-gh2-production.platform.flyzipline.com/*'));
   for (const file of [manifest.background.service_worker, manifest.side_panel.default_path, manifest.options_page, ...Object.values(manifest.icons) as string[]]) {
     assert.ok(names.includes(file), `Missing manifest asset ${file}`);

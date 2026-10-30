@@ -1,3 +1,9 @@
+import AllocationOperations from './AllocationOperations';
+import BlueprintMonthTabs from './BlueprintMonthTabs';
+import {useAllocationWorkspace} from './AllocationWorkspace';
+import {allocationImportPreview,allocationNameKey,type AllocationSheet} from '../../shared/allocationOperations';
+import {canManageCatalog,type CatalogProduct} from '../../shared/productCatalog';
+import {assignedRoles} from '../../shared/roles';
 import { authFetch } from '../utils/authFetch';
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
@@ -81,6 +87,8 @@ export interface VaccineSectionData {
 }
 
 export interface FacilityBlueprintRow {
+  facilityId?:string;
+  fsFacilityId?:string;
   rowKind?: 'blank';
   cells?: Record<string, string>;
   id: string;
@@ -133,6 +141,8 @@ export interface DistrictSheetData {
   sheetName?: string;
   worksheetRole?: 'allocation' | 'other';
   updatedAt?: string;
+  expectedUpdatedAt?: string | null;
+  cycleState?: 'draft' | 'active' | 'closed';
   products?: string[];
   rows: FacilityBlueprintRow[];
   blankColumns?: BlankBlueprintColumn[];
@@ -223,6 +233,14 @@ export default function VaccineAllocationBlueprint({
   onNavigateToAuditLog,
   currentUser
 }: VaccineAllocationBlueprintProps) {
+  const workspace=useAllocationWorkspace();
+  const [importCatalog,setImportCatalog]=useState<CatalogProduct[]>();
+  const [changeReason,setChangeReason]=useState('');
+  useEffect(()=>{let current=true;safeFetchJson<{products:CatalogProduct[]}>('/api/products').then(data=>{if(current)setImportCatalog(data.products);}).catch(()=>{});return()=>{current=false;};},[]);
+  const savedVersionsRef=useRef<Record<string,string|null>>({});
+  const savedSheetsRef=useRef<Record<string,DistrictSheetData>>({});
+  const [cyclePreview,setCyclePreview]=useState<AllocationSheet[]|null>(null);
+  const [importPreview,setImportPreview]=useState<{sheets:DistrictSheetData[];fileName:string;skipped:number;skippedMessages?:{sheetName:string;errors:string[]}[]}|null>(null);
   // Pending cell edits tracker for live audit accountability
   const pendingEditsRef = useRef<Array<any>>([]);
 
@@ -407,7 +425,9 @@ export default function VaccineAllocationBlueprint({
 
   // Multi-District State
   const [districts, setDistricts] = useState<DistrictSheetData[]>([]);
-  const [activeDistrictId, setActiveDistrictId] = useState<string>('west_mamprusi');
+  const [activeDistrictId, setActiveDistrictIdState] = useState<string>('west_mamprusi');
+  const setActiveDistrictId=(id:string)=>{setActiveDistrictIdState(id);workspace.setSelection({sheetId:id,...(workspace.selection.sheetId===id?{}:{rowId:'',facilityName:'',facilityId:''})});};
+  useEffect(()=>{if(districts.some(sheet=>sheet.id===activeDistrictId))workspace.setSelection({sheetId:activeDistrictId,district,cycle:month});},[activeDistrictId,district,month]);
   const allocationWorksheet = isAllocationWorksheet(districts.find(sheet => sheet.id === activeDistrictId));
   const getSheetProgressStatus = allocationWorksheet ? getAllocationFacilityStatus : getBlueprintProgressStatus;
   const [showAddDistrictModal, setShowAddDistrictModal] = useState(false);
@@ -757,10 +777,12 @@ export default function VaccineAllocationBlueprint({
       if (data && Array.isArray(data.districts) && data.districts.length > 0) {
         setBlueprintLoadError(null);
         historyResetPendingRef.current = true;
-        setDistricts(data.districts);
-        const activeId = data.districts.some((sheet: DistrictSheetData) => sheet.id === preferredSheetId) ? preferredSheetId! : data.activeDistrictId || data.districts[0].id;
+        setDistricts(data.districts); data.districts.forEach((sheet:DistrictSheetData)=>{savedVersionsRef.current[sheet.id]=sheet.updatedAt||null;savedSheetsRef.current[sheet.id]=structuredClone(sheet);});
+        const preferred=workspace.selection.sheetId || preferredSheetId;
+        const activeId = data.districts.some((sheet: DistrictSheetData) => sheet.id === preferred) ? preferred! : data.activeDistrictId || data.districts[0].id;
         setActiveDistrictId(activeId);
         const activeSheet = data.districts.find((d: DistrictSheetData) => d.id === activeId) || data.districts[0];
+        workspace.setSelection({sheetId:activeSheet.id,district:activeSheet.district,cycle:activeSheet.month});
         setDistrict(activeSheet.district || 'West Mamprusi');
         setMonth(activeSheet.month || 'September 2026');
         setProducts(Array.isArray(activeSheet.products) ? activeSheet.products : [...DEFAULT_BLUEPRINT_PRODUCTS]);
@@ -792,6 +814,8 @@ export default function VaccineAllocationBlueprint({
   const handleSwitchDistrict = (targetId: string) => {
     const target = districts.find(d => d.id === targetId);
     if (!target) return;
+    if(hasUnsavedChanges){setSaveStatus('Wait for the current sheet to save before switching.');return;}
+    workspace.setSelection({sheetId:target.id,district:target.district,cycle:target.month,...(workspace.selection.sheetId===target.id?{}:{rowId:'',facilityName:'',facilityId:''})});
     historyResetPendingRef.current = true;
     setActiveDistrictId(targetId);
     setDistrict(target.district);
@@ -811,12 +835,10 @@ export default function VaccineAllocationBlueprint({
     setSelectedRowIds(new Set());
     setActiveCell(null);
 
-    safeFetchJson('/api/vaccine/blueprint-districts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ activeId: targetId })
-    }).catch(err => console.warn('Active district selection save failed:', err));
+
   };
+
+  useEffect(()=>{if(workspace.selection.sheetId && workspace.selection.sheetId!==activeDistrictId && districts.some(sheet=>sheet.id===workspace.selection.sheetId))handleSwitchDistrict(workspace.selection.sheetId);},[workspace.selection.sheetId,districts.length]);
 
   const handleAddDistrict = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -835,7 +857,7 @@ export default function VaccineAllocationBlueprint({
         })
       });
       if (data && data.districts) {
-        setDistricts(data.districts);
+        setDistricts(data.districts); data.districts.forEach((sheet:DistrictSheetData)=>{savedVersionsRef.current[sheet.id]=sheet.updatedAt||null;savedSheetsRef.current[sheet.id]=structuredClone(sheet);});
         setActiveDistrictId(data.activeDistrictId);
         const newlyCreated = data.district;
         setDistrict(newlyCreated.district);
@@ -876,7 +898,7 @@ export default function VaccineAllocationBlueprint({
         body: JSON.stringify({ newDistrictName: trimmed })
       });
       if (data && data.districts) {
-        setDistricts(data.districts);
+        setDistricts(data.districts); data.districts.forEach((sheet:DistrictSheetData)=>{savedVersionsRef.current[sheet.id]=sheet.updatedAt||null;savedSheetsRef.current[sheet.id]=structuredClone(sheet);});
         setDistrict(trimmed);
         setShowRenameDistrictModal(false);
         setSyncStatus(`Renamed district to "${trimmed}" & synced to Vaccine Checker!`);
@@ -902,7 +924,7 @@ export default function VaccineAllocationBlueprint({
         method: 'DELETE'
       });
       if (data && data.districts) {
-        setDistricts(data.districts);
+        setDistricts(data.districts); data.districts.forEach((sheet:DistrictSheetData)=>{savedVersionsRef.current[sheet.id]=sheet.updatedAt||null;savedSheetsRef.current[sheet.id]=structuredClone(sheet);});
         const nextActiveId = data.activeDistrictId;
         setActiveDistrictId(nextActiveId);
         const nextActive = data.districts.find((d: any) => d.id === nextActiveId) || data.districts[0];
@@ -932,6 +954,7 @@ export default function VaccineAllocationBlueprint({
     }
   };
 
+  useEffect(()=>{setCyclePreview(null);},[newMonthName,monthScope,carryOverEndingBalances,copyFacilitiesForNewMonth,activeDistrictId]);
   // ADD A NEW ALLOCATION MONTH FOR A DISTRICT (OR ALL DISTRICTS)
   const handleAddMonth = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -940,6 +963,10 @@ export default function VaccineAllocationBlueprint({
 
     setLoading(true);
     try {
+      if(!cyclePreview) {
+        const preview=await safeFetchJson<{sheets:AllocationSheet[]}>('/api/vaccine/blueprint-months/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({month:trimmed,scope:monthScope,districtId:activeDistrictId,baseSheetId:activeDistrictId,carryOverBalances:carryOverEndingBalances,copyFacilities:copyFacilitiesForNewMonth})});
+        setCyclePreview(preview.sheets);return;
+      }
       const data = await safeFetchJson<any>('/api/vaccine/blueprint-months/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -949,12 +976,13 @@ export default function VaccineAllocationBlueprint({
           districtId: activeDistrictId,
           baseSheetId: activeDistrictId,
           carryOverBalances: carryOverEndingBalances,
-          copyFacilities: copyFacilitiesForNewMonth
+          copyFacilities: copyFacilitiesForNewMonth,
+          sourceVersions:cyclePreview.map(sheet=>({id:sheet.sourceSheetId,updatedAt:sheet.sourceUpdatedAt}))
         })
       });
 
       if (data && data.districts) {
-        setDistricts(data.districts);
+        setDistricts(data.districts); data.districts.forEach((sheet:DistrictSheetData)=>{savedVersionsRef.current[sheet.id]=sheet.updatedAt||null;savedSheetsRef.current[sheet.id]=structuredClone(sheet);});
         if (data.activeDistrictId) {
           setActiveDistrictId(data.activeDistrictId);
         }
@@ -980,6 +1008,7 @@ export default function VaccineAllocationBlueprint({
         setTimeout(() => setSyncStatus(null), 4500);
       }
     } catch (err) {
+      setCyclePreview(null);setSaveStatus(err instanceof Error?err.message:'Could not create the allocation cycle.');
       console.error('Failed to add month:', err);
     } finally {
       setLoading(false);
@@ -1016,7 +1045,7 @@ export default function VaccineAllocationBlueprint({
       });
       if (res.ok) {
         const data = await res.json();
-        setDistricts(data.districts);
+        setDistricts(data.districts); data.districts.forEach((sheet:DistrictSheetData)=>{savedVersionsRef.current[sheet.id]=sheet.updatedAt||null;savedSheetsRef.current[sheet.id]=structuredClone(sheet);});
         const remainingForDist = (data.districts || []).filter(
           (d: any) => (d.district || '').trim().toLowerCase() === district.trim().toLowerCase()
         );
@@ -1062,7 +1091,7 @@ export default function VaccineAllocationBlueprint({
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.districts)) {
-          setDistricts(data.districts);
+          setDistricts(data.districts); data.districts.forEach((sheet:DistrictSheetData)=>{savedVersionsRef.current[sheet.id]=sheet.updatedAt||null;savedSheetsRef.current[sheet.id]=structuredClone(sheet);});
         }
 
         const blankRows: FacilityBlueprintRow[] = Array.from({ length: 20 }, (_, idx) => ({
@@ -1252,6 +1281,7 @@ export default function VaccineAllocationBlueprint({
       mergeHeaders: currentMergeHeaders,
       freezeRows: currentFreezeRows,
       freezeColumns: currentFreezeColumns,
+      expectedUpdatedAt:savedVersionsRef.current[activeDistrictId]??null,
       updatedAt: new Date().toISOString()
     };
     const editsToFlush = [...pendingEditsRef.current];
@@ -1260,9 +1290,9 @@ export default function VaccineAllocationBlueprint({
       const data = await safeFetchJson<{ districts?: DistrictSheetData[] }>('/api/vaccine/blueprint-districts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ district: updatedSheet, activeId: activeDistrictId, user: currentUser, cellEdits: editsToFlush })
+        body: JSON.stringify({ district: updatedSheet, activeId: activeDistrictId, user: currentUser, cellEdits: editsToFlush,changeReason })
       });
-      if (data && Array.isArray(data.districts)) setDistricts(data.districts);
+      if (data && Array.isArray(data.districts)) setDistricts(data.districts); data.districts.forEach((sheet:DistrictSheetData)=>{savedVersionsRef.current[sheet.id]=sheet.updatedAt||null;savedSheetsRef.current[sheet.id]=structuredClone(sheet);});
       setHasUnsavedChanges(false);
       setSaveStatus('Saved successfully');
       setTimeout(() => setSaveStatus(null), 2500);
@@ -1288,6 +1318,12 @@ export default function VaccineAllocationBlueprint({
     currentMergeHeaders = mergeHeaders,
     currentDeletedColumnKeys = deletedColumnKeysRef.current
   ) => {
+    if(districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'){
+      const saved=savedSheetsRef.current[activeDistrictId];
+      if(saved){const copy=structuredClone(saved);setRows(copy.rows);setProducts(copy.products||[]);setDistrict(copy.district);setMonth(copy.month);setCellMerges(copy.cellMerges||[]);updateDeletedColumns(copy.deletedColumnKeys||[]);updateBlankColumns(copy.blankColumns||[]);updateSheetSizing(copy.sheetSizing||emptyBlueprintSizing());setHeaderLabels(copy.headerLabels||[...DEFAULT_BLUEPRINT_HEADER_LABELS]);setHiddenRowIds(copy.hiddenRowIds||[]);}
+      setHasUnsavedChanges(false);setSaveStatus('This cycle is closed. Reopen it with a correction reason before editing.');return;
+    }
+
     const currentBlankColumns = blankColumnsRef.current;
     const currentSheetSizing = sheetSizingRef.current;
     setHasUnsavedChanges(true);
@@ -1377,6 +1413,7 @@ export default function VaccineAllocationBlueprint({
         const current = liveSheetRef.current;
         if (canceled || current.activeDistrictId !== activeDistrictId || current.hasUnsavedChanges || saveTimerRef.current || resizingSheetRef.current) return;
         const incoming = data.sheet;
+        if(incoming){savedVersionsRef.current[activeDistrictId]=incoming.updatedAt||null;savedSheetsRef.current[activeDistrictId]=structuredClone(incoming);}
         setLiveSheetWarning('');
         setLiveSheetCheckedAt(data.checkedAt);
         const saved = current.districts.find(sheet => sheet.id === activeDistrictId);
@@ -1559,6 +1596,8 @@ export default function VaccineAllocationBlueprint({
     field: 'processing' | 'completed' | 'facility' | 'deliverySite' | 'subDistrict' | { vaccine: string; subCol: 'carryOver' | 'allocation' | 'distributed' } | { blank: number },
     value: string
   ) => {
+    if(districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'){setSaveStatus('This cycle is closed. Reopen it with a correction reason before editing.');return;}
+
     if (typeof field === 'object' && 'blank' in field) { updateFreeCell(rowId, field.blank, value); return; }
     if (typeof field !== 'string' && value.trim() !== '') {
       const source = rows.find(row => row.id === rowId)?.vaccines[field.vaccine]?.[field.subCol];
@@ -2376,6 +2415,7 @@ export default function VaccineAllocationBlueprint({
   // Selecting a facility for audit does not change its data-entry progress.
   const handleSelectFacilityForOrder = (row: FacilityBlueprintRow) => {
     if (onFacilitySelectedForOrder) {
+      workspace.setSelection({sheetId:activeDistrictId,district,cycle:month,rowId:row.id,facilityName:row.facility,facilityId:''});
       onFacilitySelectedForOrder(row.id);
     }
   };
@@ -3219,6 +3259,24 @@ export default function VaccineAllocationBlueprint({
     XLSX.writeFile(wb, `Allocation_Blueprint_${month.replace(/\s+/g, '_')}.xlsx`);
   };
 
+  const confirmImport=async()=>{
+    if(!importPreview||loading||!importCatalog)return;
+    const preview=allocationImportPreview(districts,importPreview.sheets,importCatalog);
+    if(preview.some(sheet=>sheet.findings.some(issue=>issue.severity==='error'))){setSaveStatus('Correct the import errors before applying this workbook.');return;}
+    setLoading(true);
+    try {
+      const data=await safeFetchJson<{districts:DistrictSheetData[]}>('/api/vaccine/blueprint-districts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({districts:importPreview.sheets,activeId:importPreview.sheets[0].id,user:currentUser,changeReason:`Reviewed import: ${importPreview.fileName}`})});
+      data.districts.forEach(sheet=>{savedVersionsRef.current[sheet.id]=sheet.updatedAt||null;savedSheetsRef.current[sheet.id]=structuredClone(sheet);});
+      setDistricts(data.districts);setHasUnsavedChanges(false);
+      const selected=data.districts.find(sheet=>sheet.id===importPreview.sheets[0].id)!;
+      setActiveDistrictId(selected.id);setDistrict(selected.district);setMonth(selected.month);setProducts(selected.products||[]);setRows(selected.rows);
+      workspace.setSelection({sheetId:selected.id,district:selected.district,cycle:selected.month,rowId:'',facilityName:'',facilityId:''});
+      historyResetPendingRef.current=true;setCellMerges([]);updateBlankColumns([]);updateSheetSizing(emptyBlueprintSizing());updateDeletedColumns([]);setHiddenRowIds([]);
+      setImportPreview(null);setSaveStatus('Reviewed workbook import saved successfully.');
+    }catch(error:any){setSaveStatus(error.message||'Import could not be saved. Your current sheet has not been replaced.');}
+    finally{setLoading(false);}
+  };
+
   // Import Excel/CSV only after the complete sheet has passed strict validation.
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -3252,7 +3310,9 @@ export default function VaccineAllocationBlueprint({
       const importedSheets: DistrictSheetData[] = validSheets.map(({ sheetName, parsed }, index) => {
         const parsedDistrict = parsed.district || (validSheets.length === 1 ? district : sheetName);
         const parsedMonth = parsed.month || month;
-        const existing = districts.find(item => item.district.toLowerCase() === parsedDistrict.toLowerCase() && item.month.toLowerCase() === parsedMonth.toLowerCase());
+        const candidates= districts.filter(item => item.district.toLowerCase() === parsedDistrict.toLowerCase() && item.month.toLowerCase() === parsedMonth.toLowerCase());
+        if(candidates.length>1)throw Error(`Multiple sheets match ${parsedDistrict} / ${parsedMonth}. Resolve the duplicate sheets before importing.`);
+        const existing=candidates[0];
         const slug = `${parsedDistrict}_${parsedMonth}`.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `imported_sheet_${index + 1}`;
         let id = existing?.id || (validSheets.length === 1 ? activeDistrictId : slug);
         let collision = 2;
@@ -3269,10 +3329,14 @@ export default function VaccineAllocationBlueprint({
             const style = getExcelBaseFormatting(cell?.s);
             if (Object.keys(style).length) baseFormatting[blueprintColumnKey(colIndex, parsedProducts)] = style;
           });
-          return { ...row, baseFormatting };
+          const matches=(existing?.rows||[]).filter(previous=>allocationNameKey(previous.facility)===allocationNameKey(row.facility));
+          const previous=matches.length===1?matches[0]:undefined;
+          return { ...row,id:previous?.id||row.id,...(previous?.facilityId?{facilityId:previous.facilityId}:{}),...(previous?.fsFacilityId?{fsFacilityId:previous.fsFacilityId}:{}),baseFormatting };
         }) as FacilityBlueprintRow[], parsedProducts);
         return {
           id,
+          expectedUpdatedAt:savedVersionsRef.current[id]??existing?.updatedAt??null,
+          cycleState:existing?.cycleState,
           district: parsedDistrict,
           month: parsedMonth,
           sheetName,
@@ -3288,44 +3352,8 @@ export default function VaccineAllocationBlueprint({
           updatedAt: new Date().toISOString()
         };
       });
-      // Apply all valid worksheets together so an invalid file never partially replaces the current workbook.
-      const allSheets = [
-        ...districts.filter(item => !importedSheets.some(incoming => incoming.id === item.id)),
-        ...importedSheets
-      ];
-      const selectedSheet = importedSheets[0];
-      historyResetPendingRef.current = true;
-      setDistricts(allSheets);
-      setActiveDistrictId(selectedSheet.id);
-      setDistrict(selectedSheet.district);
-      setMonth(selectedSheet.month);
-      setProducts(selectedSheet.products || [...DEFAULT_BLUEPRINT_PRODUCTS]);
-      setRows(selectedSheet.rows);
-      setCellMerges([]);
-    updateBlankColumns([]);
-    updateSheetSizing(emptyBlueprintSizing());
-      setHeaderLabels([...DEFAULT_BLUEPRINT_HEADER_LABELS]);
-      setActiveHeaderCell(null);
-      updateDeletedColumns([]);
-      setHiddenRowIds([]);
-      setMergeHeaders(true);
-      setFreezeRows(0);
-      setFreezeColumns(0);
-      setHasUnsavedChanges(true);
-      setSaveStatus('Saving imported worksheets…');
-      void safeFetchJson<{ districts?: DistrictSheetData[] }>('/api/vaccine/blueprint-districts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ districts: importedSheets, activeId: selectedSheet.id, user: currentUser })
-      }).then(data => {
-        if (data && Array.isArray(data.districts)) setDistricts(data.districts);
-        setHasUnsavedChanges(false);
-        setSaveStatus(`Imported ${importedSheets.length} worksheet${importedSheets.length === 1 ? '' : 's'} from ${file.name}${validSheets.length < nonEmptySheets.length ? `; skipped ${nonEmptySheets.length - validSheets.length} unsupported sheet${nonEmptySheets.length - validSheets.length === 1 ? '' : 's'}` : ''}.`);
-      }).catch(err => {
-        setHasUnsavedChanges(true);
-        setSaveStatus(`Import could not be saved: ${err instanceof Error ? err.message : 'Check your connection and try again.'}`);
-      });
-      setTimeout(() => setSaveStatus(null), 4500);
+      setImportPreview({sheets:importedSheets,fileName:file.name,skipped:nonEmptySheets.length-validSheets.length,skippedMessages:nonEmptySheets.filter(result=>!validSheets.includes(result)).map(result=>({sheetName:result.sheetName,errors:result.parsed.errors}))});
+      setSaveStatus('Review the import preview. Nothing has been changed.');
     } catch (uploadErr) {
       console.error('Failed to parse spreadsheet:', uploadErr);
       setSaveStatus('Could not read this file. Save it as .xlsx or .csv and try again; the current sheet was not changed.');
@@ -4303,6 +4331,10 @@ export default function VaccineAllocationBlueprint({
         <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx,.xls,.csv" className="hidden" aria-label="Upload a Blueprint workbook" />
       </section>
 
+      {importPreview&&<section className="bg-white border border-purple-300 rounded-xl p-4 space-y-3" aria-label="Blueprint import preview"><h3 className="font-bold">Review import: {importPreview.fileName}</h3>{!importCatalog&&<p role="alert" className="text-amber-800">Product catalogue unavailable. Reload the page before applying this import.</p>}<p>Nothing is saved until you apply this preview. {importPreview.skipped} unsupported worksheets will be skipped.</p>{importPreview.skippedMessages?.map(item=><p key={item.sheetName} className="text-sm text-amber-800">Skipped {item.sheetName}: {item.errors.join('; ')||'No supported allocation table'}</p>)}<div className="max-h-80 overflow-auto">{allocationImportPreview(districts,importPreview.sheets,importCatalog).map(sheet=><div key={sheet.sheetId} className="border rounded p-2 mb-2 text-sm"><strong>{sheet.district} · {sheet.cycle}</strong><p>{sheet.newFacilities.length} new facilities · {sheet.removedFacilities.length} removed facilities · {sheet.changes.length} changed fields</p>{sheet.newFacilities.length>0&&<p>New: {sheet.newFacilities.join(', ')}</p>}{sheet.removedFacilities.length>0&&<p>Removed: {sheet.removedFacilities.join(', ')}</p>}{sheet.findings.map((issue,index)=><p key={index} className={issue.severity==='error'?'text-red-800':'text-amber-800'}>{issue.facility}: {issue.message}</p>)}<details><summary>Review quantity and field changes</summary>{sheet.changes.map((change,index)=><p key={index}>{change.facility} · {change.product||''} · {change.field}: {String(change.before??'Not recorded')} → {String(change.after??'Not recorded')}</p>)}</details></div>)}</div><button type="button" disabled={loading||!canManageCatalog(assignedRoles(currentUser))||!importCatalog||allocationImportPreview(districts,importPreview.sheets,importCatalog).some(sheet=>sheet.findings.some(issue=>issue.severity==='error'))} onClick={()=>void confirmImport()} className="border rounded p-2">Apply reviewed import</button><button type="button" disabled={loading} onClick={()=>setImportPreview(null)} className="border rounded p-2 ml-2">Cancel import</button></section>}
+      {districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'&&<p role="status" className="bg-amber-50 text-amber-900 border rounded p-3">Closed cycle — allocation changes are locked. Open Cycle controls and record a correction reason to reopen it.</p>}
+      <label className="block text-sm">Reason for allocation changes (recorded in history)<input value={changeReason} onChange={event=>setChangeReason(event.target.value)} maxLength={1000} className="border rounded p-2 w-full" placeholder="e.g. Reviewed monthly allocation update"/></label>
+      <AllocationOperations sheets={districts} canManage={canManageCatalog(assignedRoles(currentUser))&&!hasUnsavedChanges} onUpdated={()=>void loadBlueprintFromServer()} onAudit={onFacilitySelectedForOrder}/>
       {/* Multi-District & Months Selection Dropdown Bar - Unified Single Line */}
       <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:px-4 shadow-xs">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
@@ -4927,21 +4959,7 @@ export default function VaccineAllocationBlueprint({
           ), isSheetFullscreen ? blueprintSheetRef.current || document.body : document.body)}
         </div>
         <style>{`.allocation-blueprint-scroll::-webkit-scrollbar { display: none; } .allocation-blueprint-scroll { scrollbar-width: none; -ms-overflow-style: none; } .freeze-menu-item { display:block; width:100%; border-radius:.5rem; padding:.45rem .65rem; text-align:left; font-size:11px; font-weight:600; color:#334155; } .freeze-menu-item:hover:not(:disabled) { background:#f1f5f9; }`}</style>
-        <div role="tablist" aria-label="Allocation Blueprint worksheets" className="flex min-w-0 gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50 px-2 pt-2">
-          {districts.map(sheet => (
-            <button
-              key={sheet.id}
-              type="button"
-              role="tab"
-              aria-selected={sheet.id === activeDistrictId}
-              onClick={() => handleSwitchDistrict(sheet.id)}
-              className={`max-w-[220px] shrink-0 truncate rounded-t-lg border border-b-0 px-3 py-2 text-xs transition-colors ${sheet.id === activeDistrictId ? 'border-slate-300 bg-white font-bold text-[#C55A11]' : 'border-transparent text-slate-600 hover:bg-white hover:text-slate-900'}`}
-              title={`${sheet.district} · ${sheet.month}`}
-            >
-              {sheet.sheetName || `${sheet.district} · ${sheet.month}`}
-            </button>
-          ))}
-        </div>
+        <BlueprintMonthTabs sheets={districts} activeSheetId={activeDistrictId} onSelect={handleSwitchDistrict} />
         <div ref={blueprintSheetRef} id="allocation-blueprint-sheet" data-sheet-fullscreen={isSheetFullscreen} className={isSheetFullscreen ? 'fixed inset-0 z-[60] flex h-[100dvh] w-full flex-col bg-white text-slate-800' : 'min-w-0'}>
           {isSheetFullscreen && <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2">
             <span className="text-sm font-semibold">Allocation sheet</span>
@@ -4955,7 +4973,8 @@ export default function VaccineAllocationBlueprint({
             className={`allocation-blueprint-scroll min-w-0 flex-1 overflow-auto ${isSheetFullscreen ? 'h-full min-h-0 max-h-none' : 'max-h-[680px]'}`}
           >
             <style>{`[data-cell-text="true"], [data-cell-text="true"] input { color: var(--blueprint-text-color) !important; } [data-cell-fill="true"] input { background-color: transparent !important; } [data-blueprint-bold="true"], [data-blueprint-bold="true"] input { font-weight: 700 !important; } .blueprint-sized-cell > div { height: var(--blueprint-row-height); max-height: var(--blueprint-row-height); min-height: 0; overflow: hidden; } .blueprint-sized-cell input { max-height: calc(var(--blueprint-row-height) - 2px); }`}</style>
-            <table ref={blueprintTableRef} onContextMenu={event => openFreezeMenu(event, 'row')} style={{ zoom: zoomLevel / 100, tableLayout: 'fixed', width: visibleColumns.reduce((sum, col) => sum + getSheetColumnWidth(col), 0) }} className="text-left border-collapse select-text text-xs">
+            <fieldset disabled={districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'} className="contents">
+            <table onChangeCapture={event=>{if(districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed')event.stopPropagation();}} ref={blueprintTableRef} onContextMenu={event => openFreezeMenu(event, 'row')} style={{ zoom: zoomLevel / 100, tableLayout: 'fixed', width: visibleColumns.reduce((sum, col) => sum + getSheetColumnWidth(col), 0) }} className="text-left border-collapse select-text text-xs">
             <colgroup>{visibleColumns.map(col => <col key={blueprintColumnKey(col, products)} style={{ width: getSheetColumnWidth(col) }} />)}</colgroup>
             {/* Table Header Section */}
             <thead className="font-sans">
@@ -5977,6 +5996,7 @@ export default function VaccineAllocationBlueprint({
               </BlueprintLayoutRow>
             </tfoot>
             </table>
+            </fieldset>
           </div>
           {(() => {
             const trackHeight = gridScrollMetrics.clientHeight || 680;
@@ -6401,6 +6421,7 @@ export default function VaccineAllocationBlueprint({
                 </label>
               </div>
 
+              {cyclePreview&&<section aria-label="Carry-over preview" className="border rounded-xl p-3 max-h-64 overflow-auto text-xs"><strong>Reviewed opening balances for the new draft cycle</strong>{cyclePreview.map(sheet=><div key={sheet.id}><p className="font-semibold">{sheet.district} · {sheet.month} · Source: {sheet.sourceSheetId}</p>{sheet.rows.map(row=><p key={row.id}>{row.facility}: {Object.entries(row.vaccines||{}).map(([name,value]:[string,any])=>`${name}: ${value.carryOver===''?'Not recorded':value.carryOver}`).join(' · ')}</p>)}</div>)}<p>Unknown or inconsistent source balances stay blank and require review. The source version is checked again when creating the cycle.</p></section>}
               {/* Modal Actions */}
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
@@ -6416,7 +6437,7 @@ export default function VaccineAllocationBlueprint({
                   className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-[#ED7D31] hover:from-amber-600 hover:to-[#C55A11] text-white text-xs font-bold rounded-xl shadow-xs hover:shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-1.5 transition-all"
                 >
                   <Calendar className="w-3.5 h-3.5" />
-                  <span>{loading ? 'Creating...' : `Create ${newMonthName ? `"${newMonthName}"` : 'Month'} Allocation`}</span>
+                  <span>{loading ? 'Working...' : !cyclePreview ? 'Preview carry-over' : `Create ${newMonthName ? `"${newMonthName}"` : 'Month'} Allocation`}</span>
                 </button>
               </div>
             </form>

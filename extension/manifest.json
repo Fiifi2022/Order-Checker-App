@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OrderCheck",
-  "version": "2.3.21",
+  "version": "2.3.47",
   "description": "OrderCheck side panel with product-specific General Auditor verification and live FS allocation support.",
   "minimum_chrome_version": "116",
   "permissions": [

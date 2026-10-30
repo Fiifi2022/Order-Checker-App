@@ -1,0 +1,15 @@
+# Catalogue health and conflict cleanup
+
+Open **Product Catalog → Catalogue health**. Checks run against the loaded catalogue revision and refresh when a product or alias edit is saved. Reload fetches the latest revision. Findings concern repository quality; they do not create order discrepancies or change audit verdicts.
+
+The checker identifies duplicate IDs and canonical names, aliases shared by different products, display/FS-name collisions, missing product fields, unused context aliases, invalid or conflicting checker links, and active alias records that disagree with the product catalogue. Pending AI suggestions are counted separately. Retired alias history is retained and is not mistaken for a live orphan.
+
+Whole-label conflict checks normalize case, punctuation, word order and dotted acronyms without removing strengths, volumes or formulation words. Similar canonical wording is a **review item**, not proof of clinical equivalence. In particular, reversing the words in a vaccine name does not authorize merging adult and paediatric formulations. Shared context-required aliases remain amber review items.
+
+Choose **Review product** to edit an affected record using the existing role-protected form. Remove an incorrect alias and its context entry; also correct an offending display/FS name if present. Use **Alias Management** to inspect, correct or deactivate approved mappings and review their history. Keep genuine clinical identities separate. Correct a checker link by choosing the verified counterpart or clearing the link. Duplicate IDs require record repair before editing; the save endpoint rejects ambiguous-ID updates and deletion.
+
+**Preview catalogue changes** runs the real validation and synchronization rules without writing. It reports findings introduced or resolved by a draft. Previewing is optional and does not approve a mapping. Saving rechecks the current revision transactionally; stale drafts cannot overwrite newer edits. Unchanged legacy overlaps do not block unrelated edits, while newly introduced conflicts are rejected in both the product form and alias-approval workflow. Existing alias removals retain their history and invalidate future matching through the existing catalogue update flow.
+
+Authenticated readers can call `GET /api/products/health`. Editors can call `POST /api/products/preview` with the normal product-save payload and current revision; its response includes `saved: false`, `introduced`, `resolved` and the resulting health report. Both endpoints disable caching. Mutation permissions remain those of the existing catalogue endpoints.
+
+Implementation: `shared/catalogHealth.ts`, `shared/productCatalog.ts`, `server/productCatalog.ts`, `server/catalogAliasLearning.ts`, `src/components/CatalogHealthPanel.tsx`, and `src/components/ProductCatalog.tsx`. Regression tests are in `server/catalogHealth.test.ts`. No AI calls, automatic clinical merges, allocation changes, or saved audit rewrites occur during health checks or previews.

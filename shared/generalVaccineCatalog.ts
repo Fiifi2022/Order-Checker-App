@@ -7,6 +7,25 @@ export const getGeneralVaccineCatalogVersion = () => version;
 let identities = new Map<string, string>();
 let conflicts = new Set<string>();
 
+/** Resolve only saved cross-checker links or a unique approved label overlap.
+ * Existing General identities take precedence over broad legacy vaccine aliases. */
+export function generalVaccineCounterpart(vaccine:CatalogProduct,products:readonly CatalogProduct[]):CatalogProduct|undefined {
+  const general=products.filter(product=>product.scope==='general');
+  const approvedNames=(product:CatalogProduct)=>catalogProductNames(product).filter(label=>!product.contextualAliases.some(alias=>catalogKey(alias)===catalogKey(label)));
+  const linked=general.filter(product=>product.id===vaccine.linkedProductId || product.linkedProductId===vaccine.id);
+  if(linked.length)return linked.length===1?linked[0]:undefined;
+  const direct=general.filter(product=>catalogProductNames(product).some(label=>catalogKey(label)===catalogKey(vaccine.name)) &&
+    (product.category==='vaccine' || product.category==='companion' || approvedNames(product).some(label=>catalogKey(label)===catalogKey(vaccine.name))));
+  const choose=(matches:CatalogProduct[])=>{
+    const vaccines=matches.filter(product=>product.category==='vaccine' || product.category==='companion');
+    return matches.length===1?matches[0]:vaccines.length===1?vaccines[0]:undefined;
+  };
+  if(direct.length)return choose(direct);
+  const labels=new Set(approvedNames(vaccine).map(catalogKey));
+  const shared=general.filter(product=>approvedNames(product).some(label=>labels.has(catalogKey(label))));
+  return choose(shared);
+}
+
 /** Bring vaccine catalog labels into General without merging its distinct identities. */
 export function setGeneralVaccineCatalog(products: CatalogProduct[]) {
   const signature = JSON.stringify(products);
@@ -26,15 +45,9 @@ export function setGeneralVaccineCatalog(products: CatalogProduct[]) {
   const candidates = new Map<string, Set<string>>();
   conflicts = new Set();
   for (const product of products.filter(product => product.scope === 'vaccine')) {
-    const counterparts = labels.get(catalogKey(product.name)) || [];
-    const linked = general.find(other => other.id === product.linkedProductId || other.linkedProductId === product.id);
-    const vaccineCounterparts = counterparts.filter(other => other.category === 'vaccine');
-    const counterpart = counterparts.length === 1 ? counterparts[0] : vaccineCounterparts.length === 1 ? vaccineCounterparts[0] : undefined;
-    if (!linked && counterparts.length > 1 && !counterpart) {
-      catalogProductNames(product).forEach(label => conflicts.add(catalogKey(label)));
-      continue;
-    }
-    const canonical = linked?.name || counterpart?.name || product.name;
+    const counterpart=generalVaccineCounterpart(product,products);
+    if(!counterpart && (labels.get(catalogKey(product.name)) || []).length>1){catalogProductNames(product).forEach(label=>conflicts.add(catalogKey(label)));continue;}
+    const canonical = counterpart?.name || product.name;
     for (const label of catalogProductNames(product)) {
       const key = catalogKey(label);
       if (contextual.has(key) || product.contextualAliases.some(alias => catalogKey(alias) === key) ||

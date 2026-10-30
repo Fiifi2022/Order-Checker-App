@@ -6,6 +6,9 @@
 import { createHash } from 'node:crypto';
 import { CLINICAL_PAIRINGS, vaccinePairingFailure } from '../shared/vaccinePairing';
 import { normalizeFacilityName } from './blueprintFacility';
+import type {GeneralFacilityContext} from '../src/utils/generalFacility';
+import {vaccineFacilityMentions, vaccineFacilityNamesMatch} from './vaccineFacilityIdentity';
+export {vaccineFacilityNamesMatch, vaccineFacilityMatcher} from './vaccineFacilityIdentity';
 export { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 
 export const DEFAULT_DOSES_PER_VIAL: Record<string, number> = {
@@ -295,7 +298,7 @@ export function normalizeProductName(value: string): string {
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/^\s*(?:[•*#>–—-]+\s*|\d+[.)]\s*)/, '')
-    .replace(/\bb\.\s*c\.\s*g\.?/gi, 'BCG')
+    .replace(/\b[a-z](?:\.\s*[a-z])+\b(?:\.(?![a-z]))?/gi, value=>value.replace(/[.\s]/g,''))
     .toLowerCase()
     .replace(/\bdiluents\b/g, 'diluent')
     .replace(/\bdroppers\b/g, 'dropper')
@@ -325,8 +328,9 @@ export function matchVaccineName(rawName: string): { canonical: string; confiden
     .sort((a, b) => b.alias.length - a.alias.length);
 
   // Exact normalized names take precedence, with longest aliases first.
-  const exactMatch = aliasEntries.find(entry => entry.alias === normalized);
-  if (exactMatch) return { canonical: exactMatch.canonical, confidence: 'high' };
+  const exactMatches = new Set(aliasEntries.filter(entry=>entry.alias===normalized).map(entry=>entry.canonical));
+  if(exactMatches.size===1)return {canonical:[...exactMatches][0],confidence:'high'};
+  if(exactMatches.size>1)return {canonical:rawName.trim(),confidence:'none'};
 
   // For names containing extra words, check accessories first, then vaccines.
   // Keeping the two product classes separate prevents e.g. "Rota Dropper"
@@ -823,39 +827,15 @@ export function canSupplyWithoutAllocation(name: string): boolean {
 }
 
 // Extract facility name from text if present
-export function extractFacilityFromText(text: string): string | null {
-  if (!text) return null;
+export function vaccineFacilityContext(context: GeneralFacilityContext = {}): GeneralFacilityContext {
+  return {...context, records: [...(context.records || []), ...getAllFacilities().map(facility => ({
+    name: facility.facilityName, district: facility.district, source: `allocation/${facility.id}`
+  }))]};
+}
 
-  // 1. Check explicit label pattern (e.g. 'Facility: ...', 'Health Centre: ...', 'Hospital: ...', 'Clinic: ...', 'CHPS: ...', 'Delivered to: ...', 'To: ...', etc.)
-  const match = text.match(/(?:facility|hospital|clinic|health\s*cent(?:er|re)|hc|dhd|chps|polyclinic|dispensary|delivered\s*to|ordering\s*facility|destination|location|site|recipient|to|for)\s*[:=–—]\s*([^\n\r,]+)/i);
-  if (match) {
-    const candidate = match[1].trim().replace(/^['"]|['"]$/g, '').replace(/[-–—.,]+$/, '').trim();
-    if (candidate.length > 2) {
-      return candidate;
-    }
-  }
-
-  // 2. Direct match against all known facilities in facilitiesStore
-  const lowerText = text.toLowerCase();
-  for (const fac of facilitiesStore.values()) {
-    const facLower = fac.facilityName.toLowerCase();
-    if (lowerText.includes(facLower)) {
-      return fac.facilityName;
-    }
-  }
-
-  // 3. Scan first few lines for standard health facility naming patterns
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean).slice(0, 4);
-  for (const line of lines) {
-    if (/(?:hospital|clinic|health\s*cent(?:er|re)|\bhc\b|\bdhd\b|chps|polyclinic)/i.test(line)) {
-      const cleaned = line.replace(/^(?:order\s*for|dispatch\s*to|delivery\s*to|to|facility)\s*[:=–—]?\s*/i, '').trim();
-      if (cleaned.length > 3) {
-        return cleaned;
-      }
-    }
-  }
-
-  return null;
+export function extractFacilityFromText(text: string, context?: GeneralFacilityContext): string | null {
+  const names = vaccineFacilityMentions(text, vaccineFacilityContext(context));
+  return names.length === 1 ? names[0] : null;
 }
 
 export interface DirectOrderItemInput {
@@ -870,6 +850,7 @@ export interface DirectOrderItemInput {
 
 // Comprehensive Vaccine Allocation Validation Logic
 export function validateVaccineOrder(params: {
+  facilityContext?: GeneralFacilityContext;
   facilitySnapshot?: FacilityAllocationRecord;
   recordAudit?: boolean;
   onAudit?: (record: VaccineAuditLogRecord) => void;
@@ -922,20 +903,29 @@ export function validateVaccineOrder(params: {
   }
 
   // 1. Check Facility Mismatch if FS or WhatsApp specifies a facility name
-  const extractedFsFacility = extractFacilityFromText(fulfillmentConfirmation);
-  if (orderSource === 'fs_only' && !extractedFsFacility) {
+  const facilityContext = vaccineFacilityContext(params.facilityContext);
+  const fsFacilities = vaccineFacilityMentions(fulfillmentConfirmation, facilityContext);
+  const customerFacilities = orderSource === 'whatsapp' ? vaccineFacilityMentions(whatsappMessage, facilityContext) : [];
+  for (const [label, names] of [['FS confirmation', fsFacilities], ['Customer request', customerFacilities]] as const) {
+    if (names.length > 1) {
+      facilityMismatch = true;
+      errors.push(`FACILITY REVIEW: ${label} identifies multiple facilities. Confirm the intended facility before checking allocations.`);
+    }
+  }
+  const extractedFsFacility = fsFacilities.length === 1 ? fsFacilities[0] : null;
+  if (orderSource === 'fs_only' && fsFacilities.length === 0) {
     errors.push('🔴 FACILITY ERROR: The FS confirmation does not identify a facility, so it cannot be matched to the selected Allocation Blueprint.');
     facilityMismatch = true;
   }
   if (extractedFsFacility) {
     facilityFoundInFs = extractedFsFacility;
-    if (normalizeFacilityName(extractedFsFacility) !== normalizeFacilityName(facility.facilityName)) {
+    if (!vaccineFacilityNamesMatch(extractedFsFacility, facility.facilityName, facilityContext)) {
       facilityMismatch = true;
       errors.push(`🔴 FACILITY MISMATCH: The active Allocation Blueprint is set to "${facility.facilityName}", but the FS Confirmation specifies "${extractedFsFacility}".`);
     }
   }
-  const customerFacility = orderSource === 'whatsapp' ? extractFacilityFromText(whatsappMessage) : null;
-  if (customerFacility && normalizeFacilityName(customerFacility) !== normalizeFacilityName(facility.facilityName)) {
+  const customerFacility = customerFacilities.length === 1 ? customerFacilities[0] : null;
+  if (customerFacility && !vaccineFacilityNamesMatch(customerFacility, facility.facilityName, facilityContext)) {
     facilityMismatch = true;
     errors.push(`🔴 FACILITY MISMATCH: The customer request identifies "${customerFacility}", but the selected Allocation Blueprint is "${facility.facilityName}".`);
   }

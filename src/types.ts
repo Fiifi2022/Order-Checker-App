@@ -7,7 +7,7 @@ export interface VerificationItem {
   name: string;
   requested: string;
   found: string;
-  status: 'match' | 'quantity mismatch' | 'missing item' | 'extra item' | 'out of stock' | 'vaccine pairing mismatch';
+  status: 'match' | 'quantity review' | 'quantity mismatch' | 'missing item' | 'extra item' | 'out of stock' | 'vaccine pairing mismatch' | 'product identity discrepancy';
   action?: string;
   category?: string;
 }
@@ -39,6 +39,9 @@ export interface OrderCheckResult {
 }
 
 export interface AuditRecord extends OrderCheckResult {
+  storage?: import('../shared/auditStorage').AuditStorageState;
+  generalStorageWarning?: string;
+  createdByUserId?: string;
   id: string;
   timestamp: string;
   whatsappMessage: string;

@@ -25,7 +25,7 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 test('extension editor honors backend permissions and explicit Gemini review before saving', async () => {
   const dom = fixture(), calls = []; let canEdit = false, updates = 0;
   try {
-    setupCatalog({ request: async (endpoint, options) => {
+    setupCatalog({ aliasManagementFactory:()=>({reset(){}}), request: async (endpoint, options) => {
       calls.push({ endpoint, body: options?.body && JSON.parse(options.body) });
       if (endpoint.endsWith('suggest-aliases')) return { suggestions: [{ alias: 'CN', kind: 'abbreviation', requiresContext: true, reason: 'Needs context' }] };
       return { revision: 4, canEdit, products: [product] };
@@ -66,4 +66,22 @@ test('screenshot flow preserves edited input and resets uploaded files on accoun
     dom.get('whatsappImage').files = [{ type: 'text/plain', size: 1 }]; await dom.get('whatsappImage').fire('change');
     assert.equal(dom.get('whatsappScan').disabled, true); assert.match(dom.get('whatsappScanStatus').textContent, /PNG/);
   } finally { globalThis.FileReader = oldReader; dom.restore(); }
+});
+
+test('catalogue deletion requires confirmation and backend edit permission, then refreshes the list',async()=>{
+ const dom=fixture(),previousConfirm=globalThis.confirm;let confirmed=false,canEdit=true,deleted=false,updates=0;const writes=[];
+ globalThis.confirm=()=>confirmed;
+ try{
+  setupCatalog({aliasManagementFactory:()=>({reset(){}}),onUpdated:()=>updates++,request:async(_route,options)=>{
+   if(options?.method==='POST'){writes.push(JSON.parse(options.body));deleted=true;}
+   return {revision:deleted?5:4,canEdit,products:deleted?[]:[product]};
+  }});
+  await dom.get('reloadCatalog').fire('click');await dom.get('catalogProducts').children[0].fire('click');
+  assert.equal(dom.get('deleteCatalogProduct').hidden,false);
+  await dom.get('deleteCatalogProduct').fire('click');assert.equal(writes.length,0);
+  confirmed=true;await dom.get('deleteCatalogProduct').fire('click');
+  assert.deepEqual(writes,[{action:'delete',id:'g',revision:4}]);assert.equal(updates,1);assert.equal(dom.get('catalogProducts').children.length,0);assert.equal(dom.get('catalogForm').hidden,true);
+  canEdit=false;deleted=false;await dom.get('reloadCatalog').fire('click');await dom.get('catalogProducts').children[0].fire('click');
+  assert.equal(dom.get('deleteCatalogProduct').hidden,true);await dom.get('deleteCatalogProduct').fire('click');assert.equal(writes.length,1);
+ }finally{globalThis.confirm=previousConfirm;dom.restore();}
 });

@@ -70,22 +70,48 @@ export function findGeneralFacilityNames(text: string, records: GeneralFacilityR
     const plain = line.trim().replace(/^(?:[-*•]\s*)/, '');
     const lineNames = new Map<string, string>();
     const literalMentions: { name: string; start: number; end: number }[] = [];
-    const add = (name: string) => { if (name.trim()) lineNames.set(normalizeGeneralFacilityName(name), name.trim().replace(/[.!]+$/, '')); };
+    const add = (name: string) => {
+      const value = name.trim().replace(/[.!]+$/, ''), key = normalizeGeneralFacilityName(value);
+      if (value && value.length > (lineNames.get(key)?.length || 0)) lineNames.set(key, value);
+    };
     const direct = plain.replace(/^(?:good\s+(?:morning|afternoon|evening)|hello|hi|please|kindly)[,! .]*\s+/i, '').match(typedName);
     if (direct && !/^(?:i(?:['’]m)?|we(?:['’]re)?|this|here)\b/i.test(direct[1]) && !/\b(?:need|send|supply|request|order|please|kindly|deliver|from|for|to|at)\b/i.test(direct[1])) add(direct[1]);
-    for (const match of plain.matchAll(/\b(?:in\s+charge\s+of|on\s+behalf\s+of|representing|this\s+is|we\s+are|i\s+am|from|at|to|for|facility(?:\s+is)?|supply|serving)\s+(?:the\s+)?/gi)) {
+    for (const match of plain.matchAll(/\b(?:in\s+charge\s+of|on\s+behalf\s+of|representing|this\s+is|we\s+are|i\s+am|from|at|to|for|or|and|facility(?:\s+is)?|supply|serving)\s+(?:the\s+)?/gi)) {
       const candidate = plain.slice(match.index! + match[0].length).match(typedName)?.[1];
       if (candidate && !/\b(?:need|send|request|please|kindly|deliver|from|for|to|at)\b/i.test(candidate)) add(candidate);
     }
-    // Filter literal candidates before compiling patterns for the full served directory.
-    const foldedLine = plain.toLowerCase().replace(/\s+/g, ' ');
-    // Official names and verified aliases can also identify untyped names in prose.
+    // Use the same vocabulary for detection and comparison. A directory entry
+    // "Example Health Centre" must also be discoverable as "EXAMPLE H.C." in
+    // ordinary prose. Keep source spans; never replace a mention with a guessed
+    // canonical name or use the other message to supply a missing facility.
+    const foldedLine = ` ${normalizeGeneralFacilityName(plain)} `;
+    const directoryNames = new Set<string>();
+    // Exact spans preserve official punctuation such as a trailing "(CR)".
     for (const record of records) for (const alias of [record.name, ...(record.verifiedAliases || [])]) {
-      if (!foldedLine.includes(alias.toLowerCase().replace(/\s+/g, ' ')) || clean(alias).length < 4) continue;
+      if (clean(alias).length < 4 || !plain.toLowerCase().replace(/\s+/g, ' ').includes(alias.toLowerCase().replace(/\s+/g, ' '))) continue;
       const expression = new RegExp(`(?<![\\p{L}\\p{N}-])${escape(alias).replace(/\s+/g, '\\s+')}(?![\\p{L}\\p{N}])`, 'giu');
       for (const match of plain.matchAll(expression)) {
-        literalMentions.push({ name: match[0], start: match.index!, end: match.index! + match[0].length });
+        literalMentions.push({name: match[0], start: match.index!, end: match.index! + match[0].length});
         add(match[0]);
+      }
+    }
+    for (const record of records) for (const normalized of vocabulary(record).names) {
+      if (normalized.length >= 4 && foldedLine.includes(` ${normalized} `)) directoryNames.add(normalized);
+    }
+    if (directoryNames.size) {
+      const words = [...plain.matchAll(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu)];
+      const maxWords = Math.max(...[...directoryNames].map(name => name.split(' ').length)) + 8;
+      for (let start = 0; start < words.length; start++) for (let end = start; end < Math.min(words.length, start + maxWords); end++) {
+        const first = words[start].index!, last = words[end].index! + words[end][0].length;
+        // Do not combine names across separate sentences or clauses.
+        if (end > start) {
+          const gap = plain.slice(words[end - 1].index! + words[end - 1][0].length, words[end].index!);
+          if (/[;!?\n]/.test(gap) || words[end - 1][0].length > 1 && /\./.test(gap)) break;
+        }
+        const mention = plain.slice(first, last);
+        if (!directoryNames.has(normalizeGeneralFacilityName(mention))) continue;
+        literalMentions.push({name: mention, start: first, end: last});
+        add(mention);
       }
     }
     // A single complete official mention can contain shorter typed or directory

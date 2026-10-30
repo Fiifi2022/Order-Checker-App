@@ -9,6 +9,13 @@ for (const record of servedFacilityRecords) {
   directoryByName.set(key, [...(directoryByName.get(key) || []), record]);
 }
 const reportingWords = new Set('jan january feb february mar march apr april may jun june jul july aug august sep sept september oct october nov november dec december allocation allocations vaccine vaccines blueprint sheet cycle'.split(' '));
+// Existing Blueprint district abbreviation, corroborated by the facility
+// directory and the MMD allocation import. Do not infer arbitrary initials.
+const districtAliases = new Map([['mmd', 'Mamprugu Moagduri']]);
+function normalizeFsDistrict(value: unknown) {
+  const normalized = normalizeFacilityName(value);
+  return normalizeFacilityName(districtAliases.get(normalized) || value);
+}
 function facilityGeography(sheet: any, row: any) {
   const references = directoryByName.get(normalizeFacilityName(row.facility)) || [];
   const reference = references.length === 1 ? references[0] : undefined;
@@ -19,8 +26,9 @@ function facilityGeography(sheet: any, row: any) {
   // Only repair a missing district or a bounded reporting title corroborated
   // by one existing directory record. Explicit row geography stays authoritative.
   const verifiedDistrict = !row.district && reference?.district && regionAgrees && (!sheetDistrict || reportingLabel) ? reference.district : '';
-  const district = row.district || verifiedDistrict || sheet.district || '';
-  const region = row.region || sheet.region || (reference && normalizeFacilityName(district) === officialDistrict ? reference.region : '') || '';
+  const savedDistrict = row.district || verifiedDistrict || sheet.district || '';
+  const district = districtAliases.get(normalizeFacilityName(savedDistrict)) || savedDistrict;
+  const region = row.region || sheet.region || (reference && normalizeFsDistrict(district) === officialDistrict ? reference.region : '') || '';
   return { district, region };
 }
 
@@ -48,7 +56,49 @@ export function activeFsFacilities(sheets: any[]) {
   }));
 }
 const publicFacility = ({ sheet, row, ...facility }: any) => ({ ...facility, sourceSheetId: sheet.id, sourceRowId: row.id || '' });
-export function lookupFsAllocation(sheets: any[], input: any) {
+/** Show the actual active Blueprint rows, including facilities with no entered
+ * vaccine quantities. Only an existing allocation record authorizes an audit. */
+export function blueprintFacilityChoices(sheets:any[],allocations:any[]) {
+  const rows=activeFsFacilities(sheets);
+  const key=(sheetId:string,rowId:any,name:string)=>JSON.stringify([sheetId,rowId ? ['row',rowId] : ['name',normalizeFacilityName(name)]]);
+  const counts=new Map<string,number>(),records=new Map<string,any[]>();
+  for(const {sheet,row} of rows) {const id=key(sheet.id,row.id,row.facility);counts.set(id,(counts.get(id)||0)+1);}
+  for(const record of allocations) {const id=key(record.sourceSheetId,record.sourceRowId,record.facilityName);records.set(id,[...(records.get(id)||[]),record]);}
+  return rows.map(({sheet,row,...facility})=>{
+    const id=key(sheet.id,row.id,row.facility),sameRows=counts.get(id)||0,matches=records.get(id)||[];
+    const record=sameRows===1 && matches.length===1 ? matches[0] : undefined;
+    return {...facility,id:record?.id || '',sourceSheetId:sheet.id,sourceRowId:row.id || '',
+      allocationAvailable:!!record,allocationNotice:record ? '' : sameRows>1 || matches.length>1 ? 'Multiple Blueprint records need verification.' : 'No vaccine allocation record is set for this facility.'};
+  });
+}
+const cycleMonths = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+function cycleNumber(value: string): number | null {
+  const text = String(value || '').trim().toLowerCase();
+  const iso = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(text);
+  if (iso) return Number(iso[1]) * 12 + Number(iso[2]) - 1;
+  const named = /^([a-z]+)\s+(20\d{2})$/.exec(text);
+  if (!named) return null;
+  const month = cycleMonths.findIndex(name => name === named[1] || name.slice(0,3) === named[1] || name === 'september' && named[1] === 'sept');
+  return month < 0 ? null : Number(named[2]) * 12 + month;
+}
+
+/** Resolve repeated monthly records only for the same facility and geography.
+ * Future carry-over sheets must not compete with a cycle already in use.
+ * Unknown cycle labels and same-cycle duplicates remain conflicts. */
+function currentCycleCandidates(candidates: ReturnType<typeof activeFsFacilities>, now: Date) {
+  if (!candidates.length) return candidates;
+  const identities = new Set(candidates.map(row => JSON.stringify([row.facilityName,row.district,row.region].map(normalizeFacilityName))));
+  if (identities.size !== 1) return candidates;
+  const months = candidates.map(row => cycleNumber(row.cycle));
+  if (months.some(month => month === null)) return candidates;
+  const current = now.getUTCFullYear() * 12 + now.getUTCMonth();
+  const started = months.filter((month): month is number => month !== null && month <= current);
+  if (!started.length) return [];
+  const latest = Math.max(...started);
+  return candidates.filter((_,index) => months[index] === latest);
+}
+
+export function lookupFsAllocation(sheets: any[], input: any, options: { automaticCycle?: boolean; now?: Date } = {}) {
   const all = activeFsFacilities(sheets);
   const fs = input.facility || {};
   const name = text(fs.name), id = text(fs.id), manual = text(input.manualFacilityId);
@@ -60,15 +110,26 @@ export function lookupFsAllocation(sheets: any[], input: any) {
   let candidates = id ? all.filter(f => f.fsFacilityId === id) : [];
   // Unknown FS IDs are distinct from Blueprint IDs; name matching remains exact.
   if (!candidates.length) candidates = all.filter(f => name && [f.facilityName, f.row.subDistrict ? `${f.facilityName}, ${f.row.subDistrict}` : ''].some(alias => alias && normalizeFacilityName(alias) === normalizeFacilityName(name)));
-  candidates = candidates.filter(f => (!text(fs.district) || !f.district || normalizeFacilityName(f.district) === normalizeFacilityName(fs.district)) &&
+  candidates = candidates.filter(f => (!text(fs.district) || !f.district || normalizeFsDistrict(f.district) === normalizeFsDistrict(fs.district)) &&
     (!text(fs.region) || !f.region || normalizeFacilityName(f.region) === normalizeFacilityName(fs.region)));
   for (const field of ['district', 'region'] as const) {
-    const exact = candidates.filter(f => text(fs[field]) && normalizeFacilityName(f[field]) === normalizeFacilityName(fs[field]));
+    const norm = field === 'district' ? normalizeFsDistrict : normalizeFacilityName;
+    const exact = candidates.filter(f => text(fs[field]) && norm(f[field]) === norm(fs[field]));
     if (exact.length) candidates = exact;
   }
-  if (manual) candidates = candidates.filter(f => f.id === manual);
-  if (!candidates.length) return { status: 'not_found', message: 'Facility not found in the current Allocation Blueprint.', products: identifiedProducts };
-  if (candidates.length !== 1) return { status: 'ambiguous', message: 'Multiple matching facilities. Select the facility and allocation cycle manually.', candidates: candidates.map(publicFacility), products: identifiedProducts };
+  const selectedCycle = text(input.allocationCycle);
+  if (selectedCycle) {
+    const period = cycleNumber(selectedCycle);
+    candidates = candidates.filter(candidate => normalizeFacilityName(candidate.cycle) === normalizeFacilityName(selectedCycle) ||
+      period !== null && cycleNumber(candidate.cycle) === period);
+  } else if (options.automaticCycle && candidates.length) {
+    candidates = currentCycleCandidates(candidates, options.now || new Date());
+    if (!candidates.length) return { status: 'cycle_not_started', message: 'This facility has only future allocation cycles. No allocation is available yet.', products: identifiedProducts };
+  } else if (manual) candidates = candidates.filter(f => f.id === manual);
+  if (!candidates.length) return { status: 'not_found', message: selectedCycle ? `Facility not found in the ${selectedCycle} Allocation Blueprint.` : 'Facility not found in the current Allocation Blueprint.', products: identifiedProducts };
+  if (candidates.length !== 1) return { status: 'ambiguous', message: options.automaticCycle
+    ? 'Conflicting facility records remain in the allocation data. Check duplicate rows, facility geography, or cycle labels.'
+    : 'Multiple matching facilities. Select the facility and allocation cycle manually.', candidates: candidates.map(publicFacility), products: identifiedProducts };
   const facility = candidates[0];
   const lookup = (product: any) => {
     const name = text(product.name), match = matchExactVaccineName(name);

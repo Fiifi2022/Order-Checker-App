@@ -4,7 +4,7 @@ import { connectFsTab, findFsTab } from './fs-connection.js';
 
 const origin = 'https://fulfillment-gh1-production.platform.flyzipline.com';
 const tab = { id: 7, url: `${origin}/v3/orders/Draft` };
-const diagnostics = { formFound: true, facilityControl: true, bridgeVersion: '2.3.21' };
+const diagnostics = { formFound: true, facilityControl: true, bridgeVersion: '2.3.47' };
 const state = { success: true };
 function mock({ connected = true, permitted = true, current = tab, active = tab, candidates = [tab] } = {}) {
   const calls = [];

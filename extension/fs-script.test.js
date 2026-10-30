@@ -91,3 +91,20 @@ test('Package & Script sibling of a cached facility card is scoped to the shared
   const { document } = parseHTML('<html><body><div id="order"><div><input aria-label="Facility" readonly value="Gbangu CHPS"><dl><dt>District</dt><dd>East Mamprusi</dd><dt>Region</dt><dd>North East</dd></dl></div><section><h2>Package &amp; Script</h2><div id="generated">Exact script.<br>Next line.</div><button aria-label="Edit script">Edit</button></section></div><div>Unrelated page content</div></body></html>');
   assert.equal(createFsAdapter(document).read().script.text, 'Exact script.\nNext line.');
 });
+
+test('screenshot Packaging & Script active pane is read without facility/product controls', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { document } = parseHTML(await readFile(new URL('./fixtures/fs-packaging-script.html', import.meta.url), 'utf8'));
+  const adapter = createFsAdapter(document);
+  const script = adapter.read().script;
+  assert.match(script.text, /^Thank you Kennedy Namanteng from Katiu CHPS/);
+  assert.match(script.text, /1000mL\nFor further clarification/);
+  assert.ok(!script.text.includes('Hidden order tracking'));
+  assert.ok(!script.text.includes('Unrelated page'));
+  adapter.resetOrder();
+  assert.equal(adapter.read().script.text, null);
+  document.querySelector('[id="79d85720-384f-4680-8906-0f335421a65a"]').textContent = 'New generated script.';
+  assert.equal(adapter.read().script.text, 'New generated script.');
+  document.getElementById('scripts-tabpane-0').setAttribute('aria-hidden', 'true');
+  assert.equal(adapter.read().script.text, null);
+});

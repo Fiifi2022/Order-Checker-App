@@ -8,6 +8,7 @@ import { canAccess } from './auth';
 import { assignedRoles } from '../shared/roles';
 import { normalizeCompanionAuditMode, companionVerificationReference, type CompanionVerificationResponse } from '../shared/companionAudit';
 import { CompanionFacilityError, companionFacilityErrors, resolveCompanionFacility } from './companionFacility';
+import type {GeneralFacilityContext} from '../src/utils/generalFacility';
 
 type Storage = Pick<Parameters<typeof persistBlueprintConfirmation>[0], 'db' | 'doc' | 'runTransaction' | 'clean' | 'productKey' | 'progress' | 'debug'>;
 class RequestError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -23,6 +24,7 @@ export function suppliedItems(audit: ReturnType<typeof vaccines.validateVaccineO
 // The browser sends source evidence; only the server decides the deduction items.
 export function companionVaccineHandlers(deps: {
   refresh: () => Promise<void>;
+  facilityContext?: () => Promise<GeneralFacilityContext>;
   verifyFacility?: (facility: vaccines.FacilityAllocationRecord) => Promise<void> | void;
   storage: () => Storage;
   publish: (committed: Awaited<ReturnType<typeof persistBlueprintConfirmation>>) => void;
@@ -47,13 +49,14 @@ export function companionVaccineHandlers(deps: {
       const wa = orderSource === 'fs_only' ? '' : body.whatsappMessage;
       if (typeof fs !== 'string' || !fs.trim() || (orderSource === 'whatsapp' && (typeof wa !== 'string' || !wa.trim()))) fail(400, 'Fulfilment confirmation is required; customer comparison also requires a customer request.');
       await auditReadBudget(req, deps.refresh);
-      const facility = resolveCompanionFacility(body, fs);
+      const facilityContext = await auditReadBudget(req, async () => deps.facilityContext?.());
+      const facility = resolveCompanionFacility(body, fs, facilityContext);
       await auditReadBudget(req, async () => deps.verifyFacility?.(facility));
       const orderId = companionOrderId(facility.id, fs);
       let auditRecord: vaccines.VaccineAuditLogRecord | undefined;
       const audit = vaccines.validateVaccineOrder({ facilityId: facility.id, orderSource, whatsappMessage: wa, fulfillmentConfirmation: fs,
-        checkId: orderId, recordAudit: false, onAudit: record => { auditRecord = record; } });
-      const facilityErrors = companionFacilityErrors(facility, wa, fs);
+        facilityContext, checkId: orderId, recordAudit: false, onAudit: record => { auditRecord = record; } });
+      const facilityErrors = companionFacilityErrors(facility, wa, fs, true, facilityContext);
       if (!audit.facilityMismatch) for (const error of facilityErrors) audit.errors.push(error);
       if (facilityErrors.length) { audit.isValid = false; audit.facilityMismatch = true; }
       const items = suppliedItems(audit);
@@ -116,6 +119,7 @@ export function companionVaccineHandlers(deps: {
       const id = companionVerificationReference(req.body);
       if (!id) fail(400, 'A saved vaccine verification reference is required. Run Audit & Update Allocation again; do not use an FS shipment reference.');
       await deps.refresh();
+      const facilityContext = await deps.facilityContext?.();
       const storage = deps.storage();
       // Read inside the transaction again before writing; this first read only resolves routing.
       const evidenceSnapshot = await storage.runTransaction(storage.db, async tx => tx.get(storage.doc(storage.db, 'vaccine_verified_orders', id)));
@@ -136,7 +140,7 @@ export function companionVaccineHandlers(deps: {
           if (!approved.exists() || JSON.stringify(approved.data()) !== JSON.stringify(evidence)) fail(409, 'The verified order changed. Run the audit again.');
           if (alreadyCommitted) return;
           const audit = vaccines.validateVaccineOrder({ facilitySnapshot: snapshot, recordAudit: false, facilityId: facility.id, orderSource: evidence.orderSource,
-            whatsappMessage: evidence.whatsappMessage, fulfillmentConfirmation: evidence.fulfillmentConfirmation });
+            facilityContext, whatsappMessage: evidence.whatsappMessage, fulfillmentConfirmation: evidence.fulfillmentConfirmation });
           if (!audit.isValid || audit.warnings.some(w => /requires confirmation|fuzzy/i.test(w)) || JSON.stringify(suppliedItems(audit)) !== JSON.stringify(evidence.items)) fail(409, 'The order or allocation changed. No deduction was applied. Run the audit again.');
         }
       });

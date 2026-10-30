@@ -11,7 +11,7 @@ export function generalAuditAnalytics(records: any[]) {
   const errors = rows.filter(row => row.generalAudit.discrepancies.length > 0);
   const frequent = (status: string) => {
     const totals = new Map<string, number>();
-    for (const row of rows) for (const product of row.generalAudit.products) if (product.fulfillmentStatus === status) totals.set(product.name, (totals.get(product.name) || 0) + 1);
+    for (const row of rows) for (const product of row.generalAudit.products) if (product.fulfillmentStatus === status || status==='out of stock' && product.stockStatus) totals.set(product.name, (totals.get(product.name) || 0) + 1);
     return [...totals].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 5);
   };
   return { totalAudits: rows.length, successfulAudits: count(row => row.allMatch === true), discrepancyRate: rate(errors.length),
@@ -19,6 +19,7 @@ export function generalAuditAnalytics(records: any[]) {
     facilityMismatchRate: rate(count(row => row.generalAudit.facility.status === 'mismatch')), ordererMismatchRate: rate(count(row => row.generalAudit.orderer.status === 'mismatch')),
     partialOutOfStockRate: rate(count(row => row.generalAudit.stockStatus === 'partially out of stock')), fullOutOfStockRate: rate(count(row => row.generalAudit.stockStatus === 'out of stock')),
     orderLimitAudits: count(row => row.generalAudit.products.some((p: any) => p.fulfillmentStatus === 'order limit applied')),
+    quantityReviewAudits:count(row=>row.generalAudit.products.some((p:any)=>p.quantityReviewRequired)),
     pendingOrderLimitAudits: count(row => row.generalAudit.pendingOrderLimitCount > 0),
     averageDurationSec: rows.length ? Math.round(rows.reduce((total, row) => total + (Number(row.durationSec) || 0), 0) / rows.length * 100) / 100 : 0,
     resolutionRate: errors.length ? Math.round(errors.filter(row => row.status === 'resolved').length / errors.length * 1000) / 10 : 0,

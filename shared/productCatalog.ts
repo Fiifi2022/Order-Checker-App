@@ -14,7 +14,7 @@ export interface CatalogProduct {
   terminology?: Record<string, any>;
   acronym?: { category: 'medicine' | 'blood' | 'diagnostic'; contextual?: boolean; aliases?: string[] };
 }
-export interface ProductCatalog { revision: number; products: CatalogProduct[]; updatedAt?: string; updatedBy?: string }
+export interface ProductCatalog { aliasRecords?: CatalogAliasRecord[]; revision: number; products: CatalogProduct[]; updatedAt?: string; updatedBy?: string }
 export const catalogKey = (value: string) => value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/['’]/g, '').replace(/(?<=[a-z])-(?=[a-z])/g, ' ').replace(/\s+/g, ' ').trim();
 export function catalogProductNames(product: CatalogProduct): string[] {
   const names = [product.name, product.displayName, product.fulfillmentSystemName, ...product.aliases]
@@ -46,11 +46,11 @@ export function validateCatalogProduct(input: any, existing?: CatalogProduct): C
   return { ...existing, fulfillmentSystemName: fulfillmentSystemName.trim(), receivingDetails: receivingDetails.trim(), linkedProductId: input.linkedProductId ?? existing?.linkedProductId ?? '', id: existing?.id || '', scope: input.scope, name: input.name.trim(), displayName: displayName.trim(), category: input.category.trim(), aliases, contextualAliases, note: input.note.trim() };
 }
 export function checkAliasConflicts(product: CatalogProduct, products: CatalogProduct[], existing?: CatalogProduct) {
-  const previous = new Set(existing ? [existing.name, ...existing.aliases].map(catalogKey) : []);
-  for (const alias of [product.name, ...product.aliases]) {
-    const key = catalogKey(alias);
+  const previous = new Set(existing ? catalogProductNames(existing).map(catalogMatchLabelKey) : []);
+  for (const alias of catalogProductNames(product)) {
+    const key = catalogMatchLabelKey(alias);
     if (previous.has(key)) continue; // Preserve established contextual overlaps in the seed vocabulary.
-    const conflict = products.find(other => other.id !== product.id && other.scope === product.scope && [other.name, ...other.aliases].some(value => catalogKey(value) === key));
+    const conflict = products.find(other => other.id !== product.id && other.scope === product.scope && catalogProductNames(other).some(value => catalogMatchLabelKey(value) === key));
     if (conflict) throw new Error(`“${alias}” already belongs to ${conflict.name}. Use a more specific alias.`);
   }
 }
@@ -69,3 +69,13 @@ export function catalogCounterpart(product: CatalogProduct, products: CatalogPro
 }
 
 export interface AliasSuggestion { alias: string; kind: 'alias' | 'abbreviation'; requiresContext: boolean; reason: string }
+
+export const catalogAliasKey = (value:string) => catalogKey(value).replace(/[^a-z0-9./+]+/g,' ').split(/\s+/).filter(Boolean).sort().join(' ');
+/** Whole-label conflict detection only. Retains strengths, volumes and blood qualifiers. */
+export const catalogMatchLabelKey = (value: string) => catalogAliasKey(value.replace(/\b[a-z](?:\.\s*[a-z])+\b(?:\.(?![a-z]))?/gi, match => match.replace(/[.\s]/g, '')));
+export interface CatalogAliasRecord {
+ id:string;productId:string;text:string;normalizedText:string;source:'catalogue'|'gemini'|'manual'|'deterministic';
+ status:'pending'|'approved'|'rejected';active:boolean;createdAt:string|null;approvedAt:string|null;approvedBy:string|null;updatedAt:string|null;
+ confidence?:number;clinicalUncertainty?:boolean;requiresContext?:boolean;reason?:string;
+}
+export interface CatalogAliasEvent {id:string;aliasId:string;action:string;actor:string;at:string;before:CatalogAliasRecord|null;after:CatalogAliasRecord}

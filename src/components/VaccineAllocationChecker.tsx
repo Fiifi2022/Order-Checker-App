@@ -1,3 +1,4 @@
+import {useAllocationWorkspace} from './AllocationWorkspace';
 import { AUDIT_TARGET_MS, AUDIT_DELAY_MESSAGE } from '../../shared/auditPerformance';
 import { authFetch } from '../utils/authFetch';
 /**
@@ -119,13 +120,16 @@ export default function VaccineAllocationChecker({
   onNavigateToHistory,
   currentUser
 }: VaccineAllocationCheckerProps) {
+  const workspace=useAllocationWorkspace();
   // Facilities state
   const [facilities, setFacilities] = useState<FacilityAllocation[]>([]);
   const [loadingFacilities, setLoadingFacilities] = useState(false);
-  const [selectedFacilityId, setSelectedFacilityId] = useState<string>('');
+  const [selectedFacilityId, setSelectedFacilityId] = useState<string>(workspace.selection.facilityId);
   const [facilitySearch, setFacilitySearch] = useState('');
   const [selectedWorksheetFilter, setSelectedWorksheetFilter] = useState<string>('all');
-  const [selectedDistrictFilter, setSelectedDistrictFilter] = useState<string>('all');
+  const [selectedDistrictFilter, setDistrictFilterLocal] = useState<string>(workspace.selection.district||'all');
+  const setSelectedDistrictFilter=(value:string)=>{setDistrictFilterLocal(value);setSelectedFacilityId('');workspace.setSelection({district:value==='all'?'':value,cycle:'',sheetId:'',rowId:'',facilityName:'',facilityId:''});};
+  useEffect(()=>{setDistrictFilterLocal(workspace.selection.district||'all');},[workspace.selection.district]);
   const [isFacilityDropdownOpen, setIsFacilityDropdownOpen] = useState(false);
 
   // Workflow inputs
@@ -202,16 +206,10 @@ export default function VaccineAllocationChecker({
       if (res.ok) {
         const data: FacilityAllocation[] = await res.json();
         setFacilities(data);
-        const selectionToKeep = preferredFacilityId || selectedFacilityId;
-        if (data.length > 0 && (resetSelection || !data.some(f => f.id === selectionToKeep))) {
-          // Default to Konkoma SDA Clinic if present, else first facility
-          const konkoma = data.find(f => f.facilityName.toLowerCase().includes('konkoma'));
-          setSelectedFacilityId(konkoma ? konkoma.id : data[0].id);
-        } else if (preferredFacilityId && data.length > 0) {
-          setSelectedFacilityId(preferredFacilityId);
-        } else if (data.length === 0) {
-          setSelectedFacilityId('');
-        }
+        const shared=data.find(f=>workspace.selection.sheetId&&workspace.selection.rowId&&f.sourceSheetId===workspace.selection.sheetId&&f.sourceRowId===workspace.selection.rowId);
+        const selectionToKeep = preferredFacilityId || shared?.id || selectedFacilityId;
+        if(data.some(f=>f.id===selectionToKeep))setSelectedFacilityId(selectionToKeep);
+        else setSelectedFacilityId('');
       }
     } catch (err) {
       console.error('Failed to load facilities:', err);
@@ -241,8 +239,12 @@ export default function VaccineAllocationChecker({
   }, []);
 
   const selectedFacility = facilities.find(f => f.id === selectedFacilityId);
+  const cycleSelector=<label className="block text-sm">Allocation cycle <select aria-label="Checker allocation cycle" value={workspace.selection.cycle} onChange={event=>{setSelectedFacilityId('');workspace.setSelection({cycle:event.target.value,sheetId:'',rowId:'',facilityName:'',facilityId:''});}} className="border rounded p-2 max-w-full"><option value="">All cycles</option>{[...new Set(facilities.filter(f=>!workspace.selection.district||f.district===workspace.selection.district).map(f=>f.cycle))].map(cycle=><option key={cycle} value={cycle}>{cycle}</option>)}</select></label>;
   useEffect(() => {
-    if (selectedFacility?.sourceSheetId) onBlueprintSheetSelected?.(selectedFacility.sourceSheetId);
+    if (selectedFacility?.sourceSheetId) {
+      onBlueprintSheetSelected?.(selectedFacility.sourceSheetId);
+      workspace.setSelection({sheetId:selectedFacility.sourceSheetId,district:selectedFacility.district||'',cycle:selectedFacility.cycle||'',rowId:selectedFacility.sourceRowId||'',facilityName:selectedFacility.facilityName,facilityId:selectedFacility.id});
+    }
   }, [selectedFacility?.sourceSheetId, onBlueprintSheetSelected]);
 
   // Extract distinct districts for filtering
@@ -277,11 +279,11 @@ export default function VaccineAllocationChecker({
         selectedDistrictFilter === 'all' || f.district === selectedDistrictFilter;
 
       const matchesWorksheet =
-        selectedWorksheetFilter === 'all' || f.tabName === selectedWorksheetFilter;
+        (selectedWorksheetFilter === 'all' || f.tabName === selectedWorksheetFilter) && (!workspace.selection.cycle || f.cycle===workspace.selection.cycle);
 
       return matchesSearch && matchesDistrict && matchesWorksheet;
     });
-  }, [facilities, facilitySearch, selectedDistrictFilter, selectedWorksheetFilter]);
+  }, [facilities, facilitySearch, selectedDistrictFilter, selectedWorksheetFilter,workspace.selection.cycle]);
 
   // Filtered vaccine entries for Current Vaccine Position table
   const vaccineEntries = useMemo(() => {
@@ -830,6 +832,8 @@ export default function VaccineAllocationChecker({
 
   return (
     <div className="space-y-6">
+      {cycleSelector}
+      <p className="text-xs">District: {workspace.selection.district||'All'} · Cycle: {workspace.selection.cycle||'All'} · Facility: {workspace.selection.facilityName||'Not selected'}</p>
       {/* Operational Empty State when allocations have been cleared for a new cycle */}
       {facilities.length === 0 && !loadingFacilities ? (
         <div className="bg-white border border-slate-200 rounded-3xl shadow-sm p-10 text-center max-w-xl mx-auto flex flex-col items-center">

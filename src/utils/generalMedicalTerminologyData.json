@@ -222,9 +222,10 @@
     "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."
   },
   {
-    "canonicalName": "Malaria Rapid Diagnostic Test",
-    "normalizationName": "Malaria Rapid Diagnostic Test",
+    "canonicalName": "Malaria Rapid Diagnostic Test Kit",
+    "normalizationName": "Malaria Rapid Diagnostic Test Kit",
     "aliases": [
+      "Malaria Rapid Diagnostic Test",
       "RDT",
       "mRDT",
       "MRDT",
@@ -241,7 +242,7 @@
     "brandNames": [],
     "formulation": null,
     "strength": null,
-    "category": "medicine",
+    "category": "diagnostic",
     "ageGroup": null,
     "contextualAliases": [],
     "note": "Preserve specified strength, dosage form, route, age group and product qualifiers; select an actual catalog item."

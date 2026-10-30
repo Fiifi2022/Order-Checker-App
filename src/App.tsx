@@ -1,3 +1,6 @@
+import {AllocationWorkspaceProvider} from './components/AllocationWorkspace';
+import AuditStorageNotice from './components/AuditStorageNotice';
+import {retryAuditStorage} from '../shared/auditStorageClient';
 import GeneralInventory, { generalInventoryRows } from './components/GeneralInventory';
 import { generalInputFingerprint, sameGeneralAuditSources } from '../shared/generalAuditFingerprint';
 import { AUDIT_TARGET_MS, AUDIT_HARD_TIMEOUT_MS, AUDIT_DELAY_MESSAGE, AUDIT_TIMEOUT_MESSAGE, auditTimeoutSetting } from '../shared/auditPerformance';
@@ -311,6 +314,30 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   const facilityReviewRequired = generalDetails?.facility.status === 'review required';
   const generalReviewRequired = facilityReviewRequired || Boolean(generalDetails?.auditSummary?.reviewRequiredCount);
 
+  const [savingAuditStorage,setSavingAuditStorage]=useState(false);
+  const [auditStorageError,setAuditStorageError]=useState('');
+  const recoveryKey=`ordercheck:unsaved-audit:${activeUser?.id || ''}`;
+  useEffect(()=>{
+    if(!generalDetails || !result?.storage)return;
+    try{
+      if(result.storage.status!=='saved')sessionStorage.setItem(recoveryKey,JSON.stringify(result));
+      else if(JSON.parse(sessionStorage.getItem(recoveryKey)||'null')?.id===result.id)sessionStorage.removeItem(recoveryKey);
+    }catch{ /* Keep the visible audit available even when browser storage is full. */ }
+  },[result,recoveryKey]);
+  const retryCurrentAuditStorage=async()=>{
+    if(!result || savingAuditStorage)return;
+    const retained=result;setSavingAuditStorage(true);setAuditStorageError('');
+    try{
+      const updated=await retryAuditStorage(async(path,options)=>{
+        const response=await authFetch(path,options);const data=await response.json();
+        if(!response.ok)throw Object.assign(new Error(data.error || 'Audit storage is unavailable.'),{status:response.status});
+        return data;
+      },retained);
+      setResult(current=>current===retained?updated:current);
+    }catch(error:any){if(sameGeneralAuditSources(retained,currentGeneralInputs.current))setAuditStorageError(error.message || 'Saving was not confirmed. The audit remains retained locally.');}
+    finally{setSavingAuditStorage(false);}
+  };
+
   // Order limit validation flows
   const [lastConfirmedItemName, setLastConfirmedItemName] = useState<string | null>(null);
   const [promptedItems, setPromptedItems] = useState<string[]>([]);
@@ -402,7 +429,11 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
     let cancelled = false;
     const revision = generalAuditRevision.current;
     let id: string | null = null;
-    try { id = localStorage.getItem(savedAuditStorageKey); } catch { return; }
+    try {
+      const retained=JSON.parse(sessionStorage.getItem(recoveryKey)||'null');
+      if(retained?.generalAudit && retained.storage?.status!=='saved' && !currentGeneralInputs.current.whatsappMessage && !currentGeneralInputs.current.fulfillmentConfirmation){openSavedGeneralAudit(retained);return;}
+      id = localStorage.getItem(savedAuditStorageKey);
+    } catch { return; }
     if (!id || currentGeneralInputs.current.whatsappMessage || currentGeneralInputs.current.fulfillmentConfirmation) return;
     void authFetch(`/api/audits/${encodeURIComponent(id)}`).then(async response => {
       if (!response.ok) return;
@@ -484,7 +515,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
     setResult(confirmed as unknown as AuditRecord);
     void authFetch(`/api/audits/${encodeURIComponent(result.id)}/order-limit`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, answer }),
-    }).then(response => { if (!response.ok) throw new Error('Acknowledgement was not saved.'); })
+    }).then(async response => { if (!response.ok) throw new Error('Acknowledgement was not saved.'); const saved=await response.json();if(saved.storage)setResult(current=>current?.id===result.id?{...current,storage:saved.storage}:current); })
       .catch(() => setGeneralServiceWarning('Order-limit decision acknowledged on screen, but could not be saved to history.'));
   };
 
@@ -563,13 +594,14 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
 
       const json = await response.json();
       if (!isCurrent()) return;
+      if (json.auditEngine !== 'general-catalog-v3') throw new Error('The audit service needs the updated catalogue matcher. Update the backend and retry.');
       if (!json.productCatalog?.products || !Number.isSafeInteger(json.productCatalog.revision)) throw new Error('The audit service must be updated to return the verified product catalog. Please retry after deployment.');
       setCatalogRevision(json.productCatalog.revision);
       applyGeneralCatalog(json.productCatalog.products);
       delete json.productCatalog;
       setResult(completeGeneralAuditRun(run, json) as unknown as AuditRecord);
       if (json.semanticAnalysis?.status === 'fallback') setGeneralServiceWarning('AI verification is temporarily unavailable. Available checks have been completed using the standard verification engine. Review highlighted details before dispatch.');
-      if (json.generalStorageWarning) setGeneralServiceWarning(previous => [previous, json.generalStorageWarning].filter(Boolean).join(' '));
+      setAuditStorageError('');
       
       const finalTime = Number(((Date.now() - startTime) / 1000).toFixed(2));
       setVerificationTime(finalTime);
@@ -668,6 +700,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
         };
       case 'missing item':
       case 'vaccine pairing mismatch':
+      case 'product identity discrepancy':
         return {
           bg: 'bg-rose-100 text-rose-800 border-rose-200',
           dot: 'bg-rose-500',
@@ -750,7 +783,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   // No registration or sign-in block required - runs directly once opened
 
   return (
-    <div className="app-shell min-h-screen min-w-0 bg-[#FDFBFF] font-sans text-slate-800 antialiased flex flex-col" style={{ '--app-chrome-height': `${chromeHeight}px` } as React.CSSProperties}>
+    <AllocationWorkspaceProvider key={authenticatedUser.id}><div className="app-shell min-h-screen min-w-0 bg-[#FDFBFF] font-sans text-slate-800 antialiased flex flex-col" style={{ '--app-chrome-height': `${chromeHeight}px` } as React.CSSProperties}>
       <div ref={chromeRef} className="app-chrome min-w-0 w-full xl:sticky top-0 z-40">
       
       {/* Upper Corporate Navigation Header */}
@@ -960,7 +993,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
         {/* VACCINE ALLOCATION DASHBOARD VIEW */}
         {activeTab === 'vaccine_dashboard' && (
           <div className="animate-in fade-in duration-300">
-            <VaccineDashboard
+            <VaccineDashboard canManage={canManageCatalog(assignedRoles(activeUser))}
               onSelectFacilityForAudit={(facilityId) => {
                 setActiveTab('vaccine_checker');
               }}
@@ -1222,8 +1255,8 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         </div>
                         <div>
                           <h3 className="font-black text-[#3B1A5E] text-lg leading-tight md:text-xl flex items-center gap-2 flex-wrap">
-                            {generalDetails && result.allMatch ? 'ORDER VERIFIED' : generalDetails?.finalStatus || result.verdict}
-                            <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-mono font-medium">Session Log</span>
+                            {generalDetails && result.allMatch ? generalDetails.finalStatus : generalDetails?.finalStatus || result.verdict}
+                            <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-mono font-medium">{result.storage?.status==='saved'?'Saved audit':'Session Log'}</span>
                             {verificationTime !== null && (
                               <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded font-mono font-semibold flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
@@ -1245,9 +1278,9 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                       </div>
                       <div className="text-right shrink-0 flex items-center gap-3 flex-wrap sm:flex-nowrap">
                         <span className={`text-[10px] font-mono px-3 py-1.5 rounded-full font-bold shadow-sm uppercase ${
-                          result.allMatch ? 'bg-green-100 text-green-805' : generalReviewRequired && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+                          result.allMatch ? 'bg-green-100 text-green-805' : (generalReviewRequired || generalDetails?.pendingOrderLimitCount) && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
                         }`}>
-                          {result.allMatch ? generalDetails ? 'MATCH — CLEARED' : 'VERIFIED MATCH' : result.issueCount > 0 ? 'DISCREPANCY' : generalDetails?.auditSummary?.missingRequiredCount ? 'MISSING REQUIRED INFORMATION' : generalReviewRequired && result.issueCount === 0 ? 'CLARIFICATION REQUIRED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
+                          {result.allMatch ? generalDetails ? 'NO DISCREPANCY' : 'VERIFIED MATCH' : result.issueCount > 0 ? 'DISCREPANCY' : generalDetails?.auditSummary?.missingRequiredCount ? 'MISSING REQUIRED INFORMATION' : generalDetails?.productTotals?.quantityReview && result.issueCount===0 ? 'QUANTITY REVIEW REQUIRED' : generalReviewRequired && result.issueCount === 0 ? 'CLARIFICATION REQUIRED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
                         </span>
                         {result.allMatch ? (
                           <button
@@ -1296,6 +1329,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         </div>
 
                         <div className="space-y-3">
+                          {generalDetails && <AuditStorageNotice storage={result.storage} busy={savingAuditStorage} onRetry={()=>void retryCurrentAuditStorage()} error={auditStorageError} />}
                           {generalDetails ? <GeneralInventory items={result.items as unknown as import('./utils/generalAuditor').GeneralComparisonItem[]} details={generalDetails} onConfirm={confirmGeneralProduct} onOrderLimit={answerGeneralOrderLimit} disabled={loading || savingProductConfirmation} /> : result.items.map((item, idx) => {
                             const colors = getStatusColor(item.status);
                             const generalProduct = generalDetails?.products.find(product => product.name === item.name);
@@ -1642,6 +1676,6 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
         }}
       />
 
-    </div>
+    </div></AllocationWorkspaceProvider>
   );
 }

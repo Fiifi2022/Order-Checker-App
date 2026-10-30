@@ -22,6 +22,12 @@ export function isCurrentGeneralAuditRun(run: GeneralAuditRun, current: GeneralA
 // Current backend comparisons include evidence-grounded semantics and authoritative
 // deterministic rules. Older responses still use the existing local comparison.
 export function completeGeneralAuditRun<T extends Record<string, unknown>>(run: GeneralAuditRun, record: T) {
+  if (((record.auditEngine === 'general-product-names-v1' && record.comparisonMode === 'product_names') ||
+      (record.auditEngine === 'general-catalog-v3' && record.comparisonMode === 'product_names_quantities')) &&
+    record.whatsappMessage === run.inputs.whatsappMessage.trim() && record.fulfillmentConfirmation === run.inputs.fulfillmentConfirmation.trim() &&
+    Array.isArray(record.items) && record.generalAudit && record.meta && typeof record.allMatch === 'boolean' && typeof record.issueCount === 'number') {
+    return { ...record, ...run.inputs } as unknown as T & ReturnType<typeof runGeneralAuditor>;
+  }
   const serverResult = record.auditEngine === 'general-deterministic-v1' &&
     record.whatsappMessage === run.inputs.whatsappMessage.trim() &&
     record.fulfillmentConfirmation === run.inputs.fulfillmentConfirmation.trim() &&

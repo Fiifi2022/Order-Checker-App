@@ -4,7 +4,7 @@ export const FACILITY_AMBIGUOUS = 'Multiple matching facilities found. Blueprint
 // Older sheets have no lifecycle flag. Explicitly disabled/archived records
 // must never accept new fulfilments; selecting a UI tab is not activation.
 export function assertBlueprintActive(sheet: any, row?: any) {
-  if (sheet?.worksheetRole === 'other' || [sheet, row].some(value => value && (value.active === false || value.isActive === false || value.archived === true || value.deleted === true || ['inactive', 'archived', 'deleted'].includes(String(value.status || '').toLowerCase())))) {
+  if (sheet?.worksheetRole === 'other' || ['draft','closed'].includes(sheet?.cycleState) || [sheet, row].some(value => value && (value.active === false || value.isActive === false || value.archived === true || value.deleted === true || ['inactive', 'archived', 'deleted'].includes(String(value.status || '').toLowerCase())))) {
     throw new Error('ALLOCATION ERROR: The selected Allocation Blueprint or facility record is inactive. Select an active allocation cycle and audit again.');
   }
 }

@@ -28,6 +28,8 @@ export function explainItem(item) {
         fix: action || `Change the ${name} quantity in the system entry to ${requested}. If the client changed their request, or an order limit applies, note that instead.`,
       };
     }
+    case 'product identity discrepancy':
+      return { type: 'Product identity discrepancy', wrong: `${name}: ${action || 'Product identity unresolved.'}`, fix: 'Confirm the product mapping in the existing repository.' };
     case 'missing item':
       return {
         type: 'Missing item',
@@ -86,7 +88,7 @@ function explainField(label, field) {
   return null;
 }
 
-const PRODUCT_DISCREPANCIES = ['quantity mismatch', 'missing item', 'extra item'];
+const PRODUCT_DISCREPANCIES = ['quantity mismatch', 'missing item', 'extra item', 'product identity discrepancy'];
 
 // Every discrepancy on the order, header details first and then products.
 export function buildIssues(result) {

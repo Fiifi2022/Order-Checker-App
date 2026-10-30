@@ -6,7 +6,10 @@ export function applyGeneralVaccinePairing(items: GeneralComparisonItem[], norma
   const result = [...items];
   const identities = new Map(Object.entries(CLINICAL_PAIRINGS).flatMap(([primary, pairing]) =>
     [primary, pairing.accessoryCanonical].map(name => [normalize(name), name] as const)));
-  const canonical = (item: GeneralComparisonItem) => identities.get(item.fulfillment.key);
+  // Older audits key products by normalized name; catalogue audits key them by
+  // product ID. Bind verified names to the same existing pairing configuration.
+  const canonical = (item: GeneralComparisonItem) => item.status === 'product identity discrepancy' ? undefined :
+    identities.get(item.fulfillment.key) || identities.get(normalize(item.name));
   for (const [primaryName, pairing] of Object.entries(CLINICAL_PAIRINGS)) {
     const primaryIndex = result.findIndex(item => canonical(item) === primaryName);
     const companionIndex = result.findIndex(item => canonical(item) === pairing.accessoryCanonical);

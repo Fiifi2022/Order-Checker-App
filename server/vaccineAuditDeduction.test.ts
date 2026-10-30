@@ -191,13 +191,16 @@ test('refreshing after an auto-resolved audit keeps the audited facility selecte
   const code = source.slice(start,source.indexOf('// Fetch audit logs',start));
   let selected = '';
   const context = vm.createContext({
-    selectedFacilityId:'',
+    selectedFacilityId:'',workspace:{selection:{}},
     async authFetch(){return new Response(JSON.stringify([{id:'first',facilityName:'First Clinic'},{id:'audited',facilityName:'Audited Clinic'}]));},
     setFacilities(){},setLoadingFacilities(){},setSelectedFacilityId(id:string){selected=id;},console
   });
   vm.runInContext(ts.transpile(code + '\nglobalThis.refresh = fetchFacilities;'),context);
   await context.refresh(false,'audited');
   assert.equal(selected,'audited');
+  context.workspace.selection={sheetId:'east',rowId:'same-row'};
+  context.authFetch=async()=>new Response(JSON.stringify([{id:'west-id',facilityName:'Same HC',sourceSheetId:'west',sourceRowId:'same-row'},{id:'east-id',facilityName:'Same HC',sourceSheetId:'east',sourceRowId:'same-row'}]));
+  await context.refresh();assert.equal(selected,'east-id','Shared selection uses exact sheet and row IDs, even when facility names match.');
 });
 
 test('same-named facilities stay separate across districts and allocation months', async () => {
@@ -230,7 +233,7 @@ test('Blueprint opens the checker-selected sheet instead of the previously activ
   let selected = '', rows:any[]=[], blankColumns:any[]=[], sizing:any;
   const noOp = () => {};
   const context = vm.createContext({
-    preferredSheetId:'east',setBlueprintLoadError:noOp,historyResetPendingRef:{current:false},DEFAULT_BLUEPRINT_PRODUCTS:[],DEFAULT_BLUEPRINT_HEADER_LABELS:[],
+    workspace:{selection:{},setSelection(){}},savedVersionsRef:{current:{}},savedSheetsRef:{current:{}},structuredClone,setSaveStatus(){},preferredSheetId:'east',setBlueprintLoadError:noOp,historyResetPendingRef:{current:false},DEFAULT_BLUEPRINT_PRODUCTS:[],DEFAULT_BLUEPRINT_HEADER_LABELS:[],
     async safeFetchJson(){return {activeDistrictId:'west',districts:[{id:'west',district:'West',rows:[{balance:3}]},{id:'east',district:'East',rows:[{balance:1}],blankColumns:[{id:'east-notes',before:null,headers:[]}],sheetSizing:{columnWidths:{'field:facility':240},rowHeights:{}}}]};},
     setLoading:noOp,setDistricts:noOp,setActiveDistrictId(id:string){selected=id;},setDistrict:noOp,setMonth:noOp,setProducts:noOp,
     setRows(value:any[]){rows=value;},normalizeBlueprintRowsProgress(value:any[]){return value;},setCellMerges:noOp,setHeaderLabels:noOp,setActiveHeaderCell:noOp,
@@ -241,6 +244,8 @@ test('Blueprint opens the checker-selected sheet instead of the previously activ
   assert.equal(blankColumns[0].id,'east-notes');assert.equal(sizing.columnWidths['field:facility'],240);
   context.preferredSheetId='deleted';await context.load();assert.equal(selected,'west');
   assert.equal(blankColumns.length,0);assert.equal(Object.keys(sizing.columnWidths).length,0);
+  context.workspace.selection={sheetId:'east'};context.preferredSheetId='west';
+  await context.load();assert.equal(selected,'east','Shared workspace selection takes precedence over stale navigation state.');
 });
 
 test('missing or ambiguous cloud rows never save or publish a deduction', async () => {

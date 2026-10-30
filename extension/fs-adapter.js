@@ -205,7 +205,7 @@ export function createFsAdapter(doc) {
       const qtyCell = row.querySelector('[data-quantity]') || cells[quantityIndex];
       return { name: row.dataset.productName || productCell?.textContent?.trim() || '', id: row.dataset.productId || '', quantity: row.dataset.quantity || qtyCell?.querySelector('input')?.value || qtyCell?.textContent?.trim() || '' };
     }).filter(p => p?.name) : [];
-    return { facility, draft: product.name ? { ...product, quantity: quantityEl?.value || '' } : null, order, script: scripts.read(scope) };
+    return { facility, draft: product.name ? { ...product, quantity: quantityEl?.value || '' } : null, order, script: scripts.read(scope, doc) };
   }
   function productPlacement() {
     const scope = root(), product = control(scope, 'Product'), quantity = control(scope, 'Quantity');

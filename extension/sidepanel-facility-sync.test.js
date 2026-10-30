@@ -42,12 +42,42 @@ test('activation popup shows selected facility, reports failures, dismisses and 
  let shadow;
  const original = document.createElement.bind(document);
  document.createElement = (...args) => { const el = original(...args); const attach = el.attachShadow.bind(el); el.attachShadow = options => { shadow = attach(options); return shadow; }; return el; };
- const popup = createFsActivation(document, '2.3.21');
+ const popup = createFsActivation(document, '2.3.47');
  popup.render({ facility: { name: 'Buzulungu CHPS' } }, { error: 'Sign in to OrderCheck' });
- assert.match(shadow.querySelector('section').textContent, /OrderCheck active · v2.3.21/);
+ assert.match(shadow.querySelector('section').textContent, /OrderCheck active · v2.3.47/);
  assert.match(shadow.querySelector('section').textContent, /Buzulungu CHPS/);
  assert.match(shadow.querySelector('section').textContent, /Sign in to OrderCheck/);
  shadow.querySelector('button').click();
  assert.equal(document.getElementById('ordercheck-active-status'), null);
  popup.dispose();
+});
+
+test('FS script fills both audit fields while hidden and late saved text cannot replace it', async () => {
+ const { document, window } = parseHTML(html);
+ const previous = { document: globalThis.document, chrome: globalThis.chrome, Event: globalThis.Event };
+ globalThis.document = document; globalThis.Event = window.Event;
+ let restore;
+ const stored = {};
+ globalThis.chrome = { storage: { local: {
+   get: async (_key, callback) => { if (callback) restore = callback; return {}; },
+   set: async values => { Object.assign(stored, values); },
+ } } };
+ try {
+   const { createFsScriptSync } = await import('./fs-script.js');
+   const vaccine = setupVaccine({ request: async () => [] });
+   const generalField = document.getElementById('fulfillmentText');
+   const general = createFsScriptSync({ field: generalField, onChanged() {}, persist: text => { stored.fulfillmentText = text; } });
+   const apply = script => { general.apply(script); vaccine.setFsScript(script); };
+   apply({ orderKey: 'one', text: 'FS script first line.\nSecond line!' });
+   restore({ vaccineFulfillment: 'Stale saved text' });
+   assert.equal(generalField.value, 'FS script first line.\nSecond line!');
+   assert.equal(document.getElementById('vxFulfillment').value, generalField.value);
+   assert.equal(stored.vaccineFulfillment, generalField.value);
+   apply({ orderKey: 'one', text: 'Updated script.' });
+   assert.equal(document.getElementById('vxFulfillment').value, 'Updated script.');
+   assert.equal(generalField.value, 'Updated script.');
+   apply({ orderKey: 'two', text: null });
+   assert.equal(generalField.value, '');
+   assert.equal(document.getElementById('vxFulfillment').value, '');
+ } finally { Object.assign(globalThis, previous); }
 });

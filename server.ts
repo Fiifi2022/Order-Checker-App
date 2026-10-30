@@ -1,19 +1,24 @@
+import {allocationOperationsHandlers,stageAllocationTransition,validateAllocationUpdate} from './server/allocationOperations';
+import {allocationSheetChanges,assertAllocationEditable,planAllocationCycle,applyAllocationAdjustment,type AllocationSheet} from './shared/allocationOperations';
 import { generalInputFingerprint } from './shared/generalAuditFingerprint';
 import { restoreGeneralProductConfirmations } from './src/utils/generalProductConfirmationPersistence';
 import { generalProductConfirmationHandler } from './server/generalProductConfirmation';
 import { needsProductCatalog } from './server/catalogReadPolicy';
-import { currentBlueprintHandler } from './server/currentBlueprint';
+import { currentBlueprintHandler, facilityQuantitiesHandler } from './server/currentBlueprint';
 import { coalesceFreshRead, readSnapshot, firestoreReadContext, firestoreReadReport } from './server/firestoreReads';
 import { auditReadBudget, auditRemainingMs, startAuditBudget, optionalAuditAi, auditSignal, auditTiming } from './server/auditBudget';
 import { AUDIT_AI_FALLBACK_MS, auditTimeoutSetting } from './shared/auditPerformance';
 import { activeGeneralFacilities, excludedGeneralFacilities, changeGeneralFacilityDirectory, emptyGeneralFacilityDirectory, generalFacilityDirectoryHandlers } from './server/generalFacilityDirectory';
 import type { GeneralFacilityDirectoryState } from './shared/generalFacilityDirectory';
+import { blueprintFacilityChoices } from './server/fsAllocation';
 import { fsContextHandlers, fsReadBudget, startFsReadBudget } from './server/fsContext';
 import { orderLimitAcknowledgementHandler } from './server/orderLimitAcknowledgement';
 import { catalogAliasAssistant } from './server/catalogAliasAssistant';
 import { defaultProducts, applyCatalog, saveCatalogProduct, productCatalogHandlers } from './server/productCatalog';
-import type { ProductCatalog } from './shared/productCatalog';
-import { hasRole, roleAssignment, type AppRole } from './shared/roles';
+import { canManageCatalog, type ProductCatalog } from './shared/productCatalog';
+import { runGeneralProductNameAudit } from './server/generalProductNameAudit';
+import { changeCatalogueAlias, trackCatalogueAliasEdits, catalogueAliasHandlers, learnVerifiedCatalogueAliases } from './server/catalogAliasLearning';
+import { assignedRoles, hasRole, roleAssignment, type AppRole } from './shared/roles';
 import { accountSummary, adminAccountHandlers } from './server/adminAccounts';
 import { registrationHandlers } from './server/registration';
 import { generalAuditHistory, generalAuditAnalytics, generalRuleDiagnostics } from './server/generalAuditMonitoring';
@@ -24,13 +29,14 @@ import { generalAuditHistory, generalAuditAnalytics, generalRuleDiagnostics } fr
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { calculateKpis } from './server/kpi';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import { buildExtensionPackage, resolveExtensionBackendUrl } from './server/extensionPackage';
+import { createAuditStorage, auditStorageRetryHandler, confirmedAuditRead } from './server/auditStorage';
 import { adminAuth, adminDb, collection, getDocs, doc, setDoc, getDoc, deleteDoc, query, orderBy, limit, writeBatch, runTransaction, runAdminTransaction } from './server/firebaseAdmin';
 import { actorContext, createAuthentication } from './server/auth';
 import * as vaccineService from './server/vaccineService';
@@ -92,6 +98,10 @@ function cleanFirestorePayload<T>(obj: T): T {
   return obj;
 }
 
+const auditStorage = createAuditStorage(async (id, record) => {
+  await setDoc(doc(getFirestoreDb(), 'audits', id), cleanFirestorePayload(record));
+});
+
 /**
  * Safely persists an activity log entry to Firestore without crashing or warning on undefined values
  */
@@ -141,6 +151,21 @@ app.use('/api', createAuthentication(
   },
   (req, task) => auditTiming(req)?.measureAsync('authentication', () => auditReadBudget(req, () => fsReadBudget(req, task))) ?? auditReadBudget(req, () => fsReadBudget(req, task)),
 ));
+app.use('/api/vaccine',async(req,res,next)=>{
+  if(req.method==='GET'||!/(?:blueprint|allocations\/(?:clear|reset-demo|upload|[^/]+\/topup)|facilities\/|^\/adjust$)/.test(req.path)||/\/lifecycle$|blueprint-months\/(?:add|preview)$|blueprint-districts\/add$|\/sync$/.test(req.path))return next();
+  try {
+    const body=req.body||{},pathId=req.path.match(/^\/blueprint-districts\/([^/]+)(?:\/rename|\/topup)?$/)?.[1];
+    const facilityId=body.facilityId||req.path.match(/^\/(?:allocations|facilities)\/([^/]+)/)?.[1];
+    const facility=facilityId?vaccineService.getFacilityById(facilityId):undefined;
+    const ids=[body.district?.id,...(Array.isArray(body.districts)?body.districts.map((sheet:any)=>sheet.id):[]),body.districtId,body.sheetId,facility?.sourceSheetId,pathId&&!['clear','add'].includes(pathId)?decodeURIComponent(pathId):''].filter(Boolean);
+    if(!ids.length&&req.path==='/blueprint-districts'&&body.activeId)return next();
+    const all=body.scope==='all'||/allocations\/(?:clear|reset-demo|upload)$/.test(req.path);
+    const snapshots=all?await adminDb.collection('vaccine_districts').get():null;
+    const sheets=snapshots?snapshots.docs.map(doc=>doc.data()):await Promise.all([...new Set(ids.length?ids:[activeDistrictId])].map(async id=>{const snapshot=await adminDb.collection('vaccine_districts').doc(String(id)).get();return snapshot.exists?snapshot.data():null;}));
+    for(const sheet of sheets)if(sheet)assertAllocationEditable(sheet as AllocationSheet);
+    next();
+  }catch(error:any){res.status(error.status||503).json({error:error.status?error.message:'Cycle permissions could not be checked. No allocation change was approved.'});}
+});
 // One versioned catalog document: transactional updates prevent lost edits.
 const catalogReference = adminDb.collection('product_catalog').doc('current');
 const catalogSeed: ProductCatalog = { revision: 1, products: defaultProducts() };
@@ -157,12 +182,60 @@ const catalogHandlers = productCatalogHandlers({
   save: async (input, actor) => {
     const saved = await runAdminTransaction(async transaction => {
       const snapshot = await transaction.get(catalogReference);
-      const updated = saveCatalogProduct(snapshot.exists ? snapshot.data() as ProductCatalog : catalogSeed, input, actor);
-      transaction.set(catalogReference, updated);
-      return updated;
+      const current = snapshot.exists ? snapshot.data() as ProductCatalog : catalogSeed;
+      const tracked = trackCatalogueAliasEdits(current, saveCatalogProduct(current, input, actor), actor);
+      transaction.set(catalogReference, tracked.catalog);
+      for (const event of tracked.events) transaction.set(catalogReference.collection('alias_history').doc(event.id), event);
+      return tracked.catalog;
     });
     readProductCatalog.invalidate();
     return saved;
+  },
+});
+async function queueCatalogueAliasSuggestions(suggestions: {alias:string;productId:string;confidence?:number;clinicalUncertainty?:boolean;requiresContext?:boolean;reason?:string}[], actor:string, expectedRevision?:number) {
+  const saved=await runAdminTransaction(async transaction=>{
+    const snapshot=await transaction.get(catalogReference);
+    let current=snapshot.exists ? snapshot.data() as ProductCatalog : catalogSeed;
+    if(expectedRevision!==undefined && current.revision!==expectedRevision) throw Object.assign(new Error('The catalogue changed. Reload before requesting suggestions.'),{status:409});
+    const events:any[]=[];
+    for(const suggestion of suggestions) {
+      const result=changeCatalogueAlias(current,{action:'propose',text:suggestion.alias,productId:suggestion.productId,
+        confidence:suggestion.confidence,clinicalUncertainty:suggestion.clinicalUncertainty,requiresContext:suggestion.requiresContext,reason:suggestion.reason},actor,true);
+      current=result.catalog;events.push(...result.events);
+    }
+    if(events.length) {
+      transaction.set(catalogReference,current);
+      for(const event of events) transaction.set(catalogReference.collection('alias_history').doc(event.id),event);
+    }
+    return current;
+  });
+  readProductCatalog.invalidate();return saved;
+}
+const aliasHandlers = catalogueAliasHandlers({
+  read: readProductCatalog,
+  change: async (input, actor) => {
+    const saved = await runAdminTransaction(async transaction => {
+      const snapshot = await transaction.get(catalogReference);
+      const result = changeCatalogueAlias(snapshot.exists ? snapshot.data() as ProductCatalog : catalogSeed, input, actor);
+      if (result.events.length) {
+        transaction.set(catalogReference, result.catalog);
+        for (const event of result.events) transaction.set(catalogReference.collection('alias_history').doc(event.id), event);
+      }
+      return result.catalog;
+    });
+    readProductCatalog.invalidate();
+    return saved;
+  },
+  history: async cursor => {
+    const history = catalogReference.collection('alias_history');
+    let query = history.orderBy('at', 'desc').limit(50);
+    if (cursor) {
+      const snapshot = await history.doc(cursor).get();
+      if (!snapshot.exists) throw Object.assign(new Error('History cursor no longer exists.'), { status: 400 });
+      query = query.startAfter(snapshot);
+    }
+    const page = await query.get();
+    return { events: page.docs.map(doc=>doc.data()) as any, nextCursor: page.size===50 ? page.docs[page.docs.length-1].id : '' };
   },
 });
 // General Auditor reference edits are stored separately from vaccine/Blueprint data.
@@ -189,8 +262,13 @@ app.get('/api/general/facilities', generalDirectoryHandlers.list);
 app.post('/api/general/facilities', generalDirectoryHandlers.save);
 app.delete('/api/general/facilities', generalDirectoryHandlers.remove);
 app.get('/api/products', catalogHandlers.read);
+app.get('/api/products/health', catalogHandlers.health);
+app.post('/api/products/preview', catalogHandlers.preview);
 app.post('/api/products/hints', catalogHandlers.hints);
 app.post('/api/products', catalogHandlers.save);
+app.get('/api/products/aliases', aliasHandlers.list);
+app.post('/api/products/aliases', aliasHandlers.change);
+app.get('/api/products/aliases/history', aliasHandlers.history);
 app.post('/api/products/suggest-aliases', catalogAliasAssistant({ read: readProductCatalog, getClient: getGeminiClient }));
 // Refresh the same persisted vocabulary before text matching and allocation parsing.
 app.use('/api', async (req, res, next) => {
@@ -389,12 +467,15 @@ async function getAudits(): Promise<any[]> {
     const snapshot = await getDocs(collection(db, 'audits'));
     const results: any[] = [];
     snapshot.forEach((docSnapshot: any) => {
-      results.push(docSnapshot.data());
+      results.push(confirmedAuditRead(docSnapshot.data()));
     });
     // Sync to local memory list to keep backward compatibility
+    const retained=audits.filter(record=>record.storage && record.storage.status!=='saved');
+    const merged=new Map(results.map(record=>[record.id,record]));
+    for(const record of retained)merged.set(record.id,record);
     audits.length = 0;
-    audits.push(...results);
-    return results.sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
+    audits.push(...merged.values());
+    return [...merged.values()].sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
   } catch (err) {
     console.error('Error fetching audits from Firestore, falling back to memory:', err);
     return audits;
@@ -422,6 +503,8 @@ function getGeminiClient(): GoogleGenAI {
 }
 
 // System instructions for comparing WhatsApp order text with Fulfilment System confirmations
+// General Auditor uses the narrower catalogue-first prompt in
+// generalProductNameAudit.ts. Keep this legacy prompt for other audit modes.
 const SYSTEM_INSTRUCTIONS = `
 ${medicalProductAcronymReference}
 
@@ -982,7 +1065,27 @@ app.post('/api/verify', async (req, res) => {
           Math.max(1, auditRemainingMs(req)), activeGeneralFacilities(managedDirectory), excludedGeneralFacilities(managedDirectory));
       };
       const facilityContext = await (auditTiming(req)?.measureAsync('facilityRecords', () => auditReadBudget(req, readFacilityContext)) ?? auditReadBudget(req, readFacilityContext));
-      response = { text: JSON.stringify(await auditReadBudget(req, () => runGeneralSemanticAudit(whatsappMessage, fulfillmentConfirmation, body.generalOrderLimitDecisions || {}, {
+      response = { text: JSON.stringify(await auditReadBudget(req, () => runGeneralProductNameAudit(whatsappMessage, fulfillmentConfirmation, res.locals.auditCatalog, {
+        generalOrderLimitDecisions: body.generalOrderLimitDecisions || {},
+        learnCatalogueAliases: async aliases => {
+          let count=0;
+          const saved=await runAdminTransaction(async transaction=>{
+            const snapshot=await transaction.get(catalogReference);
+            const current=snapshot.exists ? snapshot.data() as ProductCatalog : catalogSeed;
+            const learned=learnVerifiedCatalogueAliases(current,aliases,`catalogue-verifier:${res.locals.authUser?.id || 'audit'}`);
+            count=learned.events.filter(event=>event.action==='approve').length;
+            if(learned.events.length) {
+              transaction.set(catalogReference,learned.catalog);
+              for(const event of learned.events) transaction.set(catalogReference.collection('alias_history').doc(event.id),event);
+            }
+            return learned.catalog;
+          });
+          readProductCatalog.invalidate();res.locals.auditCatalog=saved;applyCatalog(saved);
+          return count;
+        },
+        suggestCatalogueAliases: async suggestions => {
+          res.locals.auditCatalog=await queueCatalogueAliasSuggestions(suggestions,res.locals.authUser?.email || res.locals.authUser?.id || 'audit');
+        },
         osuItems, facilityContext, semanticTimeoutMs: Math.max(0, Math.min(auditTimeoutSetting(process.env.AUDIT_AI_TIMEOUT_MS, AUDIT_AI_FALLBACK_MS, 100, 15_000), auditRemainingMs(req) - 250)),
         signal: auditSignal(req), timing: auditTiming(req), semanticCacheScope: res.locals.authUser?.id,
       }, getGeminiClient))) };
@@ -2031,7 +2134,7 @@ app.post('/api/verify', async (req, res) => {
     // Construct final audit record with database metadata
     let auditRecord = {
       ...payload,
-      ...(isGeneralAuditor ? { inputFingerprint: generalInputFingerprint({ whatsappMessage, fulfillmentConfirmation }), auditScope: 'general_auditor', orderer: payload.generalAudit.orderer.whatsappValue, finalVerdict: payload.generalAudit.finalStatus, generalCounts: payload.generalAudit.counts } : {}),
+      ...(isGeneralAuditor ? { createdByUserId:res.locals.authUser?.id, inputFingerprint: generalInputFingerprint({ whatsappMessage, fulfillmentConfirmation }), auditScope: 'general_auditor', orderer: payload.generalAudit.orderer.whatsappValue, finalVerdict: payload.generalAudit.finalStatus, generalCounts: payload.generalAudit.counts } : {}),
       id: checkId || ('audit_' + Math.random().toString(36).substring(2, 11)),
       timestamp: new Date().toISOString(),
       verificationStartedAt,
@@ -2052,7 +2155,7 @@ app.post('/api/verify', async (req, res) => {
       resolvedAt: payload.allMatch ? new Date().toISOString() : undefined
     };
 
-    if (isGeneralAuditor && body.restoreProductConfirmations === true) {
+    if (isGeneralAuditor && payload.comparisonMode !== 'product_names' && payload.comparisonMode !== 'product_names_quantities' && body.restoreProductConfirmations === true) {
       let previous = audits.find(record => record.id === auditRecord.id);
       if (!previous) {
         try { const snapshot = await getDoc(doc(getFirestoreDb(), 'audits', auditRecord.id)); previous = snapshot.exists() ? snapshot.data() : null; }
@@ -2071,26 +2174,9 @@ app.post('/api/verify', async (req, res) => {
     if (previousCheckIndex >= 0) audits.splice(previousCheckIndex, 1);
     audits.unshift(auditRecord);
 
-    // Save to Firestore
-    try {
-      const db = getFirestoreDb();
-      const cleanRecord = { ...auditRecord };
-      if (cleanRecord.resolutionNotes === undefined) cleanRecord.resolutionNotes = '';
-      if (cleanRecord.resolvedAt === undefined) delete cleanRecord.resolvedAt;
-      
-      const saveAudit = setDoc(doc(db, 'audits', auditRecord.id), cleanFirestorePayload(cleanRecord))
-        .then(() => console.log('[Audit] History saved'))
-        .catch(dbErr => { console.error('[Audit] History storage unavailable'); if (isGeneralAuditor) (auditRecord as any).generalStorageWarning = 'Firestore logging failed. This audit is retained in session memory only.'; });
-      {
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const waitForHistory = () => Promise.race([saveAudit, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Firestore logging timed out')), Math.max(1, Math.min(200, auditRemainingMs(req)))); })]);
-        try { if (auditTiming(req)) await auditTiming(req)!.measureAsync('historyWrite', waitForHistory); else await waitForHistory(); }
-        finally { clearTimeout(timer); }
-      }
-    } catch (dbErr) {
-      console.error('[Audit] History storage unavailable');
-      if (isGeneralAuditor) (auditRecord as any).generalStorageWarning = 'Firestore logging failed. This audit is retained in session memory only.';
-    }
+    // A timeout means pending confirmation, never an unconfirmed success or
+    // a fabricated database failure. The background write updates this record.
+    await auditStorage.persist(auditRecord, Math.max(1, Math.min(1500, auditRemainingMs(req))));
 
     return res.json(isGeneralAuditor && body.includeProductCatalog === true ? { ...auditRecord, productCatalog: res.locals.auditCatalog } : auditRecord);
   } catch (error: any) {
@@ -2272,6 +2358,16 @@ app.get('/api/audits', async (req, res) => {
 });
 
 // Acknowledge only the selected limit on existing evidence; no parsing or Gemini request.
+app.post('/api/audits/:id/storage-retry', auditStorageRetryHandler({
+  read: async id => {
+    const cached=audits.find(record=>record.id===id);
+    if(cached)return cached;
+    const snapshot=await getDoc(doc(getFirestoreDb(),'audits',id));
+    return snapshot.exists() ? confirmedAuditRead(snapshot.data()) : null;
+  },
+  persist: record=>auditStorage.persist(record,3000),
+}));
+
 app.post('/api/audits/:id/order-limit', orderLimitAcknowledgementHandler({
   read: async id => {
     const cached = audits.find(record => record.id === id);
@@ -2282,14 +2378,15 @@ app.post('/api/audits/:id/order-limit', orderLimitAcknowledgementHandler({
   save: async record => {
     const index = audits.findIndex(existing => existing.id === record.id);
     if (index >= 0) audits[index] = record; else audits.unshift(record);
-    await setDoc(doc(getFirestoreDb(), 'audits', record.id), cleanFirestorePayload(record));
+    await auditStorage.persist(record,3000);
+    if(record.storage?.status!=='saved')throw new Error('Audit write not confirmed.');
   },
 }));
 
 app.get('/api/audits/:id', async (req, res) => {
   try {
     let record = audits.find(record => record.id === req.params.id);
-    if (!record) { const snapshot = await getDoc(doc(getFirestoreDb(), 'audits', req.params.id)); record = snapshot.exists() ? snapshot.data() : null; }
+    if (!record) { const snapshot = await getDoc(doc(getFirestoreDb(), 'audits', req.params.id)); record = snapshot.exists() ? confirmedAuditRead(snapshot.data()) : null; }
     if (!record) return res.status(404).json({ error: 'Audit record not found.' });
     return res.json(record);
   } catch { return res.status(503).json({ error: 'Saved audit could not be loaded.' }); }
@@ -2305,9 +2402,10 @@ app.post('/api/audits/:id/product-confirmation', generalProductConfirmationHandl
   },
   refreshCatalog: async () => { applyCatalog(await readProductCatalog()); },
   save: async record => {
-    await setDoc(doc(getFirestoreDb(), 'audits', record.id), cleanFirestorePayload(record));
     const index = audits.findIndex(existing => existing.id === record.id);
     if (index >= 0) audits[index] = record; else audits.unshift(record);
+    await auditStorage.persist(record,3000);
+    if(record.storage?.status!=='saved')throw new Error('Audit write not confirmed.');
   },
 }));
 
@@ -2447,10 +2545,13 @@ app.get('/api/general-auditor/history', async (_req, res) => {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const snapshot: any = await Promise.race([getDocs(collection(getFirestoreDb(), 'audits')), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Firestore read timed out')), 8000); })]);
-    records = snapshot.docs.map((row: any) => row.data());
-    records = [...new Map([...records, ...audits].map((row: any) => [row.id, row])).values()];
+    records = snapshot.docs.map((row: any) => confirmedAuditRead(row.data()));
+    const retained=audits.filter(record=>record.storage && record.storage.status!=='saved');
+    records = [...new Map([...records, ...retained].map((row: any) => [row.id, row])).values()];
   } catch { source = 'session memory'; warning = 'Firestore unavailable; history may be incomplete.'; }
   finally { clearTimeout(timer); }
+  const retainedCount=records.filter(record=>record.generalAudit && record.storage && record.storage.status!=='saved').length;
+  if(retainedCount){source=source==='Firestore'?'Firestore + locally retained audits':source;warning+=` ${retainedCount} audit save${retainedCount===1?' is':'s are'} not confirmed; retry from the audit result.`;}
   const rows = generalAuditHistory(records);
   res.json({ source, warning, records: rows, analytics: generalAuditAnalytics(rows) });
 });
@@ -2650,6 +2751,7 @@ const DEFAULT_BLUEPRINT_PRODUCTS = [
 ];
 
 export interface DistrictSheetData {
+  cycleState?: 'draft' | 'active' | 'closed';
   id: string;
   district: string;
   month: string;
@@ -2749,6 +2851,29 @@ function getFacilityBlueprintStatus(
   productList: string[] = DEFAULT_BLUEPRINT_PRODUCTS
 ): 'completed' | 'in_progress' | 'pending' {
   return getBlueprintProgressStatus(row, productList);
+}
+
+// Canonical Blueprint mutations and their change records commit together.
+async function changeSavedAllocationSheets(ids:string[],actor:string,kind:string,reason:string,change:(sheet:AllocationSheet)=>AllocationSheet) {
+  const saved=await runAdminTransaction(async transaction=>{
+    const refs=[...new Set(ids)].map(id=>adminDb.collection('vaccine_districts').doc(id));
+    const snapshots=await Promise.all(refs.map(ref=>transaction.get(ref)));
+    const staged=snapshots.map((snapshot,index)=>{
+      if(!snapshot.exists)throw Object.assign(Error('Allocation sheet not found.'),{status:404});
+      const before={...snapshot.data(),id:refs[index].id} as AllocationSheet;
+      assertAllocationEditable(before);
+      const after=validateAllocationUpdate(before,change(structuredClone(before)));
+      return {before,after,ref:refs[index],changes:allocationSheetChanges(before,after)};
+    });
+    if(staged.reduce((sum,item)=>sum+1+Math.max(1,Math.ceil(item.changes.length/100)),0)>450)throw Object.assign(Error('Too many changes for one transaction. Apply smaller groups of sheets.'),{status:400});
+    for(const item of staged) {
+      transaction.set(item.ref,cleanFirestorePayload(item.after));
+      for(let offset=0;offset<Math.max(1,item.changes.length);offset+=100)transaction.set(item.ref.collection('allocation_events').doc(randomUUID()),cleanFirestorePayload({kind,at:item.after.updatedAt,actor,reason,changes:item.changes.slice(offset,offset+100)}));
+    }
+    return staged.map(item=>item.after);
+  });
+  for(const sheet of saved)blueprintDistricts[sheet.id]=sheet as any;
+  syncAllBlueprintDistrictsToService();return saved;
 }
 
 // Helper: Continuously sync allocation sheets into the order checking engine
@@ -2917,7 +3042,14 @@ async function loadDistrictsFromFirestore() {
 const ensureBlueprintLoaded = createRetryableLoader(loadDistrictsFromFirestore);
 // Allocation data is loaded by the requested feature, not on every cold start.
 
+async function readVaccineFacilityContext() {
+  const directory = await readManagedGeneralDirectory();
+  return readGeneralFacilityContext(async () => Object.values(blueprintDistricts), 2500,
+    activeGeneralFacilities(directory), excludedGeneralFacilities(directory));
+}
+
 const companionVaccine = companionVaccineHandlers({
+  facilityContext: readVaccineFacilityContext,
   refresh: async () => { await loadDistrictsFromFirestore(); syncAllBlueprintDistrictsToService(); },
   verifyFacility: facility => { const target = resolveBlueprintFacility(Object.values(blueprintDistricts), { facilityName: facility.facilityName,
     sheetId: facility.sourceSheetId, rowId: facility.sourceRowId, district: facility.district, cycle: facility.cycle });
@@ -2960,7 +3092,7 @@ const fsContext = fsContextHandlers({
   listFacilities: sheets => {
     blueprintDistricts = Object.fromEntries(sheets.map(sheet => [sheet.id, sheet]));
     syncAllBlueprintDistrictsToService();
-    return vaccineService.getAllFacilities();
+    return blueprintFacilityChoices(sheets, vaccineService.getAllFacilities());
   },
 });
 app.get('/api/vaccine/companion/facilities', fsContext.facilities);
@@ -2980,7 +3112,50 @@ app.get('/api/vaccine/blueprint-districts', async (req, res) => {
   }
 });
 
+const allocationOps=allocationOperationsHandlers({
+  read:async id=>{const snapshot=await adminDb.collection('vaccine_districts').doc(id).get();return snapshot.exists?{...snapshot.data(),id} as AllocationSheet:null;},
+  history:async(id,rowId,cursor)=>{
+    const sheetRef=adminDb.collection('vaccine_districts').doc(id);
+    const page=async(query:any,after:string|null|undefined,collection:any)=>{
+      if(after===null)return {docs:[],size:0};
+      if(after){const snapshot=await collection.doc(after).get();if(!snapshot.exists)throw Object.assign(Error('The history cursor expired. Refresh this view.'),{status:409});query=query.startAfter(snapshot);}
+      return query.limit(101).get();
+    };
+    const [events,transactions,current]=await Promise.all([
+      page(sheetRef.collection('allocation_events').orderBy('at','desc'),cursor?.events,sheetRef.collection('allocation_events')),
+      page(adminDb.collection('vaccine_transactions').where('sourceSheetId','==',id),cursor?.transactions,adminDb.collection('vaccine_transactions')),
+      sheetRef.get()
+    ]);
+    const sheet=current.exists?current.data():null;
+    const inventory=sheet?await loadDhdInventory(sheet.district):null;
+    return {events:events.docs.slice(0,100).map((doc:any)=>({id:doc.id,...doc.data()})).filter((event:any)=>!rowId||!event.changes?.length||event.changes.some((change:any)=>change.rowId===rowId)),
+      transactions:transactions.docs.slice(0,100).map((doc:any)=>({id:doc.id,...doc.data()})).filter((entry:any)=>!rowId||entry.sourceRowId===rowId).map((entry:any)=>({id:entry.id,orderId:entry.orderId,timestamp:entry.timestamp,facilityName:entry.facilityName,ccaUser:entry.ccaUser,items:entry.items})),
+      topUps:(inventory?.history||[]).filter(entry=>entry.cycle===sheet?.month&&(!rowId||entry.facilityRowId===rowId)),
+      truncated:events.size>100||transactions.size>100,nextCursor:{events:events.size>100?events.docs[99].id:null,transactions:transactions.size>100?transactions.docs[99].id:null}};
+  },
+  transition:async(id,state,reason,expected,actor)=>{
+    const saved=await runAdminTransaction(async transaction=>{
+      const ref=adminDb.collection('vaccine_districts').doc(id),snapshot=await transaction.get(ref);
+      if(!snapshot.exists)throw Object.assign(Error('Allocation sheet not found.'),{status:404});
+      const sheet={...snapshot.data(),id} as AllocationSheet;
+      const next=stageAllocationTransition(sheet,state,reason,expected,actor);
+      if(next!==sheet) {
+        transaction.set(ref,cleanFirestorePayload(next));
+        transaction.set(ref.collection('allocation_events').doc(randomUUID()),{kind:'cycle_state',at:next.updatedAt,actor,reason:reason||`${sheet.cycleState||'active'} → ${state}`,changes:[],before:sheet.cycleState||'active',after:state});
+      }
+      return next;
+    });
+    blueprintDistricts[id]=saved as any;syncAllBlueprintDistrictsToService();return saved;
+  }
+});
+app.get('/api/vaccine/blueprint-districts/:id/operations',allocationOps.history);
+app.post('/api/vaccine/blueprint-districts/:id/lifecycle',allocationOps.lifecycle);
+
 // Active-sheet polling reads exactly one current document, not every district.
+app.get('/api/vaccine/blueprint-districts/:id/facility-quantities', facilityQuantitiesHandler(async id => {
+  const snapshot = await getDoc(doc(getFirestoreDb(), 'vaccine_districts', id));
+  return snapshot.exists() ? snapshot.data() : null;
+}));
 app.get('/api/vaccine/blueprint-districts/:id/current', currentBlueprintHandler(async id => {
   const snapshot = await getDoc(doc(getFirestoreDb(), 'vaccine_districts', id));
   return snapshot.exists() ? snapshot.data() : null;
@@ -3042,24 +3217,23 @@ app.post('/api/vaccine/blueprint-districts/:id/topup', async (req, res) => {
     const result = await withDhdMutationLock(async () => {
       const sheet = blueprintDistricts[sheetId];
       if (!sheet) return { success: false, error: 'Allocation sheet not found.', status: 404 } as const;
-      const inventory = await loadDhdInventory(sheet.district);
-      const applied = applyConfirmedDhdTopUp({
-        inventory,
-        sheet: sheet as any,
-        rowId: String(rowId || ''),
-        vaccine: String(vaccine || ''),
-        quantity: Number(quantity),
-        distributedAfter: Number(distributedAfter),
-        requestId: String(requestId),
-        user: user?.name || user || 'Unknown user'
+      const applied=await runAdminTransaction(async transaction=>{
+        const sheetRef=adminDb.collection('vaccine_districts').doc(sheetId),savedSheet=await transaction.get(sheetRef);
+        if(!savedSheet.exists)return {success:false,error:'Allocation sheet not found.',status:404} as const;
+        const current={...savedSheet.data(),id:sheetId} as any;
+        const inventoryRef=adminDb.collection('vaccine_dhd_inventory').doc(getDhdInventoryId(current.district));
+        const savedInventory=await transaction.get(inventoryRef);
+        const inventory=savedInventory.exists?savedInventory.data() as any:{district:current.district,stocks:{},history:[],updatedAt:new Date().toISOString()};
+        const result=applyConfirmedDhdTopUp({inventory,sheet:current,rowId:String(rowId||''),vaccine:String(vaccine||''),quantity:Number(quantity),distributedAfter:Number(distributedAfter),requestId:String(requestId),user:res.locals.authUser.name});
+        if(result.success&&!result.duplicate) {
+          transaction.set(inventoryRef,cleanFirestorePayload(result.inventory));
+          transaction.set(sheetRef,cleanFirestorePayload(result.sheet));
+          transaction.set(sheetRef.collection('allocation_events').doc(randomUUID()),cleanFirestorePayload({kind:'dhd_top_up',at:result.sheet.updatedAt,actor:res.locals.authUser.email,reason:'Confirmed DHD top-up',requestId,changes:allocationSheetChanges(current,result.sheet as any)}));
+        }
+        return result;
       });
-      if (applied.success === false) return { success: false, error: applied.error, status: applied.status, available: applied.available } as const;
+      if(applied.success===false)return applied;
       if (!applied.duplicate) {
-        const db = getFirestoreDb();
-        const batch = writeBatch(db);
-        batch.set(doc(db, 'vaccine_dhd_inventory', getDhdInventoryId(sheet.district)), cleanFirestorePayload(applied.inventory));
-        batch.set(doc(db, 'vaccine_districts', sheet.id), cleanFirestorePayload(applied.sheet), { merge: true });
-        await batch.commit();
         blueprintDistricts[sheet.id] = applied.sheet as any;
         syncAllBlueprintDistrictsToService();
         const actor = getActiveActor(user);
@@ -3074,171 +3248,39 @@ app.post('/api/vaccine/blueprint-districts/:id/topup', async (req, res) => {
       }
       return { success: true, inventory: applied.inventory, districtSheet: blueprintDistricts[sheet.id], entry: applied.entry, duplicate: applied.duplicate } as const;
     });
-    if (result.success === false) return res.status(result.status).json({ error: result.error, available: result.available });
+    if (result.success === false) return res.status(result.status).json({ error: result.error, available: 'available' in result ? result.available : undefined });
     return res.json({ ...result, districts: Object.values(blueprintDistricts) });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Could not deduct DHD stock.' });
   }
 });
 
-// ADD A NEW ALLOCATION MONTH FOR A DISTRICT (OR ALL DISTRICTS) WITH AUTOMATIC BALANCE ROLLOVER
-app.post('/api/vaccine/blueprint-months/add', async (req, res) => {
+// Preview and commit share the same rollover plan. Source sheets are rechecked atomically.
+app.post('/api/vaccine/blueprint-months/preview',async(req,res)=>{
+  try {await loadDistrictsFromFirestore();const sources=Object.values(blueprintDistricts);const planned=planAllocationCycle(sources,{...req.body,districtId:req.body.districtId||activeDistrictId});res.json({sheets:planned,saved:false});}
+  catch(error:any){res.status(error.status||503).json({error:error.status?error.message:'Could not preview the next cycle.'});}
+});
+app.post('/api/vaccine/blueprint-months/add',async(req,res)=>{
   try {
-    const {
-      month,
-      scope = 'current', // 'current' or 'all'
-      districtId,
-      baseSheetId,
-      carryOverBalances = true,
-      copyFacilities = true
-    } = req.body;
-
-    if (!month || !month.trim()) {
-      return res.status(400).json({ error: 'Month name is required (e.g. October 2026)' });
-    }
-
-    const cleanMonth = month.trim();
-    const targetBaseId = baseSheetId || districtId || activeDistrictId;
-    const baseSheet = blueprintDistricts[targetBaseId] || Object.values(blueprintDistricts)[0];
-    if (!baseSheet) {
-      return res.status(404).json({ error: 'Base district allocation sheet not found' });
-    }
-
-    const targets: DistrictSheetData[] = [];
-    if (scope === 'all') {
-      // Find one active/latest sheet for each distinct district name
-      const uniqueDistricts = new Map<string, DistrictSheetData>();
-      for (const d of Object.values(blueprintDistricts)) {
-        uniqueDistricts.set(d.district, d);
+    await loadDistrictsFromFirestore();
+    const planned=planAllocationCycle(Object.values(blueprintDistricts),{...req.body,districtId:req.body.districtId||activeDistrictId});
+    if(!Array.isArray(req.body.sourceVersions))return res.status(409).json({error:'Preview the carry-over balances before creating the cycle.'});
+    for(const sheet of planned)if(!req.body.sourceVersions.some((source:any)=>source.id===sheet.sourceSheetId&&source.updatedAt===sheet.sourceUpdatedAt))return res.status(409).json({error:'Source balances changed. Preview the carry-over again.'});
+    await runAdminTransaction(async transaction=>{
+      const sourceSnapshots=await Promise.all(planned.map(sheet=>transaction.get(adminDb.collection('vaccine_districts').doc(sheet.sourceSheetId))));
+      const existing=await Promise.all(planned.map(sheet=>transaction.get(adminDb.collection('vaccine_districts').doc(sheet.id))));
+      for(let index=0;index<planned.length;index++) {
+        if(existing[index].exists||!sourceSnapshots[index].exists||(sourceSnapshots[index].data().updatedAt||null)!==planned[index].sourceUpdatedAt)throw Object.assign(Error('Source balances changed or the cycle already exists. Preview again.'),{status:409});
       }
-      targets.push(...Array.from(uniqueDistricts.values()));
-    } else {
-      targets.push(baseSheet);
-    }
-
-    let newlyActiveId = '';
-
-    for (const src of targets) {
-      const distName = src.district;
-      const distSlug = distName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-      const monthSlug = cleanMonth.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-      let newSheetId = `${distSlug}_${monthSlug}`;
-      let c = 1;
-      while (blueprintDistricts[newSheetId]) {
-        newSheetId = `${distSlug}_${monthSlug}_${c++}`;
+      for(const sheet of planned) {
+        transaction.set(adminDb.collection('vaccine_districts').doc(sheet.id),cleanFirestorePayload(sheet));
+        transaction.set(adminDb.collection('vaccine_districts').doc(sheet.id).collection('allocation_events').doc(randomUUID()),{kind:'cycle_created',at:sheet.updatedAt,actor:res.locals.authUser.email,reason:'Draft cycle created from reviewed carry-over.',sourceSheetId:sheet.sourceSheetId,changes:[]});
       }
-
-      let newRows: any[] = [];
-      if (copyFacilities && Array.isArray(src.rows) && src.rows.length > 0) {
-        newRows = src.rows.map((r, rIdx) => {
-          const newVaccines: Record<string, any> = {};
-          if (r.vaccines) {
-            for (const [vName, vData] of Object.entries(r.vaccines)) {
-              const vd: any = vData || {};
-              const carry = Number(vd.carryOver) || 0;
-              const alloc = Number(vd.allocation) || 0;
-              const dist = Number(vd.distributed) || 0;
-              const prevBal = (vd.balance !== undefined && vd.balance !== '' && !isNaN(Number(vd.balance)))
-                ? Number(vd.balance)
-                : (carry + alloc - dist);
-
-              if (carryOverBalances) {
-                // Ending balance of prev month becomes the starting stock (carryOver) for new month!
-                const newCarry = Math.max(0, prevBal);
-                newVaccines[vName] = {
-                  carryOver: newCarry,
-                  allocation: 0,
-                  distributed: 0,
-                  balance: newCarry
-                };
-              } else {
-                newVaccines[vName] = {
-                  carryOver: 0,
-                  allocation: 0,
-                  distributed: 0,
-                  balance: 0
-                };
-              }
-            }
-          }
-
-          return {
-            id: `bp_${newSheetId}_${rIdx + 1}`,
-            processing: '', // Reset start date for fresh distribution cycle
-            completed: '',  // Reset completion date
-            facility: r.facility || '',
-            deliverySite: r.deliverySite || '',
-            subDistrict: r.subDistrict || '',
-            vaccines: newVaccines
-          };
-        });
-      } else {
-        newRows = Array.from({ length: 20 }, (_, idx) => ({
-          id: `bp_${newSheetId}_${idx + 1}`,
-          processing: '',
-          completed: '',
-          facility: '',
-          deliverySite: '',
-          subDistrict: '',
-          vaccines: {}
-        }));
-      }
-
-      while (newRows.length < 20) {
-        const idx = newRows.length;
-        newRows.push({
-          id: `bp_${newSheetId}_${idx + 1}`,
-          processing: '',
-          completed: '',
-          facility: '',
-          deliverySite: '',
-          subDistrict: '',
-          vaccines: {}
-        });
-      }
-
-      const newDistrictSheet: DistrictSheetData = {
-        id: newSheetId,
-        worksheetRole: 'allocation',
-        district: distName,
-        month: cleanMonth,
-        products: src.products ? [...src.products] : [...DEFAULT_BLUEPRINT_PRODUCTS],
-        rows: newRows,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      blueprintDistricts[newSheetId] = newDistrictSheet;
-      if (!newlyActiveId || src.id === targetBaseId) {
-        newlyActiveId = newSheetId;
-      }
-
-      // Persist to Cloud Firestore
-      try {
-        const db = getFirestoreDb();
-        await setDoc(doc(db, 'vaccine_districts', newSheetId), cleanFirestorePayload(newDistrictSheet), { merge: true });
-      } catch (fErr) {
-        console.warn(`Firestore save error for new month sheet ${newSheetId}:`, fErr);
-      }
-    }
-
-    if (newlyActiveId) {
-      activeDistrictId = newlyActiveId;
-    }
-
-    syncAllBlueprintDistrictsToService();
-
-    return res.json({
-      success: true,
-      message: `Created "${cleanMonth}" allocation sheet with automated stock rollover!`,
-      districts: Object.values(blueprintDistricts),
-      activeDistrictId,
-      district: blueprintDistricts[activeDistrictId],
-      facilities: vaccineService.getAllFacilities()
     });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+    for(const sheet of planned)blueprintDistricts[sheet.id]=sheet;
+    activeDistrictId=planned[0].id;syncAllBlueprintDistrictsToService();
+    return res.json({success:true,districts:Object.values(blueprintDistricts),activeDistrictId,district:planned[0],facilities:vaccineService.getAllFacilities()});
+  }catch(error:any){res.status(error.status||503).json({error:error.status?error.message:'The cycle could not be saved. No success has been recorded; refresh and retry.'});}
 });
 
 // ADD a new district with the same allocation sheet structure
@@ -3318,6 +3360,7 @@ app.post('/api/vaccine/blueprint-districts/add', async (req, res) => {
 
     const newSheet: DistrictSheetData = {
       id: distId,
+      cycleState: 'draft',
       worksheetRole: 'allocation',
       district: cleanName,
       month: targetMonth,
@@ -3327,19 +3370,13 @@ app.post('/api/vaccine/blueprint-districts/add', async (req, res) => {
       updatedAt: new Date().toISOString()
     };
 
-    blueprintDistricts[distId] = newSheet;
-    activeDistrictId = distId;
-
-    // Always sync automatically to vaccine checker
-    syncAllBlueprintDistrictsToService();
-
-    // Persist to Firestore in background
-    try {
-      const db = getFirestoreDb();
-      await setDoc(doc(db, 'vaccine_districts', distId), cleanFirestorePayload(newSheet), { merge: true });
-    } catch (fErr) {
-      console.warn('Background Firestore sync for new district:', fErr);
-    }
+    await runAdminTransaction(async transaction=>{
+      const ref=adminDb.collection('vaccine_districts').doc(distId),snapshot=await transaction.get(ref);
+      if(snapshot.exists)throw Object.assign(Error('This district sheet already exists. Reload the list.'),{status:409});
+      transaction.set(ref,cleanFirestorePayload(newSheet));
+      transaction.set(ref.collection('allocation_events').doc(randomUUID()),{kind:'cycle_created',at:newSheet.updatedAt,actor:res.locals.authUser.email,reason:'New district draft cycle created',changes:[]});
+    });
+    blueprintDistricts[distId] = newSheet;activeDistrictId=distId;syncAllBlueprintDistrictsToService();
 
     return res.json({
       success: true,
@@ -3392,11 +3429,23 @@ app.post('/api/vaccine/blueprint-districts', async (req, res) => {
     if (district?.id) updates.set(district.id,pendingBlueprintDistricts[district.id]);
     if (Array.isArray(districts)) for (const item of districts) if (item?.id) updates.set(item.id,pendingBlueprintDistricts[item.id]);
     if (updates.size) {
-      const db = getFirestoreDb();
-      const batch = writeBatch(db);
-      for (const [id,sheet] of updates) batch.set(doc(db,'vaccine_districts',id),cleanFirestorePayload(sheet),{merge:true});
-      await batch.commit();
-      for (const [id,sheet] of updates) blueprintDistricts[id] = sheet;
+      const committed=await runAdminTransaction(async transaction=>{
+        const entries=[...updates];
+        const snapshots=await Promise.all(entries.map(([id])=>transaction.get(adminDb.collection('vaccine_districts').doc(id))));
+        const results=entries.map(([id,sheet],index)=>{
+          const prior=snapshots[index].exists?{...snapshots[index].data(),id}:undefined;
+          const incoming=prior?preserveDhdTopUpsOnStaleSheet(sheet as any,prior as any):sheet;
+          return {prior,sheet:validateAllocationUpdate(prior as any,incoming as any)};
+        });
+        for(const {prior,sheet} of results) {
+          const ref=adminDb.collection('vaccine_districts').doc(sheet.id);
+          transaction.set(ref,cleanFirestorePayload(sheet));
+          const changes=allocationSheetChanges(prior as any,sheet);
+          for(let offset=0;offset<changes.length;offset+=100)transaction.set(ref.collection('allocation_events').doc(randomUUID()),cleanFirestorePayload({kind:'blueprint_edit',at:sheet.updatedAt,actor:res.locals.authUser.email,reason:typeof req.body.changeReason==='string'&&req.body.changeReason.trim()?req.body.changeReason.trim().slice(0,1000):sheet.cycleChangeReason||'Allocation sheet edit',changes:changes.slice(offset,offset+100)}));
+        }
+        return results.map(result=>result.sheet);
+      });
+      for(const sheet of committed)blueprintDistricts[sheet.id]=sheet as any;
     }
     activeDistrictId = pendingActiveId;
     syncAllBlueprintDistrictsToService();
@@ -3438,75 +3487,35 @@ app.post('/api/vaccine/blueprint-districts', async (req, res) => {
       facilities: vaccineService.getAllFacilities()
     });
   } catch (err: any) {
-    return res.status(503).json({ error: 'Could not save the Allocation Blueprint to Firestore. Your edits have not been saved; please retry.' });
+    return res.status(err.status||503).json({ error: err.status ? err.message : 'Could not save the Allocation Blueprint to Firestore. Your edits have not been saved; please retry.' });
   }
 });
 
 // DELETE a district (must keep at least 1)
-app.delete('/api/vaccine/blueprint-districts/:id', async (req, res) => {
+app.delete('/api/vaccine/blueprint-districts/:id',async(req,res)=>{
   try {
-    const { id } = req.params;
-    const allKeys = Object.keys(blueprintDistricts);
-    if (allKeys.length <= 1) {
-      return res.status(400).json({ error: 'Cannot delete the only remaining district sheet.' });
-    }
-
-    if (blueprintDistricts[id]) {
-      delete blueprintDistricts[id];
-      if (activeDistrictId === id) {
-        activeDistrictId = Object.keys(blueprintDistricts)[0];
-      }
-      // Sync immediately
-      syncAllBlueprintDistrictsToService();
-
-      // Delete from Firestore
-      try {
-        const db = getFirestoreDb();
-        await deleteDoc(doc(db, 'vaccine_districts', id));
-      } catch (fErr) {
-        console.warn(`Firestore delete error for district ${id}:`, fErr);
-      }
-    }
-
-    return res.json({
-      success: true,
-      districts: Object.values(blueprintDistricts),
-      activeDistrictId,
-      facilities: vaccineService.getAllFacilities()
+    await loadDistrictsFromFirestore();const id=req.params.id;
+    if(Object.keys(blueprintDistricts).length<=1)return res.status(400).json({error:'Cannot delete the only remaining district sheet.'});
+    await runAdminTransaction(async transaction=>{
+      const ref=adminDb.collection('vaccine_districts').doc(id),snapshot=await transaction.get(ref);
+      if(!snapshot.exists)throw Object.assign(Error('Allocation sheet not found.'),{status:404});
+      const sheet={...snapshot.data(),id} as AllocationSheet;assertAllocationEditable(sheet);
+      // Keep the source and actor with retained history for authorised recovery.
+      transaction.set(adminDb.collection('vaccine_district_archives').doc(id),cleanFirestorePayload({sheet,deletedAt:new Date().toISOString(),deletedBy:res.locals.authUser.email}));
+      transaction.delete(ref);
     });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+    delete blueprintDistricts[id];if(activeDistrictId===id)activeDistrictId=Object.keys(blueprintDistricts)[0];syncAllBlueprintDistrictsToService();
+    res.json({success:true,districts:Object.values(blueprintDistricts),activeDistrictId,facilities:vaccineService.getAllFacilities()});
+  }catch(error:any){res.status(error.status||503).json({error:error.status?error.message:'The sheet could not be deleted. No success has been recorded.'});}
 });
 
 // RENAME a district
-app.patch('/api/vaccine/blueprint-districts/:id/rename', async (req, res) => {
+app.patch('/api/vaccine/blueprint-districts/:id/rename',async(req,res)=>{
   try {
-    const { id } = req.params;
-    const { newDistrictName } = req.body;
-    if (!newDistrictName || !newDistrictName.trim()) {
-      return res.status(400).json({ error: 'New district name is required' });
-    }
-
-    const dist = blueprintDistricts[id];
-    if (!dist) {
-      return res.status(404).json({ error: 'District not found' });
-    }
-
-    dist.district = newDistrictName.trim();
-    dist.updatedAt = new Date().toISOString();
-
-    syncAllBlueprintDistrictsToService();
-
-    return res.json({
-      success: true,
-      district: dist,
-      districts: Object.values(blueprintDistricts),
-      activeDistrictId
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+    const name=String(req.body.newDistrictName||'').trim();if(!name||name.length>160)return res.status(400).json({error:'Enter a valid district name.'});
+    const [sheet]=await changeSavedAllocationSheets([req.params.id],res.locals.authUser.email,'district_renamed','District name corrected',sheet=>({...sheet,district:name}));
+    res.json({success:true,district:sheet,districts:Object.values(blueprintDistricts),activeDistrictId});
+  }catch(error:any){res.status(error.status||503).json({error:error.status?error.message:'District rename could not be saved.'});}
 });
 
 // SYNC all blueprint districts directly to vaccine checker
@@ -3525,62 +3534,12 @@ app.post('/api/vaccine/blueprint-districts/sync', (req, res) => {
 });
 
 // CLEAR blueprint data (for the active district or across all districts)
-app.post('/api/vaccine/blueprint-districts/clear', async (req, res) => {
+app.post('/api/vaccine/blueprint-districts/clear',async(req,res)=>{
   try {
-    const { scope = 'current', districtId } = req.body;
-    const targetDistrictId = districtId || activeDistrictId;
-
-    const generateBlankRows = (dId: string) => {
-      return Array.from({ length: 5 }, (_, idx) => ({
-        id: `bp_${dId}_${idx + 1}`,
-        processing: '',
-        completed: '',
-        facility: '',
-        subDistrict: '',
-        vaccines: {}
-      }));
-    };
-
-    if (scope === 'all') {
-      for (const dId of Object.keys(blueprintDistricts)) {
-        blueprintDistricts[dId].rows = generateBlankRows(dId);
-        blueprintDistricts[dId].updatedAt = new Date().toISOString();
-        try {
-          const db = getFirestoreDb();
-          await setDoc(doc(db, 'vaccine_districts', dId), cleanFirestorePayload(blueprintDistricts[dId]), { merge: true });
-        } catch (fErr) {
-          console.warn(`Firestore clear sync error for district ${dId}:`, fErr);
-        }
-      }
-    } else {
-      if (blueprintDistricts[targetDistrictId]) {
-        blueprintDistricts[targetDistrictId].rows = generateBlankRows(targetDistrictId);
-        blueprintDistricts[targetDistrictId].updatedAt = new Date().toISOString();
-        try {
-          const db = getFirestoreDb();
-          await setDoc(doc(db, 'vaccine_districts', targetDistrictId), cleanFirestorePayload(blueprintDistricts[targetDistrictId]), { merge: true });
-        } catch (fErr) {
-          console.warn(`Firestore clear sync error for district ${targetDistrictId}:`, fErr);
-        }
-      }
-    }
-
-    syncAllBlueprintDistrictsToService();
-
-    return res.json({
-      success: true,
-      scope,
-      districts: Object.values(blueprintDistricts),
-      activeDistrictId,
-      district: blueprintDistricts[targetDistrictId] || Object.values(blueprintDistricts)[0],
-      facilities: vaccineService.getAllFacilities(),
-      message: scope === 'all'
-        ? 'All data across all blueprint districts has been cleared.'
-        : `All allocation data for district "${blueprintDistricts[targetDistrictId]?.district || targetDistrictId}" has been cleared.`
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+    await loadDistrictsFromFirestore();const ids=req.body.scope==='all'?Object.keys(blueprintDistricts):[req.body.districtId||activeDistrictId];
+    await changeSavedAllocationSheets(ids,res.locals.authUser.email,'sheet_cleared','User requested allocation-sheet clearance',sheet=>({...sheet,rows:[]}));
+    res.json({success:true,scope:req.body.scope||'current',districts:Object.values(blueprintDistricts),activeDistrictId,district:blueprintDistricts[req.body.districtId||activeDistrictId],facilities:vaccineService.getAllFacilities(),message:'Allocation data cleared and recorded in history.'});
+  }catch(error:any){res.status(error.status||503).json({error:error.status?error.message:'Clearance could not be saved. No success has been recorded.'});}
 });
 
 // Backwards-compatible single-district endpoints mapping to the active district
@@ -3593,28 +3552,12 @@ app.get('/api/vaccine/blueprint-sheet', (req, res) => {
   }
 });
 
-app.post('/api/vaccine/blueprint-sheet', (req, res) => {
+app.post('/api/vaccine/blueprint-sheet',async(req,res)=>{
   try {
-    const { district, month, products, rows } = req.body;
-    const target = blueprintDistricts[activeDistrictId] || Object.values(blueprintDistricts)[0];
-    if (district !== undefined) target.district = district;
-    if (month !== undefined) target.month = month;
-    if (Array.isArray(products)) target.products = products;
-    if (Array.isArray(rows)) target.rows = rows;
-    target.updatedAt = new Date().toISOString();
-
-    syncAllBlueprintDistrictsToService();
-
-    return res.json({
-      success: true,
-      state: target,
-      districts: Object.values(blueprintDistricts),
-      activeDistrictId,
-      facilities: vaccineService.getAllFacilities()
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+    const id=req.body.id||activeDistrictId;
+    const [sheet]=await changeSavedAllocationSheets([id],res.locals.authUser.email,'legacy_sheet_edit','Allocation sheet updated',sheet=>({...sheet,...req.body,id,expectedUpdatedAt:req.body.expectedUpdatedAt}));
+    res.json({success:true,state:sheet,districts:Object.values(blueprintDistricts),activeDistrictId,facilities:vaccineService.getAllFacilities()});
+  }catch(error:any){res.status(error.status||503).json({error:error.status?error.message:'Allocation sheet could not be saved.'});}
 });
 
 app.post('/api/vaccine/blueprint-sheet/sync', (req, res) => {
@@ -3925,61 +3868,55 @@ app.delete('/api/roles/:id', async (req, res) => {
   }
 });
 
-// Update Unrelieved Top-up for a facility and vaccine
-app.post('/api/vaccine/allocations/:facilityId/topup', async (req, res) => {
+// Legacy editor controls use canonical, saved sheet/row identities too.
+function exactFacilitySource(id:string) {
+  const facility=vaccineService.getFacilityById(id);
+  if(!facility?.sourceSheetId||!facility.sourceRowId)throw Object.assign(Error('Select a facility linked to an Allocation Blueprint.'),{status:409});
+  return facility;
+}
+app.post('/api/vaccine/allocations/:facilityId/topup',async(req,res)=>{
   try {
-    const { facilityId } = req.params;
-    const { vaccine, topUp, user, unit } = req.body;
-    if (!facilityId || !vaccine) {
-      return res.status(400).json({ error: 'facilityId and vaccine are required.' });
-    }
-    const result = vaccineService.updateVaccineTopUp(facilityId, vaccine, Number(topUp) || 0, user, unit || 'vials');
-    if (!result.success) {
-      return res.status(404).json({ error: result.error });
-    }
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+    const facility=exactFacilitySource(req.params.facilityId),matched=vaccineService.matchVaccineName(String(req.body.vaccine||''));
+    if(matched.confidence==='none')throw Object.assign(Error('Choose a catalogue-recognised vaccine.'),{status:400});
+    const factor=req.body.unit==='doses'?vaccineService.getDosesPerVial(matched.canonical):1,quantity=Number(req.body.topUp)/factor;
+    if(!Number.isFinite(quantity)||quantity<0||req.body.unit==='doses'&&!Number.isInteger(quantity))throw Object.assign(Error('Enter a valid native-unit top-up; doses must convert to complete vials.'),{status:400});
+    await changeSavedAllocationSheets([facility.sourceSheetId!],res.locals.authUser.email,'facility_top_up','Unrelieved top-up updated',sheet=>{
+      const row=sheet.rows.find(row=>row.id===facility.sourceRowId);if(!row)throw Object.assign(Error('Facility row not found.'),{status:404});
+      const key=findMatchingVaccineKeyInBlueprint(row.vaccines,matched.canonical,sheet.products),value=row.vaccines[key];
+      if(!value)throw Object.assign(Error('Product allocation not found.'),{status:404});
+      const before=Number(value.manualTopUpTotal||0),allocation=Number(value.allocation||0)+quantity-before,balance=Number(value.carryOver||0)+allocation-Number(value.distributed||0);
+      if(allocation<0||balance<0)throw Object.assign(Error('The revised top-up would create a negative balance.'),{status:409});
+      row.vaccines[key]={...value,manualTopUpTotal:quantity,allocation,balance};return sheet;
+    });res.json({success:true,facility:vaccineService.getFacilityById(facility.id)});
+  }catch(error:any){res.status(error.status||503).json({error:error.status?error.message:'Top-up could not be saved.'});}
 });
-
-// Update Facility Metadata (Facility Name, District, Sub-District)
-app.patch('/api/vaccine/facilities/:id', async (req, res) => {
+app.patch('/api/vaccine/facilities/:id',async(req,res)=>{
   try {
-    const { id } = req.params;
-    const { facilityName, district, subDistrict, tabName, nest } = req.body;
-    const result = vaccineService.updateFacilityDetails(id, { facilityName, district, subDistrict, tabName, nest });
-    if (!result.success) {
-      return res.status(404).json({ error: result.error });
-    }
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+    const facility=exactFacilitySource(req.params.id);
+    await changeSavedAllocationSheets([facility.sourceSheetId!],res.locals.authUser.email,'facility_metadata','Facility details corrected',sheet=>{
+      if(req.body.district&&req.body.district!==sheet.district)throw Object.assign(Error('Move the facility through its district Blueprint; a display edit cannot change its allocation district.'),{status:409});
+      const row=sheet.rows.find(row=>row.id===facility.sourceRowId);if(!row)throw Object.assign(Error('Facility row not found.'),{status:404});
+      if(req.body.facilityName!==undefined){const name=String(req.body.facilityName).trim();if(!name||name.length>160)throw Object.assign(Error('Enter a valid facility name.'),{status:400});row.facility=name;}
+      if(req.body.subDistrict!==undefined)row.subDistrict=String(req.body.subDistrict).slice(0,160);return sheet;
+    });res.json({success:true,facility:vaccineService.getFacilityById(facility.id)});
+  }catch(error:any){res.status(error.status||503).json({error:error.status?error.message:'Facility details could not be saved.'});}
 });
-
-// Add or initialize a new vaccine product for a facility
-app.post('/api/vaccine/facilities/:id/vaccines', async (req, res) => {
+app.post('/api/vaccine/facilities/:id/vaccines',async(req,res)=>{
   try {
-    const { id } = req.params;
-    const { vaccineName, original, carryOver, topUp, dosesPerVial, unit } = req.body;
-    if (!vaccineName) {
-      return res.status(400).json({ error: 'vaccineName is required.' });
-    }
-    const result = vaccineService.addVaccineProductToFacility(id, vaccineName, {
-      original: Number(original) || 0,
-      carryOver: Number(carryOver) || 0,
-      topUp: Number(topUp) || 0,
-      dosesPerVial: dosesPerVial ? Number(dosesPerVial) : undefined,
-      unit
-    });
-    if (!result.success) {
-      return res.status(404).json({ error: result.error });
-    }
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+    const facility=exactFacilitySource(req.params.id),matched=vaccineService.matchVaccineName(String(req.body.vaccineName||''));
+    if(matched.confidence==='none')throw Object.assign(Error('Choose a catalogue-recognised product before allocating it.'),{status:400});
+    const factor=req.body.unit==='doses'?vaccineService.getDosesPerVial(matched.canonical):1;
+    const values=['original','carryOver','topUp'].map(field=>Number(req.body[field]??0)/factor);
+    if(values.some(value=>!Number.isFinite(value)||value<0||req.body.unit==='doses'&&!Number.isInteger(value)))throw Object.assign(Error('Enter non-negative native quantities; doses must convert to complete vials.'),{status:400});
+    await changeSavedAllocationSheets([facility.sourceSheetId!],res.locals.authUser.email,'product_allocated','Product allocation saved',sheet=>{
+      const row=sheet.rows.find(row=>row.id===facility.sourceRowId);if(!row)throw Object.assign(Error('Facility row not found.'),{status:404});
+      const key=findMatchingVaccineKeyInBlueprint(row.vaccines,matched.canonical,sheet.products),prior=row.vaccines[key]||{};
+      const distributed=Number(prior.distributed||0),balance=values[0]+values[1]+values[2]-distributed;
+      if(balance<0)throw Object.assign(Error('Allocation cannot be reduced below the quantities already distributed.'),{status:409});
+      row.vaccines[key]={...prior,carryOver:values[1],allocation:values[0]+values[2],distributed,balance,manualTopUpTotal:values[2]};
+      if(!sheet.products!.includes(key))sheet.products!.push(key);return sheet;
+    });res.json({success:true,facility:vaccineService.getFacilityById(facility.id)});
+  }catch(error:any){res.status(error.status||503).json({error:error.status?error.message:'Product allocation could not be saved.'});}
 });
 
 // Validate Vaccine Order: WhatsApp <-> FS Confirmation <-> Remaining Allocation
@@ -3990,6 +3927,7 @@ app.post('/api/vaccine/validate', async (req, res) => {
     // Ensure fresh sync from live Allocation Blueprint sheets
     syncAllBlueprintDistrictsToService();
 
+    const facilityContext = await auditReadBudget(req, readVaccineFacilityContext);
     const interpreted = directItems?.length
       ? { customerRequest: whatsappMessage || '', fulfilmentConfirmation: fulfillmentConfirmation || '', semanticAnalysis: { status: 'skipped', reason: 'Structured vaccine quantities supplied directly' } }
       : await analyzeAuditLanguage(orderSource === 'fs_only' ? '' : (whatsappMessage || ''), fulfillmentConfirmation || '', 'vaccine', getGeminiClient, console, Math.max(0, Math.min(AUDIT_AI_FALLBACK_MS, auditRemainingMs(req) - 250)), { signal: auditSignal(req), cacheScope: res.locals.authUser?.id });
@@ -3997,22 +3935,38 @@ app.post('/api/vaccine/validate', async (req, res) => {
     // Auto-detect facility if not provided or set to auto
     if (!facilityId || facilityId === 'auto') {
       const textToExtract = orderSource === 'fs_only' ? interpreted.fulfilmentConfirmation : (interpreted.customerRequest || interpreted.fulfilmentConfirmation);
-      const extractedFacName = vaccineService.extractFacilityFromText(textToExtract);
+      const extractedFacName = vaccineService.extractFacilityFromText(textToExtract, facilityContext);
       if (extractedFacName) {
-        const match = vaccineService.getFacilityByName(extractedFacName);
-        if (match) {
-          facilityId = match.id;
-        }
+        const matchesName = vaccineService.vaccineFacilityMatcher(vaccineService.vaccineFacilityContext(facilityContext));
+        const matches = vaccineService.getAllFacilities().filter(facility =>
+          matchesName(facility.facilityName, extractedFacName) &&
+          (!(req.body.blueprintSheetId || req.body.sheetId) || facility.sourceSheetId === (req.body.blueprintSheetId || req.body.sheetId)) &&
+          (!req.body.district || normalizeFacilityName(facility.district) === normalizeFacilityName(req.body.district)) &&
+          (!req.body.allocationCycle || facility.cycle === req.body.allocationCycle));
+        if (matches.length > 1) return res.status(409).json({error: 'Select the exact Blueprint facility and allocation cycle; the name appears in multiple sheets.'});
+        if (matches.length === 1) facilityId = matches[0].id;
       }
     }
 
-    if (!facilityId) {
+    if (!facilityId || facilityId === 'auto') {
       return res.status(400).json({
-        error: 'Facility ID is required, or please include the facility name in your FS confirmation message (e.g. "Facility: Walewale District Hospital").'
+        error: 'Select a Blueprint facility, or mention its name in the message. A Facility label is not required.'
       });
     }
 
+    const selectedFacility=vaccineService.getFacilityById(facilityId);
+    if(selectedFacility?.sourceSheetId) {
+      const saved=await getDoc(doc(getFirestoreDb(),'vaccine_districts',selectedFacility.sourceSheetId));
+      if(!saved.exists())return res.status(404).json({error:FACILITY_NOT_FOUND});
+      const current={...saved.data(),id:selectedFacility.sourceSheetId} as AllocationSheet;
+      const row=current.rows?.find((row:any)=>row.id===selectedFacility.sourceRowId);
+      if(!row)return res.status(404).json({error:FACILITY_NOT_FOUND});
+      try{assertBlueprintActive(current,row);}catch(error:any){return res.status(409).json({error:error.message});}
+      blueprintDistricts[current.id]=current as any;syncAllBlueprintDistrictsToService();
+    }
+
     const result = vaccineService.validateVaccineOrder({
+      facilityContext,
       facilityId,
       orderSource: orderSource || 'whatsapp',
       whatsappMessage: interpreted.customerRequest,
@@ -4159,68 +4113,32 @@ app.post('/api/vaccine/confirm', async (req, res) => {
 });
 
 // Record DCO Quota Adjustment (+/- without overwriting original historical allocation)
-app.post('/api/vaccine/adjust', async (req, res) => {
+app.post('/api/vaccine/adjust',async(req,res)=>{
   try {
-    const { facilityId, vaccine, adjustment, unit, reason, user } = req.body;
-    if (!facilityId || !vaccine || isNaN(adjustment)) {
-      return res.status(400).json({ error: 'Facility ID, vaccine, and numeric adjustment are required.' });
-    }
-
-    const result = vaccineService.recordAllocationAdjustment({
-      facilityId,
-      vaccine,
-      adjustment: Number(adjustment),
-      unit: unit || 'vials',
-      reason: reason || 'Warehouse authorized quota update',
-      user: user || 'Warehouse Team'
+    await ensureBlueprintLoaded();
+    const facility=req.body.facilityId?vaccineService.getFacilityById(req.body.facilityId):undefined;
+    const sheetId=String(req.body.sheetId||facility?.sourceSheetId||''),rowId=String(req.body.rowId||facility?.sourceRowId||''),requestId=String(req.body.requestId||'');
+    if(!sheetId||!rowId||!requestId||requestId.length>160||/[\/]/.test(sheetId+requestId))return res.status(400).json({error:'Select an exact Blueprint facility and provide a stable adjustment request ID.'});
+    if(req.body.unit&&req.body.unit!=='vials'&&req.body.unit!=='pieces')return res.status(400).json({error:'Record the adjustment in the product’s native vials or pieces.'});
+    const actor=res.locals.authUser.email;
+    const saved=await runAdminTransaction(async transaction=>{
+      const ref=adminDb.collection('vaccine_districts').doc(sheetId),eventRef=ref.collection('allocation_events').doc('adjustment_'+createHash('sha256').update(requestId).digest('hex'));
+      const snapshot=await transaction.get(ref),previous=await transaction.get(eventRef);
+      if(!snapshot.exists)throw Object.assign(Error('Allocation sheet not found.'),{status:404});
+      const sheet={...snapshot.data(),id:sheetId} as AllocationSheet;
+      if(previous.exists) {
+        const old=previous.data();
+        if(old.rowId!==rowId||old.product!==req.body.vaccine||old.amount!==Number(req.body.adjustment)||old.actor!==actor)throw Object.assign(Error('This adjustment ID belongs to a different request.'),{status:409});
+        return sheet;
+      }
+      if(req.body.expectedUpdatedAt!==(sheet.updatedAt||null))throw Object.assign(Error('The Blueprint changed. Reload before adjusting.'),{status:409});
+      const next=applyAllocationAdjustment(sheet,rowId,String(req.body.vaccine),Number(req.body.adjustment),String(req.body.reason||''));
+      transaction.set(ref,cleanFirestorePayload(next));
+      transaction.set(eventRef,cleanFirestorePayload({kind:'quota_adjustment',at:next.updatedAt,actor,reason:req.body.reason,rowId,product:req.body.vaccine,amount:Number(req.body.adjustment),changes:allocationSheetChanges(sheet,next)}));
+      return next;
     });
-
-    if (!result.success) {
-      return res.status(400).json({ error: result.error });
-    }
-
-    // Persist adjustment to Firestore
-    if (result.updatedFacility) {
-      try {
-        const db = getFirestoreDb();
-        await setDoc(doc(db, 'vaccine_allocations', result.updatedFacility.id), cleanFirestorePayload(result.updatedFacility), { merge: true });
-      } catch (fErr) {
-        console.warn('Background Firestore sync for vaccine adjustment:', fErr);
-      }
-    }
-
-    // Log quota adjustment to activity audit trail
-    if (result.success && result.updatedFacility) {
-      try {
-        const actor = getActiveActor(user);
-        const adj = (result as any).adjustment;
-        const rec = activityService.logActivity({
-          module: 'vaccine_checker',
-          actionType: 'checker_quota_adjusted',
-          title: `Quota Authorization Adjusted: ${result.updatedFacility.facilityName} - ${vaccine}`,
-          summary: `${actor.name} (${actor.role.toUpperCase()}) adjusted quota for ${result.updatedFacility.facilityName} [${vaccine}]: ${adj?.previousAllocation ?? 'prev'} -> ${adj?.newAllocation ?? 'new'} (Reason: ${reason}).`,
-          actor,
-          facility: result.updatedFacility.facilityName,
-          district: result.updatedFacility.district,
-          badgeType: 'warning',
-          details: {
-            product: vaccine,
-            oldValue: adj?.previousAllocation,
-            newValue: adj?.newAllocation,
-            diff: Number(adjustment) > 0 ? `+${adjustment}` : `${adjustment}`,
-            metadata: { reason }
-          }
-        });
-        persistActivityLogToFirestore(rec);
-      } catch (actErr) {
-        console.warn('Activity log for adjust error:', actErr);
-      }
-    }
-
-    return res.json(result);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+    blueprintDistricts[sheetId]=saved as any;syncAllBlueprintDistrictsToService();res.json({success:true,sheet:saved});
+  }catch(error:any){res.status(error.status||503).json({error:error.status?error.message:'Adjustment could not be saved. Retain this request and retry.'});}
 });
 
 // Fetch transaction history

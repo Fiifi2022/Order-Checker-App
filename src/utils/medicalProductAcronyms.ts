@@ -83,8 +83,10 @@ function rebuildAcronyms() {
   const aliases = medicalProductAcronyms.filter(entry => !entry.contextual)
     .flatMap(entry => [...entry.aliases, entry.name].map(alias => ({ alias: wordKey(alias), name: wordKey(entry.name) })))
     .sort((a, b) => b.alias.length - a.alias.length);
-  aliasPattern = new RegExp(`(^|[^a-z0-9])(${[...new Set(aliases.map(entry => entry.alias))].map(escapeRegExp).join('|')})(?=$|[^a-z0-9])`, 'g');
-  aliasNames = new Map(aliases.map(entry => [entry.alias, entry.name]));
+  const meanings = new Map<string, Set<string>>();
+  for (const entry of aliases) meanings.set(entry.alias, new Set([...(meanings.get(entry.alias) || []), entry.name]));
+  aliasNames = new Map([...meanings].filter(([, names]) => names.size === 1).map(([alias, names]) => [alias, [...names][0]]));
+  aliasPattern = aliasNames.size ? new RegExp(`(^|[^a-z0-9])(${[...aliasNames.keys()].map(escapeRegExp).join('|')})(?=$|[^a-z0-9])`, 'g') : /(?!)/g;
   bloodNames = medicalProductAcronyms.filter(entry => entry.category === 'blood').map(entry => wordKey(entry.name));
 
 }

@@ -1,3 +1,8 @@
+import {createAuditStorage} from './auditStorage';
+import { canManageCatalog } from '../shared/productCatalog';
+import { assignedRoles } from '../shared/roles';
+import { defaultProducts, applyCatalog } from './productCatalog';
+import { runGeneralProductNameAudit } from './generalProductNameAudit';
 import { generalInputFingerprint } from '../shared/generalAuditFingerprint';
 import { restoreGeneralProductConfirmations } from '../src/utils/generalProductConfirmationPersistence';
 import { auditReadBudget, auditRemainingMs, auditSignal, auditTiming } from './auditBudget';
@@ -14,11 +19,12 @@ import { normalizeCompanionAuditMode } from '../shared/companionAudit';
 import { resolveBlueprintFacility, normalizeFacilityName, assertBlueprintActive } from './blueprintFacility';
 import { resolveCompanionFacility, companionFacilityErrors, CompanionFacilityError } from './companionFacility';
 import { runGeneralAuditor } from './generalAuditor';
+import { learnVerifiedCatalogueAliases, changeCatalogueAlias } from './catalogAliasLearning';
 import { readGeneralFacilityContext } from './generalFacilityRecords';
 import { createHash } from 'node:crypto';
 import { emptyGeneralFacilityDirectory, activeGeneralFacilities, excludedGeneralFacilities } from './generalFacilityDirectory';
 
-function fixture() {
+function fixture(facilityContext?: () => Promise<any>) {
   service.clearAllAllocations({ clearHistory: true });
   const row = { id: 'row', facility: 'Example Health Centre', vaccines: {
     BCG: { allocation: 20, balance: 20, distributed: 0 }, OPV: { allocation: 15, balance: 15, distributed: 0 },
@@ -29,6 +35,7 @@ function fixture() {
   let readFailure = false, writeFailure = false, loseResponse = false, writes = 0;
   let queue = Promise.resolve();
   const storage = {
+    async write(path:string,value:any){if(writeFailure)throw Object.assign(new Error('isolated write failure'),{code:14});records.set(path,structuredClone(value));},
     db: {}, doc: (_db: any, collection: string, id: string) => `${collection}/${id}`,
     async runTransaction(_db: any, callback: any) {
       const previous = queue; let unlock!: () => void; queue = new Promise(resolve => { unlock = resolve; }); await previous;
@@ -59,7 +66,7 @@ function fixture() {
       vaccine, allocation: value.allocation, remaining: value.balance, taken: value.distributed
     }))), 'isolated tests');
   };
-  const handlers = companionVaccineHandlers({ refresh, storage: () => storage,
+  const handlers = companionVaccineHandlers({ refresh, facilityContext, storage: () => storage,
     verifyFacility: facility => { const target = resolveBlueprintFacility([records.get('vaccine_districts/' + sheet.id)], {
       facilityName: facility.facilityName, sheetId: facility.sourceSheetId, rowId: facility.sourceRowId, district: facility.district, cycle: facility.cycle }); assertBlueprintActive(target.sheet, target.row); },
     publish: committed => service.publishConfirmedVaccineOrder(committed.result.updatedFacility!, committed.result.transaction!) });
@@ -87,26 +94,42 @@ function verifyRoute(app: ReturnType<typeof fixture>) {
   const begin = source.indexOf("app.post('/api/verify'");
   const end = source.indexOf("app.post('/api/scan-screenshot'", begin);
   let handler: any;
+  const catalogSeed={revision:1,products:defaultProducts()};
+  const catalogReference={key:'product_catalog/current',collection:(name:string)=>({doc:(id:string)=>`product_catalog/current/${name}/${id}`})};
+  const runAdminTransaction=async(callback:any)=>{
+    const staged=new Map<string,any>();
+    const result=await callback({get:async(ref:any)=>({exists:app.records.has(ref.key||ref),data:()=>app.records.get(ref.key||ref)}),set:(ref:any,value:any)=>staged.set(ref.key||ref,value)});
+    for(const [key,value] of staged)app.records.set(key,value);
+    return result;
+  };
   const context = vm.createContext({
     app: { post(_path: string, callback: any) { handler = callback; } },
     console: { log() {}, error() {}, warn() {} }, normalizeCompanionAuditMode, companionVaccine: app.handlers,
     vaccineService: service, resolveCompanionFacility, companionFacilityErrors, CompanionFacilityError,
     resolveBlueprintFacility, blueprintDistricts: {},
     async loadDistrictsFromFirestore() { await app.refresh(); context.blueprintDistricts = { test: app.records.get('vaccine_districts/isolated-test-sheet') }; },
-    async runGeneralSemanticAudit(a: string, b: string, decisions: any, support: any) { return runGeneralAuditor(a, b, decisions, support); },
+    runGeneralProductNameAudit, canManageCatalog, assignedRoles,
+    learnVerifiedCatalogueAliases,runAdminTransaction,catalogReference,catalogSeed,applyCatalog,
+    readProductCatalog:{invalidate(){}},
+    async queueCatalogueAliasSuggestions(suggestions:any[],actor:string) {
+      let catalog=app.records.get(catalogReference.key)||catalogSeed;
+      for(const suggestion of suggestions)catalog=changeCatalogueAlias(catalog,{action:'propose',text:suggestion.alias,...suggestion},actor,true).catalog;
+      app.records.set(catalogReference.key,catalog);return catalog;
+    },
     async readCurrentBlueprintSheets() { return [...app.records.entries()].filter(([path]) => path.startsWith('vaccine_districts/')).map(([path, value]) => ({ ...value, id: path.split('/')[1] })); },
     async readManagedGeneralDirectory() { return emptyGeneralFacilityDirectory(); }, activeGeneralFacilities, excludedGeneralFacilities,
     auditReadBudget, auditRemainingMs, auditSignal, auditTiming, auditTimeoutSetting, process: { env: {} }, AUDIT_AI_FALLBACK_MS,
     readGeneralFacilityContext, collection(_db: unknown, name: string) { return name; },
     async getDocs(name: string) { return { docs: [...app.records.entries()].filter(([path]) => path.startsWith(name + '/')).map(([path, value]) => ({ id: path.slice(name.length + 1), data: () => value })) }; },
     getGeminiClient() { throw new Error('No external AI allowed in this test'); }, osuItems: [], audits: [], createHash, generalInputFingerprint, restoreGeneralProductConfirmations, setTimeout, clearTimeout,
+    auditStorage:createAuditStorage(async(id,record)=>{await app.storage.write('audits/'+id,app.storage.clean(record));}),
     cleanFirestorePayload: app.storage.clean, getFirestoreDb() { return {}; }, doc: app.storage.doc,
     async setDoc(path: string, value: any) { app.records.set(path, value); }
   });
   vm.runInContext(ts.transpile(source.slice(begin, end)), context);
   return async (body: any) => {
     let status = 200, result: any;
-    await handler({ body, headers: {} }, { locals: { authUser: { id: 'cca', name: 'Test CCA', role: 'cca' } },
+    await handler({ body, headers: {} }, { locals: { auditCatalog: app.records.get(catalogReference.key)||catalogSeed, authUser: { id: 'cca', name: 'Test CCA', role: 'cca' } },
       status(code: number) { status = code; return this; }, json(value: any) { result = value; return this; } });
     return { status, body: result };
   };
@@ -124,20 +147,22 @@ test('WhatsApp mode alias reuses vaccine validation and returns the common exten
   assert.equal(previousSpelling.body.allMatch, true);
 });
 
-test('unscoped WhatsApp mode uses existing General Auditor for medicine aliases and vaccine pairing checks', async () => {
+test('unscoped General Auditor compares catalogue names and quantities; Vaccine Checker retains allocation checks', async () => {
   const app = fixture(); await app.refresh(); const route = verifyRoute(app);
   const headers = 'Facility: Example HC\nOrderer: Test CCA\n';
   const body = { auditMode: 'whatsapp_and_fulfillment', facilityId: service.getAllFacilities()[0].id,
-    whatsappMessage: headers + 'PCM 500mg Tablet - 5\nOPV - 3',
+    whatsappMessage: headers + 'PCM 500mg Tablet - 5\nOPV - 3\nOPV Dropper - 3',
     fulfillmentConfirmation: headers + 'Paracetamol 500mg Tablet [5/5]\nOral Polio Vaccine [3/3]\nOPV Dropper [3/3]' };
   const valid = await route({ ...body });
-  assert.equal(valid.status, 200, JSON.stringify(valid.body)); assert.equal(valid.body.allMatch, true);
+  assert.equal(valid.status, 200, JSON.stringify(valid.body)); assert.equal(valid.body.allMatch, true, JSON.stringify({items:valid.body.items,details:valid.body.generalAudit}));
   assert.equal(valid.body.auditScope, 'general_auditor'); assert.equal(valid.body.canCommit, false);
   assert.equal(valid.body.facilityId, body.facilityId); assert.equal(app.balance('OPV'), 15);
-  for (const fs of [headers + 'ORS [5/5]', body.fulfillmentConfirmation.replace('[5/5]', '[3/5]'), body.fulfillmentConfirmation.replace('OPV Dropper [3/3]', 'OPV Dropper [2/2]')]) {
-    const failed = await route({ ...body, fulfillmentConfirmation: fs });
-    assert.equal(failed.status, 200, JSON.stringify(failed.body)); assert.equal(failed.body.allMatch, false);
-    assert.ok(failed.body.discrepancies.length); assert.equal(app.balance('OPV'), 15);
+  const wrong = await route({ ...body, fulfillmentConfirmation: headers + 'ORS [5/5]' });
+  assert.equal(wrong.status, 200); assert.equal(wrong.body.allMatch, false);
+  for (const fs of [body.fulfillmentConfirmation.replace('[5/5]', '[3/5]'), body.fulfillmentConfirmation.replace('OPV Dropper [3/3]', 'OPV Dropper [2/2]')]) {
+    const changed = await route({ ...body, fulfillmentConfirmation: fs });
+    assert.equal(changed.status, 200); assert.equal(changed.body.allMatch, false);
+    assert.equal(changed.body.comparisonMode, 'product_names_quantities'); assert.equal(app.balance('OPV'), 15);
   }
 });
 
@@ -203,6 +228,34 @@ test('facility auto-identification recognizes normalized names but requires uniq
   service.importAllocationsFromRows([{ sourceSheetId: 'different-cycle', sourceRowId: 'another-row', facility: 'Example Health Centre', district: 'Test', cycle: 'November 2026', vaccine: 'IPV', allocation: 30, remaining: 30 }]);
   assert.throws(() => resolveCompanionFacility({ facilityId: 'auto' }, 'Facility: Example HC\nIPV 2'), (error: any) => error.status === 409);
   assert.equal(resolveCompanionFacility({ facilityId: 'auto', blueprintSheetId: 'isolated-test-sheet' }, 'Facility: Example HC\nIPV 2').cycle, 'October 2026');
+});
+
+test('extension vaccine prose and approved facility aliases survive verification and atomic confirmation', async () => {
+  const app = fixture(async () => ({records: [{name: 'Example Health Centre', verifiedAliases: ['Official Example'], source: 'test/directory'}]}));
+  await app.refresh();
+  const result = await app.invoke('verify', {auditMode: 'whatsapp_and_fulfillment', facilityId: 'auto',
+    whatsappMessage: 'This is Mary from Official-Example.\nIPV 2',
+    fulfillmentConfirmation: 'Thank you Mary from Example H.C. for ordering with Zipline.\nIPV [2/2]'});
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.allMatch, true, JSON.stringify(result.body));
+  assert.equal(app.balance('IPV'), 20, 'Verification is read-only');
+  const committed = await app.commit(result.body);
+  assert.equal(committed.status, 200, JSON.stringify(committed.body));
+  assert.equal(app.balance('IPV'), 18);
+  const duplicate = await app.commit(result.body);
+  assert.equal(duplicate.status, 200);
+  assert.equal(app.balance('IPV'), 18, 'Retry must not deduct twice');
+});
+
+test('a removed facility alias cannot authorise a pending vaccine deduction', async () => {
+  let aliases = ['Official Example'];
+  const app = fixture(async () => ({records: [{name: 'Example Health Centre', verifiedAliases: aliases, source: 'test/directory'}]}));
+  const approved = await app.ready({fulfillmentConfirmation: 'Thank you Mary from Official Example for ordering with Zipline.\nIPV [2/2]'});
+  assert.equal(approved.body.allMatch, true, JSON.stringify(approved.body));
+  aliases = [];
+  const committed = await app.commit(approved.body);
+  assert.equal(committed.status, 409);
+  assert.equal(app.balance('IPV'), 20);
 });
 
 test('recorded fulfilment cannot clear a changed customer request, and read failures remain review errors', async () => {
@@ -434,4 +487,77 @@ test('read-only status returns the committed transaction even if its allocation 
   assert.equal(receipt.body.transaction.status, 'confirmed'); assert.equal(receipt.body.transaction.id, audit.orderId);
   assert.equal(receipt.body.updatedFacility, null); assert.equal(app.writes, writes);
   assert.equal(app.balance('OPV'), 12);
+});
+
+test('main app and actual extension audit body resolve the same saved catalogue IDs and quantity results',async()=>{
+ const app=fixture();await app.refresh();const route=verifyRoute(app);
+ const {auditBody}=await import('../extension/audit.js');
+ const headers='Facility: Example HC\nOrderer: Test CCA\n';
+ const customer=headers+'inj. Diclofenac 75mg/3ml - 30',fulfillment=headers+'Diclofenac 25mg/mL Injection, 3mL [10/10]';
+ const main=await route({auditScope:'general_auditor',whatsappMessage:customer,fulfillmentConfirmation:fulfillment});
+ const extension=await route(auditBody(customer,fulfillment,1));
+ assert.equal(main.status,200);assert.equal(extension.status,200);
+ const businessItems=(result:any)=>result.items.map(({provenance,...item}:any)=>({...item,provenance:provenance.map(({normalizedName,clinicalAttributes,...source}:any)=>source)}));
+ assert.deepEqual(businessItems(extension.body),businessItems(main.body));
+ assert.equal(extension.body.productMatchingDiagnostics[0].customer[0].catalogProductId,main.body.productMatchingDiagnostics[0].customer[0].catalogProductId);
+ assert.equal(main.body.items.length,1);assert.equal(main.body.items[0].status,'pending order limit');
+ assert.equal(main.body.items[0].name,'Diclofenac 25mg/mL Injection, 3mL');
+ assert.equal(main.body.issueCount,0);assert.equal(main.body.allMatch,false);
+ assert.equal(main.body.items[0].difference,20);assert.equal(main.body.items[0].fulfillment.orderLimitEligible,true);
+ const proof=main.body.productMatchingDiagnostics[0];
+ assert.equal(proof.customer[0].catalogProductId,proof.fulfillment[0].catalogProductId);
+ assert.equal(proof.customer[0].geminiCalled,false);assert.equal(proof.fulfillment[0].geminiCalled,false);
+ const key=main.body.items[0].fulfillment.key;
+ for(const answer of [true,false]) {
+  const body={auditScope:'general_auditor',whatsappMessage:customer,fulfillmentConfirmation:fulfillment,generalOrderLimitDecisions:{[key]:answer}};
+  const saved=await route(body);
+  assert.equal(saved.status,200);
+  assert.equal(saved.body.items[0].status,answer?'order limit applied':'quantity mismatch');
+  assert.equal(saved.body.allMatch,answer);assert.equal(saved.body.issueCount,answer?0:1);
+ }
+ assert.equal(app.balance('OPV'),15);
+});
+
+test('actual General Auditor route queues new wording for approval for both interfaces without changing allocations',async()=>{
+ const app=fixture();await app.refresh();
+ app.records.set('product_catalog/current',{revision:30,products:[{id:'verified-pcm',scope:'general',name:'Paracetamol 500mg Tablet',aliases:['PCM 500mg'],contextualAliases:[],category:'medicine',note:''}]});
+ const route=verifyRoute(app),header='Facility: Example HC\nOrderer: Test CCA\n';
+ const customer=header+'Paracet 500 tabs 20/20',fulfillment=header+'Paracetamol 500mg Tablet [20/20]';
+ const first=await route({auditScope:'general_auditor',whatsappMessage:customer,fulfillmentConfirmation:fulfillment});
+ assert.equal(first.status,200);assert.equal(first.body.allMatch,true);assert.equal(first.body.aliasLearning.saved,0);
+ const saved=app.records.get('product_catalog/current');
+ assert.equal(saved.products.length,1);assert.ok(!saved.products[0].aliases.includes('Paracet 500 tabs'));assert.equal(saved.aliasRecords[0].status,'pending');
+ assert.ok([...app.records.keys()].some(key=>key.startsWith('product_catalog/current/alias_history/')));
+ const {auditBody}=await import('../extension/audit.js');
+ const second=await route(auditBody(customer,fulfillment,saved.revision));
+ assert.equal(second.status,200);assert.equal(second.body.allMatch,true);
+ assert.equal(second.body.productMatchingDiagnostics[0].customer[0].matchSource,'Normalized');
+ assert.equal(second.body.geminiMetrics.requestStarted,false);assert.equal(second.body.aliasLearning.saved,0);
+ assert.equal(app.balance('OPV'),15);
+});
+
+test('website and extension General verify route share documented full and partial stockout accounting',async()=>{
+ const app=fixture();await app.refresh();
+ app.records.set('product_catalog/current',{revision:90,products:[{id:'rdt',scope:'general',name:'Malaria Rapid Diagnostic Test Kit',aliases:['RDT','Malaria RDT'],contextualAliases:[],category:'diagnostic',note:''}]});
+ const route=verifyRoute(app);const {auditBody}=await import('../extension/audit.js');
+ for(const [quantity,supplied,status] of [[1,0,'Out of stock'],[1,1,'In stock'],[5,3,'Partially out of stock']] as const){
+  const customer=`Orderer: Grace\nFacility: Abasua Health Centre\nRDT ${quantity}`;
+  const confirmation=`Orderer: Grace Akabati\nFacility: Abasua HC\nMalaria Rapid Diagnostic Test Kit [${supplied}/${quantity}]\nStatus: ${status}`;
+  for(const body of [{auditScope:'general_auditor',whatsappMessage:customer,fulfillmentConfirmation:confirmation},auditBody(customer,confirmation,90)]){
+   const r=await route(body);assert.equal(r.status,200);assert.equal(r.body.allMatch,true);assert.equal(r.body.issueCount,0);
+   assert.equal(r.body.generalAudit.products[0].supplied,supplied);assert.equal(r.body.generalAudit.productTotals.matched,1);
+   assert.equal(r.body.generalAudit.productTotals.physicallyFulfilled,Number(supplied>0));
+  }
+ }
+ assert.equal(app.balance('OPV'),15);
+});
+test('General verify retains a failed history write and a same-ID retry creates one saved audit without altering the verdict',async()=>{
+ const app=fixture();await app.refresh();
+ app.records.set('product_catalog/current',{revision:91,products:[{id:'rdt',scope:'general',name:'Malaria Rapid Diagnostic Test Kit',aliases:['RDT'],contextualAliases:[],category:'diagnostic',note:''}]});
+ const route=verifyRoute(app);const body={checkId:'AUD-storage-retry',auditScope:'general_auditor',whatsappMessage:'Orderer: Grace Akabati\nFacility: Abasua HC\nRDT 5',fulfillmentConfirmation:'Orderer: Grace Akabati\nFacility: Abasua HC\nMalaria Rapid Diagnostic Test Kit [0/1] - out of stock'};
+ app.setWriteFailure(true);const failed=await route(body);
+ assert.equal(failed.status,200);assert.equal(failed.body.storage.status,'failed');assert.equal(failed.body.storage.category,'network');assert.equal(failed.body.issueCount,0);assert.equal(failed.body.generalAudit.productTotals.quantityReview,0);
+ assert.equal(app.records.has('audits/'+body.checkId),false);
+ app.setWriteFailure(false);const saved=await route(body);assert.equal(saved.body.storage.status,'saved');assert.equal(saved.body.id,body.checkId);
+ assert.equal([...app.records.keys()].filter(key=>key.startsWith('audits/')).length,1);assert.equal(saved.body.generalAudit.counts.outOfStock,1);assert.equal(saved.body.createdByUserId,'cca');assert.equal(app.balance('OPV'),15);
 });

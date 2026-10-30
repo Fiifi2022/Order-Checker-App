@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="general-report.css">
 </head>
 <body>
-  <details class="fs-connection-check" aria-label="FS connection" style="margin:12px;padding:12px;background:#f8fafc;color:#202a38;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;">
+  <details class="fs-connection-check" aria-label="FS connection" hidden style="display:none;margin:12px;padding:12px;background:#f8fafc;color:#202a38;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;">
     <summary style="cursor:pointer;font-weight:600">FS connection <span id="fsBuildVersion" style="font-weight:400"></span></summary>
     <p>Connect to the active Fulfilment System tab to check facility detection and Blueprint access.</p>
     <div id="fsLiveContext" role="status" aria-live="polite"></div>
@@ -133,6 +133,15 @@
           </div>
         </section>
 
+        <section class="block">
+          <label for="vxDistrict">District</label>
+          <select id="vxDistrict" aria-label="District"><option value="">All districts</option></select>
+          <label for="vxCycle">District cycle / month</label>
+          <select id="vxCycle" aria-label="District cycle / month"><option value="">Automatic · all months</option></select>
+          <button id="vxShowAll" type="button" class="action-link">Show all facilities</button>
+          <p class="hint">Choose a district, then one of its saved allocation months. Facilities and vaccine quantities follow that selection.</p>
+        </section>
+
         <section id="vxPick" class="block">
           <p class="step">Step 1 of 2</p>
           <div class="block-head">
@@ -140,7 +149,7 @@
             <button id="vxReload" type="button" class="action-link">Reload</button>
           </div>
           <p class="hint">Pick the facility for this order. You go straight to the audit.</p>
-          <input id="vxSearch" type="search" aria-label="Search facilities" placeholder="Search facilities">
+          <input id="vxSearch" type="search" aria-label="Search facilities" placeholder="Search facility, district or region">
           <p id="vxFacilityStatus" class="list-status" role="status"></p>
           <ul id="vxFacilities" class="facility-list" hidden></ul>
           <details id="vxManual" class="manual-list" hidden>
@@ -169,6 +178,12 @@
               <p id="vxFacilityMeta" class="hint"></p>
             </div>
             <button id="vxChange" type="button" class="action-link">Change</button>
+          </section>
+
+          <section class="block" id="vxBlueprint" hidden>
+            <div class="block-head"><h2>Blueprint vaccine quantities</h2><button id="vxBlueprintRefresh" type="button" class="action-link">Refresh</button></div>
+            <p id="vxBlueprintStatus" class="hint" role="status" aria-live="polite"></p>
+            <div id="vxBlueprintProducts"></div>
           </section>
 
           <section id="vxWhatsappBlock" class="block">
@@ -246,6 +261,7 @@
             <div id="catalogSuggestions"></div>
             <button id="addAliasSuggestions" type="button" class="btn-small" hidden>Add selected suggestions to draft</button>
             <button id="saveCatalogProduct" type="submit" class="btn-primary btn-wide">Save product</button>
+            <button id="deleteCatalogProduct" type="button" class="btn-small" hidden>Delete product</button>
           </fieldset>
         </form>
 

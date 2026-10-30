@@ -24,5 +24,5 @@ export async function sendFsMessage(chromeApi, tabId, message, timeoutMs = 18000
     throw error;
   }
 }
-export const FS_BRIDGE_VERSION = '2.3.21';
+export const FS_BRIDGE_VERSION = '2.3.47';
 

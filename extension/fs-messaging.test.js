@@ -10,7 +10,7 @@ const fsUrl = 'https://fulfillment-gh3-production.platform.flyzipline.com/v3/ord
 const sender = { url: fsUrl, tab: { id: 7 } };
 const panelSender = { url: 'chrome-extension://test/popup.html' };
 const selection = { facility: { name: 'Gbangu CHPS', district: 'East Mamprusi', region: 'North East' }, draft: null, order: [] };
-function worker({ stored = {}, fail = '', fetchError = false, missingTab = false, delaySet, beforeFetch } = {}) {
+function worker({ stored = {}, fail = '', fetchError = false, missingTab = false, delaySet, beforeFetch, localSettings = {}, onLookup } = {}) {
   stored.authSession ||= { idToken: 'fixture-token', email: 'test@example.com', expiresAt: Date.now() + 600000 };
   let listener, removed, updated, changed, fetches = 0;
   let now = Date.now();
@@ -22,15 +22,16 @@ function worker({ stored = {}, fail = '', fetchError = false, missingTab = false
   };
   const chrome = {
     runtime: { getURL: () => 'chrome-extension://test/', onMessage: { addListener(fn) { listener = fn; } } },
-    storage: { session: area, local: { async get() { return {}; } }, onChanged: { addListener(fn) { changed = fn; } } },
+    storage: { session: area, local: { async get(key) { return { [key]: localSettings[key] }; } }, onChanged: { addListener(fn) { changed = fn; } } },
     tabs: {
       async get() { if (missingTab) throw new Error('No tab with id: 7'); return sender.tab; },
       async sendMessage() { if (missingTab) throw new Error('Receiving end does not exist'); return { success: true }; },
       onRemoved: { addListener(fn) { removed = fn; } }, onUpdated: { addListener(fn) { updated = fn; } },
     },
   };
-  const fetch = async () => {
+  const fetch = async (url) => {
     fetches++;
+    onLookup?.(JSON.parse(new URL(url).searchParams.get('selection')));
     if (beforeFetch) await beforeFetch();
     if (fetchError) throw new Error('localhost connection refused');
     return { ok: true, async json() { return { status: 'matched', facility: { id: 'sheet:gbangu', facilityName: 'Gbangu CHPS', district: 'East Mamprusi', region: 'North East' }, products: [] }; } };
@@ -162,4 +163,17 @@ test('token refresh retains context while account changes invalidate it', async 
   service.changed({ authSession: { oldValue: { email: 'test@example.com' }, newValue: { email: 'other@example.com' } } }, 'session');
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(service.stored['fsContext:7'], undefined);
+});
+
+test('selected cycle is sent to backend, changes invalidate cached balances, and other backends keep separate preferences',async()=>{
+ const {allocationCycleKey}=await import('./allocation-cycle.js');
+ const key=allocationCycleKey('http://localhost:3000');
+ const localSettings={[key]:'November 2026',[allocationCycleKey('https://another.example')]:'December 2026'};
+ const lookups=[];const service=worker({localSettings,onLookup:input=>lookups.push(input)});
+ await service.request({type:'FS_SELECTION',selection});assert.equal(lookups[0].allocationCycle,'November 2026');
+ await service.request({type:'FS_SELECTION',selection});assert.equal(service.fetches,1);
+ localSettings[key]='October 2026';await service.request({type:'FS_SELECTION',selection});
+ assert.equal(service.fetches,2);assert.equal(lookups[1].allocationCycle,'October 2026');
+ localSettings[key]='';await service.request({type:'FS_SELECTION',selection});
+ assert.equal(service.fetches,3);assert.equal(lookups[2].allocationCycle,undefined);
 });

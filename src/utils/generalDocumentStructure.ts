@@ -19,7 +19,10 @@ function oneEdit(a: string, b: string) {
 }
 function labelKey(value: string) {
   const abbreviations: Record<string, string> = { prod: 'products', prods: 'products', meds: 'medicines', qty: 'quantity', qtys: 'quantities', req: 'requested', reqd: 'requested' };
-  return plain(value).split(' ').map(token => {
+  // Copied forms can omit the spaces in a role label. Split only this closed
+  // label grammar, never concatenate or rewrite medicine names.
+  const normalized = plain(value).replace(/^(products?|medicines?|items?|drugs?|vaccines?)(and)?(quantities|quantity|qty)$/, '$1 $2 $3').replace(/\s+/g, ' ').trim();
+  return normalized.split(' ').map(token => {
     const word = abbreviations[token] || token;
     if (labelWords.includes(word)) return word;
     const corrected = word.replace(/0/g, 'o').replace(/1/g, 'i');
@@ -45,6 +48,7 @@ const note = /^(?:(?:please|pls|kindly)\s+)?(?:deliver(?: it| the order| these i
 /** Closed grammatical phrases, never keyword-based medicine suppression. */
 export function generalNonProductPhrase(raw: string): { kind: GeneralDocumentKind; boundary?: boolean; value?: string } | undefined {
   const text = raw.trim().replace(/^[*#_`•\s]+|[*_`\s]+$/g, '');
+  if (/^https:\/\/orders\.zipline\.com\/t\/\d+\/[a-z0-9_-]+\s+we (?:will now|can) prepare the following items(?: we have in stock)? for delivery\s*[:.!]?$/i.test(text)) return { kind: 'FULFILMENT_NOTIFICATION', boundary: true };
   const intro = /^(?:(?:please|pls|kindly)\s+)?(?:(?:we|i)\s+)?(?:(?:urgently|kindly|please)\s+)*(?:need|want|request|require)(?:\s+(?:the\s+following|the|these|following))?(?:\s+(?:items|products|medicines|supplies))?(?:\s+(?:urgently|please))?\s*[:.!]?$/i;
   if (intro.test(text)) return { kind: 'INTRODUCTORY_TEXT' };
   const inline = text.match(/^(.+?):\s*(.+)$/);

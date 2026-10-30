@@ -19,22 +19,37 @@ export default function GeneralAuditDetails({ details, onConfirmProduct, confirm
     { unavailable: 'Not available', label: 'Facility Name', required: true, customer: details.facility.whatsappValue, system: details.facility.fulfillmentValue, status: generalFacilityDisplayStatus(details.facility) },
     { unavailable: 'Not found', label: 'Name of Orderer', required: true, customer: details.orderer.whatsappValue, system: details.orderer.fulfillmentValue, status: details.orderer.status, reason: details.orderer.reason },
     ...([['Delivery/Drop Area', details.dropArea], ['District', details.district]] as const).map(([label, field]) => ({ unavailable: 'Not provided — optional', label, required: false, customer: (field || optionalAbsent).whatsappValue, system: (field || optionalAbsent).fulfillmentValue, status: (field || optionalAbsent).status })),
-    { unavailable: 'Not available', label: 'Products and Quantities', required: true, customer: `${details.productCount.requested} products`, system: `${details.productCount.found} products`, status: productStatus }
+    { unavailable: 'Not available', label: details.productComparisonMode === 'names_only' ? 'Product Names' : 'Products and Quantities', required: true, customer: `${details.productCount.requested} products`, system: `${details.productCount.found} products`, status: productStatus }
   ];
   const statusText = (field: typeof fields[number]) => {
+    if(field.status==='informational') return 'OPTIONAL — INFORMATION ONLY';
     if (field.status === 'optional not provided' || !field.required && (field.status === 'missing from customer request' || field.status === 'not available in system entry')) return field.customer === 'N/A' && field.system === 'N/A' ? 'OPTIONAL — NOT PROVIDED'
       : `OPTIONAL — NOT PROVIDED IN ${field.customer === 'N/A' ? 'CUSTOMER REQUEST' : 'FULFILMENT'}`;
     if (field.required && (field.status === 'missing from customer request' || field.status === 'not available in system entry')) return field.label === 'Name of Orderer' ? 'ORDERER NAME NOT FOUND — MISSING REQUIRED INFORMATION' : field.label === 'Facility Name' ? 'FACILITY NOT FOUND — MISSING REQUIRED INFORMATION' : 'MISSING REQUIRED INFORMATION';
     if (field.label === 'Name of Orderer' && field.status === 'review required') return 'REVIEW REQUIRED';
     if (field.label === 'Name of Orderer' && field.status === 'match') return 'MATCH';
     if (field.status === 'review required') return field.label === 'Facility Name' ? 'NOT COMPARED' : 'CLARIFICATION REQUIRED';
-    if (field.status === 'match') return field.label === 'Facility Name' ? 'MATCH' : field.label === 'Products and Quantities' ? 'ALL MATCHED' : 'VERIFIED MATCH';
+    if (field.status === 'match') return field.label === 'Facility Name' ? 'MATCH' : ['Products and Quantities', 'Product Names'].includes(field.label) ? 'ALL MATCHED' : 'VERIFIED MATCH';
     if (field.label === 'Delivery/Drop Area') return 'LOCATION MISMATCH';
     if (field.label === 'District') return 'DISTRICT MISMATCH';
     return 'DISCREPANCY';
   };
   return <section className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm space-y-4" aria-label="General audit field results">
     <h4 className="text-sm font-bold text-[#3B1A5E]">Identity and order checks</h4>
+    {details.extraction && <details className="rounded-xl border border-purple-100 p-3 text-xs">
+      <summary className="cursor-pointer font-semibold">What we understood</summary>
+      <p className="mt-2 text-slate-600">Check these details. To correct them, edit the original message and run the audit again.</p>
+      {(['customer', 'fulfillment'] as const).map(source => {
+        const message = details.extraction![source];
+        return <div key={source} className="mt-3 space-y-1">
+          <p className="font-semibold">{source === 'customer' ? 'Customer request' : 'Fulfilment confirmation'}</p>
+          <p>Orderer: {message.ordererName || 'Needs clarification'}</p>
+          <p>Facility: {message.facilityName || 'Needs clarification'}</p>
+          <ul>{message.products.map((product,index) => <li key={index}>{product.name} — {product.quantity ?? 'Quantity needed'} {product.unit || ''}</li>)}</ul>
+          {message.unresolvedFields.length > 0 && <p className="text-amber-800">Some details need clarification; check the findings below.</p>}
+        </div>;
+      })}
+    </details>}
     {reviewNotices.map(notice => {
       const evidence = generalReviewEvidence(details.semanticReviews?.filter(review => !review.dosageFormKey), notice.field);
       return <div key={notice.field} role="status" className="text-xs text-amber-800 bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-2">
@@ -50,7 +65,7 @@ export default function GeneralAuditDetails({ details, onConfirmProduct, confirm
     {fields.map(field => <div key={field.label} className="space-y-1 text-xs">
       <div className="flex flex-wrap justify-between gap-2 font-semibold">
         <span>{field.label}{field.required ? ' (mandatory)' : field.label === 'Delivery/Drop Area' || field.label === 'District' ? ' (optional)' : ''}</span>
-        <span className={field.status === 'match' ? 'text-green-700' : field.status === 'mismatch' ? 'text-red-700' : field.status === 'optional not provided' || field.label === 'Facility Name' && field.status === 'review required' ? 'text-slate-600' : 'text-amber-800'}>{statusText(field)}</span>
+        <span className={field.status === 'match' ? 'text-green-700' : field.status === 'mismatch' ? 'text-red-700' : ['optional not provided','informational'].includes(field.status) || field.label === 'Facility Name' && field.status === 'review required' ? 'text-slate-600' : 'text-amber-800'}>{statusText(field)}</span>
       </div>
       {(field.label === 'Name of Orderer' || field.label === 'Facility Name') && field.status === 'mismatch' && <p className="text-red-800">
         {field.label === 'Name of Orderer' ? 'Orderer name' : 'Facility name'} does not match between the Customer Request and Fulfilment Confirmation.

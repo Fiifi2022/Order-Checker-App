@@ -21,7 +21,7 @@ export function orderLimitAcknowledgementHandler(deps: { read: (id: string) => P
       }
       const updated = acknowledgeOrderLimit(record, key, answer);
       await deps.save(updated);
-      res.json({ acknowledged: true });
+      res.json({ acknowledged: true, ...((updated as any).storage ? {storage:(updated as any).storage} : {}) });
     } catch { res.status(503).json({ error: 'Acknowledgement could not be saved. Your current result remains available.' }); }
     finally { release(); if (pending.get(id) === current) pending.delete(id); }
   };

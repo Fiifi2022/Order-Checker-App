@@ -1,3 +1,5 @@
+import AllocationOperations from './AllocationOperations';
+import {useAllocationWorkspace} from './AllocationWorkspace';
 import { authFetch } from '../utils/authFetch';
 /**
  * Vaccine Allocation Dashboard Component
@@ -53,12 +55,13 @@ import {
 } from '../types';
 
 interface VaccineDashboardProps {
+  canManage?: boolean;
   onSelectFacilityForAudit?: (facilityId: string) => void;
   onNavigateToBlueprint?: (districtId?: string) => void;
   onNavigateToChecker?: () => void;
 }
 
-export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateToBlueprint, onNavigateToChecker }: VaccineDashboardProps) {
+export default function VaccineDashboard({ canManage=false,onSelectFacilityForAudit, onNavigateToBlueprint, onNavigateToChecker }: VaccineDashboardProps) {
   const [facilities, setFacilities] = useState<FacilityAllocation[]>([]);
   const [dashboardMetrics, setDashboardMetrics] = useState<VaccineDashboardMetrics | null>(null);
   const [blueprintDistricts, setBlueprintDistricts] = useState<any[]>([]);
@@ -69,6 +72,7 @@ export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateT
   const [clearSuccessMsg, setClearSuccessMsg] = useState<string | null>(null);
   const [lastSyncedTime, setLastSyncedTime] = useState<string>('');
 
+  const workspace=useAllocationWorkspace();
   // Unit display switcher: 'both' | 'vials' | 'doses'
   const [unitDisplayMode, setUnitDisplayMode] = useState<'both' | 'vials' | 'doses'>('both');
 
@@ -83,9 +87,17 @@ export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateT
 
   // Filters
   const [selectedNest, setSelectedNest] = useState('all');
-  const [selectedDistrict, setSelectedDistrict] = useState('all');
+  const [selectedDistrict, setDistrictLocal] = useState(workspace.selection.district||'all');
   const [selectedSubDistrict, setSelectedSubDistrict] = useState('all');
-  const [selectedCycle, setSelectedCycle] = useState('all');
+  const [selectedCycle, setCycleLocal] = useState(workspace.selection.cycle||'all');
+  const selectScope=(district:string,cycle:string)=>{
+    setDistrictLocal(district);setCycleLocal(cycle);
+    const candidates=blueprintDistricts.filter(sheet=>(district==='all'||sheet.district===district)&&(cycle==='all'||sheet.month===cycle));
+    workspace.setSelection({district:district==='all'?'':district,cycle:cycle==='all'?'':cycle,sheetId:candidates.length===1?candidates[0].id:'',rowId:'',facilityName:'',facilityId:''});
+  };
+  const setSelectedDistrict=(value:string)=>selectScope(value,value==='all'||blueprintDistricts.some(sheet=>sheet.district===value&&sheet.month===selectedCycle)?selectedCycle:'all');
+  const setSelectedCycle=(value:string)=>selectScope(selectedDistrict,value);
+  useEffect(()=>{setDistrictLocal(workspace.selection.district||'all');setCycleLocal(workspace.selection.cycle||'all');},[workspace.selection.district,workspace.selection.cycle]);
   const [selectedVaccine, setSelectedVaccine] = useState('all');
 
   // Accordion state
@@ -178,7 +190,7 @@ export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateT
 
   const nests = Array.from(new Set(facilities.map(f => f.nest).filter(Boolean))) as string[];
   const districts = Array.from(new Set(facilities.map(f => f.district).filter(Boolean))) as string[];
-  const cycles = Array.from(new Set(facilities.map(f => f.cycle).filter(Boolean))) as string[];
+  const cycles = Array.from(new Set(facilities.filter(f=>selectedDistrict==='all'||f.district===selectedDistrict).map(f => f.cycle).filter(Boolean))) as string[];
 
   // Dynamic sub-districts based on selected district
   const availableSubDistricts = Array.from(
@@ -770,6 +782,7 @@ export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateT
 
   return (
     <div className="space-y-6">
+      <AllocationOperations canManage={canManage} sheets={blueprintDistricts} onUpdated={()=>void fetchData()} onAudit={onSelectFacilityForAudit}/>
       {/* Real-time Allocation Blueprint Live Sync Banner */}
       <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white rounded-3xl p-5 shadow-sm border border-purple-800/60">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -2943,7 +2956,7 @@ export default function VaccineDashboard({ onSelectFacilityForAudit, onNavigateT
                             {onSelectFacilityForAudit && (
                               <button
                                 type="button"
-                                onClick={() => onSelectFacilityForAudit(f.id)}
+                                onClick={() => {workspace.setSelection({sheetId:f.sourceSheetId||'',district:f.district||'',cycle:f.cycle||'',rowId:f.sourceRowId||'',facilityName:f.facilityName,facilityId:f.id});onSelectFacilityForAudit(f.id);}}
                                 className="text-[11px] font-bold text-[#5C2D91] hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
                               >
                                 Audit Order

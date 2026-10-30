@@ -24,6 +24,10 @@ function normalizedMeasurement(value: string) {
   const numerator = unit(Number(parts[1]), parts[2]);
   if (!parts[4]) return `${numerator.value}${numerator.name}`;
   const denominator = unit(Number(parts[3] || 1), parts[4]);
+  // mg/mg describes the separate ingredient amounts of combination medicines,
+  // not a concentration. 500mg/25mg and 250mg/12.5mg have the same ratio but
+  // different tablet strengths. Keep both normalized amounts and their order.
+  if (numerator.name === 'mg' && denominator.name === 'mg') return `${numerator.value}mg/${denominator.value}mg`;
   return denominator.value > 0 ? `${Number((numerator.value / denominator.value).toPrecision(12))}${numerator.name}/${denominator.name}` : value;
 }
 export function cleanGeneralProductDescription(name: string) {

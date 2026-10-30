@@ -1,3 +1,5 @@
+import {validateAllocationUpdate} from './allocationOperations';
+import {allocationSheetChanges} from '../shared/allocationOperations';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -30,17 +32,19 @@ function sheetSaveHarness(fail=false) {
   const source=readFileSync(new URL('../server.ts',import.meta.url),'utf8');
   const start=source.indexOf("app.post('/api/vaccine/blueprint-districts',");
   const code=source.slice(start,source.indexOf('// DELETE a district',start));
-  const current={id:'existing',district:'West',month:'September',rows:[{facility:'Original Clinic'}]};
-  const records=new Map([['existing',structuredClone(current)]]);
+  const current={id:'existing',district:'West',month:'September',products:[],rows:[{id:'row',facility:'Original Clinic'}]};
+  const records=new Map<string,any>([['existing',structuredClone(current)]]);
   let handler:any,syncs=0;
   const context=vm.createContext({
     app:{post(_path:string,callback:any){handler=callback;}},blueprintDistricts:{existing:current},activeDistrictId:'existing',async ensureBlueprintLoaded(){},
     getFirestoreDb(){return {};},doc(_db:any,_collection:string,id:string){return id;},cleanFirestorePayload(value:any){return JSON.parse(JSON.stringify(value));},
     preserveDhdTopUpsOnStaleSheet(value:any){return value;},syncAllBlueprintDistrictsToService(){syncs++;},vaccineService:{getAllFacilities(){return [];}},
+    validateAllocationUpdate,allocationSheetChanges,randomUUID:()=>String(Math.random()),adminDb:{collection(){return {doc(id:string){return {id,collection(){return {doc:(event:string)=>({id:'event:'+event})};}};}};}},
+    async runAdminTransaction(callback:any){const pending=new Map<string,any>();const result=await callback({get:async(ref:any)=>({exists:records.has(ref.id),data:()=>records.get(ref.id)}),set:(ref:any,value:any)=>pending.set(ref.id,value)});if(fail)throw Error('Save rejected');for(const [id,value] of pending)records.set(id,value);return result;},
     writeBatch(){const pending=new Map<string,any>();return {set(id:string,data:any){pending.set(id,data);},async commit(){if(fail)throw new Error('Save rejected');for(const [id,data] of pending)records.set(id,data);}};}
   });
   vm.runInContext(ts.transpile(code,{target:ts.ScriptTarget.ES2022}),context);
-  return {context,records,get syncs(){return syncs;},async save(){let status=200,body:any;await handler({body:{districts:[{...current,rows:[{facility:'Edited Clinic'}]},{id:'new',district:'East',month:'September',rows:[{facility:'New Clinic'}]}],activeId:'new'}},{status(code:number){status=code;return this;},json(value:any){body=value;return this;}});return {status,body};}};
+  return {context,records,get syncs(){return syncs;},async save(){let status=200,body:any;await handler({body:{districts:[{...current,rows:[{facility:'Edited Clinic'}]},{id:'new',district:'East',month:'September',products:[],rows:[{id:'new-row',facility:'New Clinic'}]}],activeId:'new'}},{locals:{authUser:{email:'editor'}},status(code:number){status=code;return this;},json(value:any){body=value;return this;}});return {status,body};}};
 }
 
 test('rejected Blueprint import/save keeps the previous sheets and returns no false success', async () => {

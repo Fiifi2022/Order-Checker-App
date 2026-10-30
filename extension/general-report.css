@@ -20,3 +20,5 @@
 .audit-section .item:first-child{margin-top:0}
 .highlight-types{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:12px 0 0;padding:0}
 .highlight-types li{border:1px solid #fda4af;background:#fff;padding:5px 8px;border-radius:6px;font-size:12px;line-height:1.4;color:#881337}
+
+.audit-highlight.verdict-pending{background:#fffbeb;border-color:#d97706;color:#92400e}

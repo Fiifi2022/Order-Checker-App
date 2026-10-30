@@ -30,7 +30,7 @@ function app() {
   vm.runInContext(ts.transpile(code + '\nglobalThis.run = runGeneralVerification;'), context);
   return { run: () => context.run(), inputs, invalidate,
     advance(ms: number) { currentTime = ms; for (const timer of timers) if (timer.active && timer.at <= ms) { if (!timer.interval) timer.active = false; timer.callback(); } },
-    complete(index = 0) { pending[index](Response.json({ allMatch: true, productCatalog: { revision: 1, products: [] } })); },
+    complete(index = 0, auditEngine = 'general-catalog-v3') { pending[index](Response.json({ auditEngine, allMatch: true, productCatalog: { revision: 1, products: [] } })); },
     get state() { return { calls, error, result, loading, elapsed }; } };
 }
 
@@ -56,4 +56,11 @@ test('changing inputs cancels the old audit and discards its late result', async
   const ui = app(); const pending = ui.run(); ui.invalidate(); ui.inputs.current.whatsappMessage += '\nAmoxicillin - 2'; await pending;
   ui.complete(); await tick();
   assert.equal(ui.state.result, null); assert.equal(ui.state.error, null);
+});
+
+
+test('main app refuses a stale backend product matcher before displaying a verdict',async()=>{
+ const ui=app();const pending=ui.run();ui.complete(0,'general-product-names-quantities-v1');await pending;
+ assert.equal(ui.state.result,null);assert.equal(ui.state.loading,false);
+ assert.match(ui.state.error,/updated catalogue matcher/);
 });

@@ -4,11 +4,11 @@ import { setupFsPanel } from './fs-panel.js';
 import { createFsScriptSync } from './fs-script.js';
 import { setupCatalog } from './catalog.js';
 import { setupScreenshots } from './screenshots.js';
-import { auditBody, profileRoles } from './audit.js';
+import { auditBody, profileRoles, requireCatalogAuditResponse } from './audit.js';
 import { extensionConfig } from './config.js';
 import { normalizeBackendUrl, fetchJson } from './backend.js';
 import { signIn, signOut, restoreSession, backendRequest } from './auth.js';
-import { acknowledgeOrderLimit } from './order-limits.js';
+import { acknowledgeOrderLimit, applyAuditProductLog } from './order-limits.js';
 import { buildReport } from './report.js';
 import { setupVaccine } from './sidepanel-vaccine.js';
 
@@ -208,8 +208,12 @@ document.addEventListener('DOMContentLoaded', () => {
     },
   });
 
-  const vaccine = setupVaccine({ request });
-  document.addEventListener('ordercheck:fs-facility', event => { void vaccine.setFsFacility(event.detail).catch(error => console.warn('[OrderCheck] FS facility sync failed:', error.message)); });
+  const vaccine = setupVaccine({ request, getBackendUrl: () => savedBackendUrl });
+  const fulfillmentSync = createFsScriptSync({
+    field: fulfillmentText,
+    onChanged: () => fulfillmentText.dispatchEvent(new Event('input', { bubbles: true })),
+    persist: text => { void chrome.storage.local.set({ fulfillmentText: text }); },
+  });
 
   /* ---------- Checker tabs ---------- */
 
@@ -429,11 +433,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveLimitAcknowledgement = async (id, key, answer) => {
     const context = contextRevision, version = inputRevision;
     try {
-      await request(`/api/audits/${encodeURIComponent(id)}/order-limit`, {
+      const acknowledgement=await request(`/api/audits/${encodeURIComponent(id)}/order-limit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, answer }),
       });
+      if(activeResult?.id===id && acknowledgement.storage)activeResult.storage=acknowledgement.storage;
       return true;
     } catch {
       if (context === contextRevision && version === inputRevision) {
@@ -478,7 +483,7 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.storage.local.get(['whatsappText', 'fulfillmentText', 'customBackendUrl', 'rememberedEmail', 'rememberEmail', 'keepSignedInPref', 'activeTab'], async (saved) => {
     setTab(saved.activeTab, { save: false });
     if (saved.whatsappText != null) whatsappText.value = saved.whatsappText;
-    if (saved.fulfillmentText != null) fulfillmentText.value = saved.fulfillmentText;
+    if (!fulfillmentSync.observed && saved.fulfillmentText != null) fulfillmentText.value = saved.fulfillmentText;
     // Migrate the obsolete development default; keep any explicitly configured service.
     const oldDefault = 'https://ais-dev-ksv3oiifrmnhdib3nb7awh-944779874869.europe-west2.run.app';
     savedBackendUrl = saved.customBackendUrl && saved.customBackendUrl !== oldDefault ? saved.customBackendUrl : SERVER_URL;
@@ -626,17 +631,18 @@ document.addEventListener('DOMContentLoaded', () => {
       if (normalizeBackendUrl(backendUrlInput.value) !== activeUrl) {
         throw new Error('Click Save to apply your changed backend URL before auditing.');
       }
-      const catalog = await request('/api/products');
-      if (version !== inputRevision || context !== contextRevision) return;
       const data = await request('/api/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(auditBody(wa, ff, catalog.revision, limitDecisions, lastGeneralAudit)),
+        body: JSON.stringify(auditBody(wa, ff, undefined, limitDecisions, lastGeneralAudit)),
       });
       if (!Array.isArray(data.items) || typeof data.allMatch !== 'boolean') {
         throw new Error('Unexpected audit response from the backend.');
       }
       if (version !== inputRevision || context !== contextRevision) return;
+      requireCatalogAuditResponse(data);
+      applyAuditProductLog(data.productCatalog);
+      delete data.productCatalog;
       void refreshHints();
       lastDurationMs = Date.now() - startedAt;
       activeResult = data;
@@ -668,21 +674,9 @@ document.addEventListener('DOMContentLoaded', () => {
     declinedLimitItems = [];
     void verify();
   });
-});
+  setupFsPanel({
+    onFacility: candidate => { void vaccine.setFsFacility(candidate).catch(error => console.warn('[OrderCheck] FS facility sync failed:', error.message)); },
+    onScript: script => { fulfillmentSync.apply(script); vaccine.setFsScript(script); },
+  });
 
-// Sync live FS facility and customer script into the original OrderCheck side panel.
-// This runs after the core panel initializes; it never writes to FS.
-document.addEventListener('DOMContentLoaded', () => {
-  try {
-    const fulfillment = document.getElementById('vxFulfillment');
-    const sync = fulfillment ? createFsScriptSync({
-      field: fulfillment,
-      onChanged: () => fulfillment.dispatchEvent(new Event('input', { bubbles: true })),
-      persist: text => { void chrome.storage.local.set({ vaccineFulfillment: text }); },
-    }) : null;
-    setupFsPanel({
-      onFacility: facility => { document.dispatchEvent(new CustomEvent('ordercheck:fs-facility', {detail: facility})); },
-      onScript: script => { if (sync) sync.apply(script); },
-    });
-  } catch (error) { console.error('[OrderCheck] FS panel initialization failed:', error); }
 });

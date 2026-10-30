@@ -3,7 +3,7 @@ import { commitVaccineOrder } from './vaccine-api.js';
 // See API_CONTRACT.md. Change an endpoint or a field name below and the UI follows.
 
 export const VACCINE_API = {
-  facilities: '/api/vaccine/facilities',        // GET  -> facilities from the allocation blueprint
+  facilities: '/api/vaccine/companion/facilities',        // GET  -> facilities from the allocation blueprint
   verify: '/api/verify',                        // POST -> audit (same route as the General tab)
   commit: '/api/vaccine/allocations/commit',    // POST -> deduct a clean audit from the allocation
 };
@@ -13,7 +13,7 @@ export const VACCINE_API = {
 export const FACILITY_ROUTES = [
   '/api/vaccine/companion/facilities', // authoritative allocation-cycle facility records
   '/api/vaccine/blueprint-districts',           // the route the portal's Vaccine Checker uses
-  VACCINE_API.facilities,
+  '/api/vaccine/facilities',
   '/api/facilities',
   '/api/allocations/facilities',
   '/api/blueprints/facilities',
@@ -23,6 +23,17 @@ export const FACILITY_ROUTES = [
 ];
 
 export const AUDIT_SCOPE = 'vaccine_checker';
+
+export async function loadBlueprintQuantities(request, facility) {
+  if (!facility?.sourceSheetId) throw new Error('Reload facilities to connect this selection to its Blueprint sheet.');
+  const query = new URLSearchParams({ name: facility.name, rowId: facility.sourceRowId || '', cycle: facility.cycle || '' });
+  const result = await request(`/api/vaccine/blueprint-districts/${encodeURIComponent(facility.sourceSheetId)}/facility-quantities?${query}`);
+  if (result?.sourceSheetId !== facility.sourceSheetId || result?.sourceRowId !== (facility.sourceRowId || '') ||
+      result?.cycle !== (facility.cycle || '') || !Array.isArray(result.products)) {
+    throw new Error('Blueprint quantities could not be verified for this facility and cycle. Reload facilities.');
+  }
+  return result;
+}
 
 export const AUDIT_MODES = {
   both: 'whatsapp_and_fulfillment',
@@ -48,12 +59,13 @@ function collect(node, ctx, out, depth) {
   const meta = { ...ctx.meta };
   meta.nest = pick(node, ['nest', 'nestName']) || meta.nest || '';
   meta.district = pick(node, ['district', 'districtName']) || meta.district || '';
+  meta.region = pick(node, ['region', 'regionName']) || meta.region || '';
   meta.subDistrict = pick(node, ['subDistrict', 'sub_district']) || meta.subDistrict || '';
   meta.worksheet = pick(node, ['worksheet', 'worksheetTab', 'sheetTab', 'tab']) || meta.worksheet || '';
 
   const own = pick(node, FACILITY_NAME_KEYS) || (ctx.list ? pick(node, ['name', 'displayName', 'title']) : '');
   if (own) {
-    out.push({ id: text(node.id ?? node.facilityId ?? node.allocationFacilityId), name: own, cycle: text(node.cycle ?? node.allocationCycle), sourceSheetId: text(node.sourceSheetId), sourceRowId: text(node.sourceRowId), ...meta });
+    out.push({ id: text(node.id ?? node.facilityId ?? node.allocationFacilityId), name: own, cycle: text(node.cycle ?? node.allocationCycle), sourceSheetId: text(node.sourceSheetId), sourceRowId: text(node.sourceRowId), allocationAvailable: node.allocationAvailable !== false, allocationNotice: text(node.allocationNotice), ...meta });
     return;
   }
 
@@ -78,11 +90,11 @@ export function normalizeFacilities(payload) {
     const meta = [entry.nest, entry.district, entry.subDistrict && entry.subDistrict !== 'General' ? entry.subDistrict : ''].filter(Boolean);
     // Never fabricate an identifier from labels: the backend cannot resolve it to an allocation record.
     const id = entry.id;
-    const dedupeKey = id || `unresolved:${entry.name}|${entry.worksheet || ''}|${entry.district || ''}|${entry.subDistrict || ''}`;
+    const dedupeKey = id || `unresolved:${entry.sourceSheetId || ''}|${entry.sourceRowId || ''}|${entry.name}|${entry.cycle || ''}|${entry.worksheet || ''}|${entry.district || ''}|${entry.subDistrict || ''}`;
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
     facilities.push({
-      id, name: entry.name, district: meta.join(' \u2022 '),
+      id, name: entry.name, district: meta.join(' \u2022 '), districtName: entry.district || '', region: entry.region || '', allocationAvailable: !!id && entry.allocationAvailable !== false, allocationNotice: entry.allocationNotice || '',
       sourceSheetId: entry.sourceSheetId || '', sourceRowId: entry.sourceRowId || '', worksheet: entry.worksheet || '', subDistrict: entry.subDistrict || '', cycle: entry.cycle || '',
     });
   }
@@ -118,6 +130,11 @@ export async function loadFacilities(request) {
     try {
       const payload = await request(route);
       const facilities = normalizeFacilities(payload);
+      const authoritativeList = Array.isArray(payload) ? payload : Array.isArray(payload?.facilities) ? payload.facilities : null;
+      if (route === VACCINE_API.facilities && authoritativeList && (!authoritativeList.length || facilities.length)) {
+        if (route !== facilityRoute) await chrome.storage.local.set({ facilityRoute: route });
+        return { facilities, route };
+      }
       if (!facilities.length || !facilities.some((f) => f.id)) { unreadable ??= { route, shape: describeShape(payload) }; continue; }
       if (route !== facilityRoute) await chrome.storage.local.set({ facilityRoute: route });
       return { facilities, route };

@@ -2,10 +2,10 @@ import { setupGeneralProductReview } from './general-report.js';
 import { restoreGeneralAudit, rememberGeneralAudit } from './general-session.js';
 import { setupFsPanel } from './fs-panel.js';
 import { createFsScriptSync } from './fs-script.js';
-import { acknowledgeOrderLimit } from './order-limits.js';
+import { acknowledgeOrderLimit, applyAuditProductLog } from './order-limits.js';
 import { setupCatalog } from './catalog.js';
 import { setupScreenshots } from './screenshots.js';
-import { auditBody, profileRoles } from './audit.js';
+import { auditBody, profileRoles, requireCatalogAuditResponse } from './audit.js';
 import { extensionConfig } from './config.js';
 import { normalizeBackendUrl, fetchJson } from './backend.js';
 import { signIn, signOut, backendRequest } from './auth.js';
@@ -510,6 +510,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (version !== inputRevision || context !== contextRevision) return;
+      requireCatalogAuditResponse(data);
+      applyAuditProductLog(data.productCatalog);
+      delete data.productCatalog;
       void refreshHints();
       // Initialize active results and render dynamically
       activeResult = data;

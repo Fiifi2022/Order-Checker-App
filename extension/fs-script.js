@@ -38,13 +38,17 @@ export function createFsScriptReader() {
   }
   return {
     reset() { generation++; blocked = previous; },
-    read(root) {
+    read(root, doc = root?.ownerDocument) {
       let scope = root?.closest('form,[role="dialog"],main') || root;
+      // FS's Packaging & Script tab can be outside the facility/product form.
+      // Only the visible scripts pane is a fallback, never arbitrary page text.
+      const panes = [...(doc?.querySelectorAll('[id^="scripts-tabpane-"][role="tabpanel"]') || [])].filter(visible);
+      if (panes.length === 1) scope = panes[0];
       // Facility detection may cache a small React card. Package & Script can
       // be its sibling in the same order screen, outside the native form.
-      if (root && !scope.querySelector('button[aria-label="Edit script"]')) {
+      if (root && scope && !scope.querySelector('button[aria-label="Edit script"]')) {
         for (let parent = scope.parentElement; parent && parent !== root.ownerDocument.body && parent !== root.ownerDocument.documentElement; parent = parent.parentElement) {
-          const named = [...parent.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')].some(el => el.textContent.trim().toLowerCase() === 'package & script');
+          const named = [...parent.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')].some(el => /^(?:package|packaging)\s*&\s*script$/i.test(el.textContent.trim()));
           if (named && parent.querySelector('button[aria-label="Edit script"]')) { scope = parent; break; }
         }
       }
@@ -53,7 +57,7 @@ export function createFsScriptReader() {
       else if (nextId !== orderId) { orderId = nextId; generation++; blocked = previous; }
       if (!scope) { previous = null; return { orderKey: String(generation), text: null }; }
       // Prefer the named section; fall back only to Edit script within this order.
-      const headings = [...scope.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')].filter(el => el.textContent.trim().toLowerCase() === 'package & script');
+      const headings = [...scope.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')].filter(el => /^(?:package|packaging)\s*&\s*script$/i.test(el.textContent.trim()));
       let value = null;
       if (headings.length === 1) {
         for (let section = headings[0].parentElement; section && scope.contains(section); section = section.parentElement) {

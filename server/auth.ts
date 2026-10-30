@@ -24,7 +24,7 @@ export function canAccess(role: string | readonly string[], method: string, path
   if (/clear|reset-demo/.test(path)) return false;
   if (method === 'GET') return true;
   if (['/activity/log', '/verify', '/scan-screenshot', '/vaccine/validate'].includes(path)) return true;
-  if (method === 'POST' && /^\/audits\/[^/]+\/order-limit$/.test(path)) return true;
+  if (method === 'POST' && /^\/audits\/[^/]+\/(?:order-limit|storage-retry)$/.test(path)) return true;
   if (role === 'auditor') return false;
   if (/topup|\/adjust$|dhd-inventory\/stock/.test(path)) return ['warehouse', 'dco'].includes(role as string);
   if (/blueprint|\/upload$|\/facilities\//.test(path)) return false;

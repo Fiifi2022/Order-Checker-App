@@ -122,7 +122,7 @@ function rebuildTerminology() {
   replacements = new Map([...candidates].filter(([, values]) => values.size === 1).map(([alias, values]) => [alias, [...values][0]]));
   ageDefaults = new Map(generalMedicalTerminology.filter(term => term.ageGroup && term.strength)
     .flatMap(term => term.aliases.filter(alias => !/\d/.test(alias)).map(alias => [generalTerminologyKey(alias), term] as const)));
-  pattern = new RegExp(`(^|[^a-z0-9])(${[...replacements.keys()].sort((a, b) => b.length - a.length).map(escape).join('|')})(?=$|[^a-z0-9])`, 'g');
+  pattern = replacements.size ? new RegExp(`(^|[^a-z0-9])(${[...replacements.keys()].sort((a, b) => b.length - a.length).map(escape).join('|')})(?=$|[^a-z0-9])`, 'g') : /(?!)/g;
 
 }
 rebuildTerminology();

@@ -43,9 +43,9 @@ test('unexplained lower quantities are discrepancies while allowing a confirmed 
   assert.equal(result.generalAudit.finalStatus, 'DISCREPANCY DETECTED');
   const product = result.generalAudit.products[0];
   const html = renderToStaticMarkup(React.createElement(GeneralOrderLimitPrompt, { product, onDecision() {} }));
-  assert.match(html, /Was an Order Limit applied to this product\?/);
-  assert.match(html, />Yes<\/button>/);
-  assert.match(html, />No<\/button>/);
+  assert.match(html, /Was this quantity reduced because of an order limit\?/);
+  assert.match(html, />Yes — reduced by order limit<\/button>/);
+  assert.match(html, />No — report discrepancy<\/button>/);
   assert.match(summaryMarkup(result), /Quantity Discrepancies/);
   assert.doesNotMatch(summaryMarkup(result), /VERIFIED MATCH/);
 });

@@ -8,6 +8,7 @@ import { extractGeneralOrderDeterministically, redactGeneralClinicalText, struct
 import { parseGeneralProducts, type GeneralAuditSupport } from './generalAuditor';
 import { generalEssentialReviewNotices } from '../src/utils/generalAuditReviews';
 import type { GeneralSemanticReview } from '../src/utils/generalAuditTypes';
+import { findGeneralFacilityNames, normalizeGeneralFacilityName } from '../src/utils/generalFacility';
 
 const cache = new Map<string, { expires: number; result: Promise<HybridGeneralExtraction> }>();
 const quotaCooldown = new WeakMap<object, number>();
@@ -73,7 +74,21 @@ export async function resolveGeneralOrderExtraction(customer: DeterministicGener
         const safeSource = (requests[side] as { snippets: string[] }).snippets.join('\n');
         for (const [field, label] of [['facilityName', 'Facility'], ['ordererName', 'Orderer']] as const) {
           const value = proposed[field];
-          if ((field !== 'ordererName' || value && /^[\p{L}][\p{L}'’. -]*\s+[\p{L}][\p{L}'’. -]*$/u.test(value)) && !input.conflictingFields?.includes(field) && !input.order[field] && value && !proposed.unresolvedFields.includes(field) && safeSource.includes(value) && !/^\[|patient|clinical|contact redacted/i.test(value)) {
+          const namedRoles = safeSource.split('\n').flatMap(line => {
+            const match=line.match(/^(?:signed(?: by)?|duty (?:nurse|officer)(?: is)?|my name is|orderer(?: is)?|ordered by|requested by)\s*[:=,]?\s*(.+)$/i);
+            return match ? [match[1].toLowerCase().replace(/[^\p{L}\s]/gu,'').replace(/\s+/g,' ').trim()] : [];
+          });
+          const roleEvidence = value && safeSource.split('\n').some(line => {
+            const before = line.slice(0,line.indexOf(value));
+            const after = line.slice(line.indexOf(value)+value.length);
+            return line.includes(value) && !/\b(?:patient|client|recipient)\b/i.test(before) &&
+              /^(?:\s*[,.;!]?\s*|\s+(?:from|at)\s+[^;\n]+)$/i.test(after) &&
+              /\b(?:signed(?: by)?|duty (?:nurse|officer)(?: is)?|my name is|orderer(?: is)?|ordered by|requested by|i am|i['’]m|this is)\s*[:=,]?\s*$/i.test(before);
+          });
+          const facilityEvidence = value && findGeneralFacilityNames(safeSource,support.facilityContext?.records);
+          const supportedIdentity = field==='ordererName' ? new Set(namedRoles).size<=1 && roleEvidence && value && /^[\p{L}][\p{L}'’. -]*\s+[\p{L}][\p{L}'’. -]*$/u.test(value)
+            : facilityEvidence && facilityEvidence.length===1 && normalizeGeneralFacilityName(facilityEvidence[0])===normalizeGeneralFacilityName(value!);
+          if (supportedIdentity && !input.conflictingFields?.includes(field) && !input.order[field] && value && !proposed.unresolvedFields.includes(field) && safeSource.includes(value) && !/^\[|patient|clinical|contact redacted/i.test(value)) {
             text = text.split('\n').filter(line => {
               if (!line.includes(value)) return true;
               const remainder = line.replace(value, '').replace(/\b(?:signed|by|duty|nurse|officer|is|my|name)\b/gi, '').replace(/[\s:;,.!-]/g, '');

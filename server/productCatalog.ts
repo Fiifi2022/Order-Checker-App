@@ -10,6 +10,8 @@ import { generalMedicalTerminology } from '../src/utils/generalMedicalTerminolog
 import { medicalProductAcronyms } from '../src/utils/medicalProductAcronyms';
 import { applyGeneralCatalog } from '../src/utils/productCatalog';
 import * as vaccineService from './vaccineService';
+import { inspectCatalogHealth } from '../shared/catalogHealth';
+import { trackCatalogueAliasEdits } from './catalogAliasLearning';
 
 const productId = (scope: string, name: string) => createHash('sha256').update(`${scope}:${catalogKey(name)}`).digest('hex');
 export function defaultProducts(): CatalogProduct[] {
@@ -36,7 +38,10 @@ export function defaultProducts(): CatalogProduct[] {
   }
   for (const row of packaging) {
     const key = catalogKey(row.name);
-    if (!general.has(key)) general.set(key, { id: productId('general', row.name), scope: 'general', name: row.name,
+    const approvedOwners=[...general.values()].filter(product=>product.aliases.some(alias=>catalogKey(alias)===key) && !product.contextualAliases.some(alias=>catalogKey(alias)===key));
+    // Packaging references add conversion information, never a second identity
+    // for an already approved whole-name catalogue alias.
+    if (!general.has(key) && approvedOwners.length !== 1) general.set(key, { id: productId('general', row.name), scope: 'general', name: row.name,
       category: 'product', aliases: [], contextualAliases: [], note: `Existing packaging reference: ${row.internalQuantity} units per package. Alias edits do not change this factor.` });
   }
   for (const identity of generalApprovedProductIdentities) {
@@ -59,7 +64,14 @@ export function applyCatalog(catalog: ProductCatalog) {
 export function saveCatalogProduct(catalog: ProductCatalog, input: any, actor: string): ProductCatalog {
   if (input?.revision !== catalog.revision) throw Object.assign(new Error('The catalog changed. Reload it before saving.'), { status: 409 });
   const existing = input.id ? catalog.products.find(product => product.id === input.id) : undefined;
+  if(input.id && catalog.products.filter(product=>product.id===input.id).length>1) throw Object.assign(new Error('This product ID is duplicated. Repair the duplicate records before editing.'),{status:409});
   if (input.id && !existing) throw Object.assign(new Error('Product not found. Reload the catalog.'), { status: 404 });
+  if (input.action === 'delete') {
+    if (!existing) throw Object.assign(new Error('Select an existing product to delete.'), { status: 400 });
+    return { ...catalog, revision: catalog.revision + 1, updatedAt: new Date().toISOString(), updatedBy: actor,
+      products: catalog.products.filter(product => product.id !== existing.id).map(product =>
+        product.linkedProductId === existing.id ? { ...product, linkedProductId: '' } : product) };
+  }
   const product = validateCatalogProduct(input, existing);
   if (!existing) product.id = productId(product.scope, product.name);
   if (!existing && catalog.products.some(other => other.id === product.id)) throw new Error('This product already exists. Edit its aliases instead.');
@@ -84,7 +96,7 @@ export function saveCatalogProduct(catalog: ProductCatalog, input: any, actor: s
     checkAliasConflicts(updated, products, counterpart);
     products = products.map(other => other.id === counterpart.id ? updated : other);
   }
-  return { revision: catalog.revision + 1, updatedAt: new Date().toISOString(), updatedBy: actor,
+  return { ...catalog, revision: catalog.revision + 1, updatedAt: new Date().toISOString(), updatedBy: actor,
     products };
 }
 export function productCatalogHandlers(deps: {
@@ -116,5 +128,22 @@ export function productCatalogHandlers(deps: {
       res.json(req.body.texts === undefined ? { revision: catalog.revision, products: groups[0] } : { revision: catalog.revision, groups });
     } catch { res.status(503).json({ error: 'Product receiving reminders unavailable. Please retry.' }); }
   };
-  return { read, save, hints };
+  const health: RequestHandler = async (_req,res) => {
+    res.setHeader('Cache-Control','no-store');
+    try {res.json(inspectCatalogHealth(await deps.read()));}
+    catch {res.status(503).json({error:'Catalogue health check unavailable. Please retry.'});}
+  };
+  const preview: RequestHandler = async (req,res) => {
+    res.setHeader('Cache-Control','no-store');
+    if(!canManageCatalog(assignedRoles(res.locals.authUser))) {res.status(403).json({error:'Catalogue editing permission is required.'});return;}
+    try {
+      const before=await deps.read();
+      const after=saveCatalogProduct(before,req.body,res.locals.authUser.email || res.locals.authUser.id);
+      const tracked=trackCatalogueAliasEdits(before,after,res.locals.authUser.email || res.locals.authUser.id).catalog;
+      const previous=inspectCatalogHealth(before), health=inspectCatalogHealth(tracked);
+      const previousIds=new Set(previous.issues.map(issue=>issue.id)),nextIds=new Set(health.issues.map(issue=>issue.id));
+      res.json({revision:before.revision,health,introduced:health.issues.filter(issue=>!previousIds.has(issue.id)),resolved:previous.issues.filter(issue=>!nextIds.has(issue.id)),saved:false});
+    } catch(error:any) {res.status(error.status || (error.code?503:400)).json({error:error.code?'Catalogue preview unavailable. Please retry.':error.message});}
+  };
+  return { read, save, hints, health, preview };
 }

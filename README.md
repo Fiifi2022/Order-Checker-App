@@ -42,7 +42,7 @@ The server service account needs Firebase Authentication user-management permiss
 
 ## Chrome extension with Render
 
-The bundled extension is OrderCheck v2.3.21, based on the supplied v2.3.8 release. Portal downloads include its side-panel modules, styles, and icons and configure the backend address for the current deployment. `scripts/build-extension.mjs` bundles the maintained FS content script and service worker while preserving the supplied audit UI bundles.
+The bundled extension is OrderCheck v2.3.47, based on the supplied v2.3.8 release. Portal downloads include its side-panel modules, styles, and icons and configure the backend address for the current deployment. `scripts/build-extension.mjs` bundles the maintained FS content script, service worker and shared audit helpers while preserving the supplied audit UI.
 
 In FS order entry, the extension inserts a compact **Available** badge immediately before the Product field, in the same controls row. It uses the existing authenticated Blueprint context endpoint, verified vaccine aliases and unique facility matches. Search text alone never establishes a selected product. Unknown products and products without an allocation record hide the badge; unverified facilities and connection failures show a grey status without a balance. Hover for the allocation breakdown, last check, and quantity warning. An entered quantity above the remaining allocation turns the badge red; FS inputs and buttons remain usable.
 
@@ -177,3 +177,5 @@ Old or AI-generated non-product verification records and their linked reviews ar
 `server/generalConfirmationEligibility.test.ts` runs through the normal `npm test` / CI workflow and covers introductions, equivalent administrative captions, inline medicine requests, unknown products, unclear quantities, clinical conflicts, stale AI records, customer confirmation, quantities and stock boundaries.
 
 Validation for confirmation eligibility: `npm test` passed **1,101 tests with 0 failures and 1 skipped Firestore-emulator check**, including all 22 new eligibility regressions. Type checking (`npm run lint`), production build (`npm run build`) and `git diff --check` passed.
+
+General Auditor resolves current catalogue IDs and approved aliases before Gemini, keeps clinical attributes and quantities separate, and automatically persists only independently verified, unique wording. Unverified AI candidates are pending in **Product Catalogue → Alias Management**, where authorized editors can approve, reject, correct/reassign or deactivate mappings and view history. The app and extension use the same service. See [General order comparison](docs/general-order-comparison.md) for matching, storage and validation details.

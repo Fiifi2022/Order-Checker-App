@@ -14,11 +14,11 @@ test('opening the panel repairs a missing bridge and shows the installed build',
  const events = { addListener() {} };
  globalThis.document = document;
  globalThis.chrome = {
-   runtime: { getManifest: () => ({ version: '2.3.21', content_scripts: [{ js: ['fs-content.js'], matches: ['https://fulfillment-gh3-production.platform.flyzipline.com/*'] }] }) },
+   runtime: { getManifest: () => ({ version: '2.3.47', content_scripts: [{ js: ['fs-content.js'], matches: ['https://fulfillment-gh3-production.platform.flyzipline.com/*'] }] }) },
    tabs: { async query() { return [{ id: 7, url }]; }, async get() { return { id: 7, url }; },
      async sendMessage(_id, message) {
        if (!connected) throw Error('Receiving end does not exist');
-       return message.type === 'FS_DIAGNOSTICS' ? { formFound: true, bridgeVersion: '2.3.21', selection: makeState().selection } : makeState();
+       return message.type === 'FS_DIAGNOSTICS' ? { formFound: true, bridgeVersion: '2.3.47', selection: makeState().selection } : makeState();
      }, onActivated: events, onUpdated: events, onRemoved: events },
    permissions: { async contains() { return true; } },
    scripting: { async executeScript() { injections++; connected = true; } },
@@ -28,7 +28,7 @@ test('opening the panel repairs a missing bridge and shows the installed build',
    setupFsPanel({ onFacility() {} });
    await tick(); await tick();
    assert.equal(injections, 1);
-   assert.equal(document.getElementById('fsBuildVersion').textContent, 'v2.3.21');
+   assert.equal(document.getElementById('fsBuildVersion').textContent, 'v2.3.47');
    assert.equal(document.getElementById('fsConnectionStatus').textContent, 'Connected to FS');
  } finally { globalThis.document = previous.document; globalThis.chrome = previous.chrome; }
 });
@@ -45,7 +45,7 @@ test('side panel snapshots the active FS tab, follows facility changes and clear
      async sendMessage(id, message, options) {
        sent.push({ id, type: message.type, options });
        if (failure) throw new Error(failure);
-       if (message.type === 'FS_DIAGNOSTICS') return { formFound: true, bridgeVersion: '2.3.21', selection: state.selection };
+       if (message.type === 'FS_DIAGNOSTICS') return { formFound: true, bridgeVersion: '2.3.47', selection: state.selection };
        if (pending) { const saved = state; await new Promise(resolve => { release = resolve; }); return saved; }
        return state;
      },

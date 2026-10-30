@@ -1,3 +1,4 @@
+import { setupAliasManagement } from './alias-management.js';
 const key = value => value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/['’]/g, '').replace(/(?<=[a-z])-(?=[a-z])/g, ' ').replace(/\s+/g, ' ').trim();
 const lines = value => value.split('\n').map(value => value.trim()).filter(Boolean);
 export function initialLinkedProductId(product, products) {
@@ -14,9 +15,10 @@ export function catalogDraft(product, values, revision) {
     fulfillmentSystemName: values.fulfillmentSystemName, receivingDetails: values.receivingDetails,
     linkedProductId: values.linkedProductId, revision };
 }
-export function setupCatalog({ request, onUpdated }) {
+export function setupCatalog({ request, onUpdated, aliasManagementFactory=setupAliasManagement }) {
   const $ = id => document.getElementById(id);
   const panel = $('catalogPanel'), form = $('catalogForm'), fields = $('catalogFields'), status = $('catalogStatus');
+  const aliasManagement=aliasManagementFactory({root:panel,request,onUpdated});
   let catalog = null, product = null, busy = false;
   const names = ['displayName', 'scope', 'category', 'aliases', 'contextualAliases', 'note', 'fulfillmentSystemName', 'receivingDetails', 'linkedProductId'];
   const control = name => form.elements.namedItem(name);
@@ -41,6 +43,7 @@ export function setupCatalog({ request, onUpdated }) {
   const edit = entry => {
     if (busy) return;
     product = entry; form.hidden = false; clearSuggestions(); message(catalog.canEdit ? '' : 'Read only. Administrator, Warehouse, and Compliance can edit.');
+    if ($('deleteCatalogProduct')) $('deleteCatalogProduct').hidden = !catalog.canEdit || !entry.id;
     const initial = { ...entry, displayName: entry.displayName || entry.name,
       aliases: entry.aliases.join('\n'), contextualAliases: entry.contextualAliases.join('\n'),
       linkedProductId: initialLinkedProductId(entry, catalog.products) };
@@ -65,6 +68,16 @@ export function setupCatalog({ request, onUpdated }) {
   $('openCatalog').addEventListener('click', () => { panel.hidden = !panel.hidden; if (!panel.hidden) void load(); });
   $('closeCatalog').addEventListener('click', () => { if (!busy) panel.hidden = true; });
   $('reloadCatalog').addEventListener('click', load);
+  $('deleteCatalogProduct')?.addEventListener('click', async () => {
+    if (busy || !catalog?.canEdit || !product?.id) return;
+    if (!globalThis.confirm(`Delete “${product.displayName || product.name}” from the catalogue? Its aliases will be deactivated. Linked products and past audits will be kept.`)) return;
+    setBusy(true); message('Deleting…');
+    try {
+      catalog = await request('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', id: product.id, revision: catalog.revision }) });
+      product = null; form.hidden = true; clearSuggestions(); message('Product deleted from the catalogue.'); onUpdated();
+    } catch (error) { message(error.message); }
+    finally { setBusy(false); renderList(); }
+  });
   $('catalogSearch').addEventListener('input', renderList); $('catalogScope').addEventListener('change', renderList);
   $('addCatalogProduct').addEventListener('click', () => edit({ id: '', scope: 'general', name: '', category: 'medicine', aliases: [], contextualAliases: [], note: '' }));
   control('scope').addEventListener('change', () => { const current = values(); edit({ ...catalogDraft(product, current, catalog.revision), id: '', linkedProductId: '' }); });
@@ -81,6 +94,7 @@ export function setupCatalog({ request, onUpdated }) {
     const draft = catalogDraft(product, values(), catalog.revision); setBusy(true); clearSuggestions(); message('Requesting Gemini suggestions…');
     try {
       const data = await request('/api/products/suggest-aliases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft) });
+      if(Number.isSafeInteger(data.revision)) catalog={...catalog,revision:data.revision};
       for (const suggestion of data.suggestions) {
         const label = document.createElement('label'), box = document.createElement('input'); box.type = 'checkbox'; box.suggestion = suggestion;
         label.append(box, document.createTextNode(`${suggestion.alias} (${suggestion.kind}${suggestion.requiresContext ? ', needs context' : ''}) — ${suggestion.reason}`));
@@ -97,5 +111,5 @@ export function setupCatalog({ request, onUpdated }) {
     control('contextualAliases').value = [...new Set([...lines(control('contextualAliases').value), ...selected.filter(row => row.requiresContext).map(row => row.alias)])].join('\n');
     clearSuggestions(); message('Suggestions added to draft. Save product to publish.');
   });
-  return { reset() { catalog = null; product = null; panel.hidden = true; form.hidden = true; clearSuggestions(); renderList(); message(''); setBusy(false); } };
+  return { reset() { aliasManagement.reset(); catalog = null; product = null; panel.hidden = true; form.hidden = true; clearSuggestions(); renderList(); message(''); setBusy(false); } };
 }

@@ -69,6 +69,7 @@ test('companion uses all assigned roles and the current deterministic general au
     const body = auditBody('Customer', 'Fulfillment', 12, { item: true });
     assert.equal(body.auditScope, 'general_auditor');
     assert.equal(body.productCatalogRevision, 12);
+    assert.equal(body.includeProductCatalog, true);
     assert.equal(body.checkSource, 'companion_extension');
     assert.deepEqual(body.generalOrderLimitDecisions, { item: true });
   } finally {

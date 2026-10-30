@@ -1,3 +1,4 @@
+import {allocationSheetChanges} from '../shared/allocationOperations';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -95,13 +96,15 @@ test('saving an individual deleted quantity column does not restore its DHD top-
 function topUpRouteHarness(available = 8, missingSheet = false) {
   const source = readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
   const start = source.indexOf("app.post('/api/vaccine/blueprint-districts/:id/topup'");
-  const route = source.slice(start, source.indexOf('// ADD A NEW ALLOCATION MONTH', start));
+  const route = source.slice(start, source.indexOf('// Preview and commit share', start));
   let handler: any;
   let commits = 0;
   const sheets = missingSheet ? {} : { [sheet.id]: structuredClone(sheet) };
   vm.runInNewContext(ts.transpileModule(route, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, {
     app: { post(_path: string, callback: any) { handler = callback; } },
-    blueprintDistricts: sheets,
+    blueprintDistricts: sheets,allocationSheetChanges,randomUUID:()=> 'event',
+    adminDb:{collection(name:string){return {doc(id:string){return {name,id,collection(){return {doc:(event:string)=>({name:'events',id:event})};}};}};}},
+    async runAdminTransaction(callback:any){let writes=0;const result=await callback({get:async(ref:any)=>({exists:ref.name==='vaccine_districts'?!missingSheet:true,data:()=>ref.name==='vaccine_districts'?structuredClone(sheet):({...structuredClone(inventory),stocks:{BCG:available}})}),set(){writes++;}});if(writes)commits++;return result;},
     withDhdMutationLock: (operation: () => Promise<any>) => operation(),
     loadDhdInventory: async () => ({ ...structuredClone(inventory), stocks: { BCG: available } }),
     applyConfirmedDhdTopUp,
@@ -119,6 +122,7 @@ function topUpRouteHarness(available = 8, missingSheet = false) {
     async request(quantity = 3) {
       let status = 200, body: any;
       await handler({ params: { id: sheet.id }, body: { rowId: 'facility-row', vaccine: 'BCG', quantity, distributedAfter: 10, requestId: 'route-request', user: 'Agent' } }, {
+        locals:{authUser:{email:'editor',name:'Agent'}},
         status(value: number) { status = value; return this; },
         json(value: any) { body = value; return this; },
       });

@@ -1,5 +1,5 @@
 import { generalConfirmationPolicy } from './generalProductConfirmationPolicy';
-import { resolveGeneralProductLogName } from './generalProductLog';
+import { resolveGeneralProductLogName, getGeneralProductLog, resolveGeneralCatalogIdentity } from './generalProductLog';
 import { recognizeGeneralDocument } from './generalDocumentStructure';
 import { assignGeneralProductGroups, generalClinicalAttributes, generalCatalogSupports, matchGeneralClinicalProducts, type GeneralMatchingStage } from './generalProductMatching';
 import { canonicalGeneralSource, generalInputFingerprint } from '../../shared/generalAuditFingerprint';
@@ -38,6 +38,7 @@ export interface GeneralProductEvidence {
   dosageForm?: string;
   orderLimitApplied?: boolean;
   stockIndicator?: string;
+  stockQuantityValidation?: boolean;
   stockSection?: string;
   unit: string;
   originalText: string;
@@ -46,14 +47,14 @@ export interface GeneralProductEvidence {
 }
 export interface GeneralComparisonItem extends Omit<AuditItem, 'status' | 'category'> {
   category: GeneralProductCategory;
-  status: AuditItem['status'] | 'pending order limit' | 'order limit applied' | 'vaccine pairing mismatch';
+  status: AuditItem['status'] | 'quantity review' | 'pending order limit' | 'order limit applied' | 'vaccine pairing mismatch' | 'product identity discrepancy';
   provenance: GeneralProductEvidence[];
   difference: number;
   fulfillment: GeneralProductResult;
 }
 
 const NUMBER = '(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?';
-const UNIT = '(?:units?|vials?|packs?|box(?:es)?|cards?|doses?|sachets?|tablets?|capsules?|bottles?|pieces?|pcs?|tests?)';
+const UNIT = '(?:units?|vials?|packs?|box(?:es)?|cards?|blisters?|strips?|doses?|sachets?|tablets?|capsules?|bottles?|pieces?|pcs?|tests?)';
 // Anchored to the start: decimal strengths and compound dosage numbers are
 // medical identity, not list markers (e.g. 31.25mg and 20/120mg).
 const GENERAL_LIST_PREFIX = /^(?:(?:[-*•]\s*|\(\d+\)\s*|\d+(?:\.(?!\d)|\))\s*|\d+\s+[-–—]\s*))+/;
@@ -157,10 +158,10 @@ const metadataLabels = [
   'quantity', 'total', 'products', 'products and quantities'
 ];
 export const isMetadataLabel = (value: string) => metadataLabels.includes(normalizeAuditText(value));
-const GENERAL_STOCK_TEXT = '(?:currently\\s+out\\s+of\\s+stock|out\\s+of\\s+stock|not\\s+currently\\s+in\\s+stock|currently\\s+unavailable|unavailable|oos)';
+const GENERAL_STOCK_TEXT = '(?:(?:currently\\s+)?partially\\s+out\\s+of\\s+stock|currently\\s+out\\s+of\\s+stock|out\\s+of\\s+stock|not\\s+currently\\s+in\\s+stock|currently\\s+unavailable|unavailable|oos)';
 const GENERAL_STOCK_SECTION = new RegExp(`^(?:we\\s+are\\s+)?${GENERAL_STOCK_TEXT}(?:\\s+for\\s+(?:the\\s+)?following\\s+(?:items|products))?\\s*[:.!]?$`, 'i');
 const GENERAL_AVAILABLE_SECTION = /^(?:in\s+stock|available(?:\s+(?:items|products))?|(?:items|products)\s+(?:in\s+stock|available))\s*[:.!]?$/i;
-const GENERAL_STOCK_SUFFIX = new RegExp(`^(.+?)\\s*(?:[-–—:=]\\s*|\\s+)(${GENERAL_STOCK_TEXT})\\s*[.!]?$`, 'i');
+const GENERAL_STOCK_SUFFIX = new RegExp(`^(.+?)\\s*(?:[-–—:=,;]\\s*|\\s+)(?:(?:is|are)\\s+)?(${GENERAL_STOCK_TEXT})\\s*[.!]?$`, 'i');
 const GENERAL_INLINE_STOCK = new RegExp(`^(.+?)\\s+(?:(?:is|are)\\s+)?(${GENERAL_STOCK_TEXT})\\s*[,;:]\\s*(?=[[(]?\\d)(.+)$`, 'i');
 
 function trimGeneralProductName(value: string): string {
@@ -211,7 +212,9 @@ export function parseGeneralProducts(text: string, source: GeneralProductSource,
     const inlineStock = source === 'fulfillment_confirmation' && line.match(GENERAL_INLINE_STOCK);
     if (inlineStock) line = `${inlineStock[1]} ${inlineStock[3]}`;
     const stockMarker = source === 'fulfillment_confirmation' && line.match(GENERAL_STOCK_SUFFIX);
-    const stockIndicator = stockMarker ? stockMarker[2] : inlineStock ? inlineStock[2] : undefined;
+    const followingStatus = text.split(/\r?\n/)[index + 1]?.trim();
+    const productStatus = followingStatus?.match(new RegExp(`^status\\s*:\\s*(${GENERAL_STOCK_TEXT})[.!]?$`, 'i'));
+    const stockIndicator = stockMarker ? stockMarker[2] : inlineStock ? inlineStock[2] : source === 'fulfillment_confirmation' ? productStatus?.[1] : undefined;
     if (stockMarker) {
       line = trimGeneralProductName(stockMarker[1]);
     }
@@ -224,7 +227,13 @@ export function parseGeneralProducts(text: string, source: GeneralProductSource,
       // A leading strength or capacity belongs to the product, including when
       // separated by a space (0.5 ml syringe, 250 mg tablets, 0.9% saline).
       const startsWithSpecification = new RegExp(`^${NUMBER}\\s*(?:(?:mcg|mg|g|mls?|l|miu|iu)\\b|%)`, 'i').test(line);
-      if (match && !startsWithSpecification) { quantity = match[1]; unit = match[2] || ''; name = match[3]; }
+      const namedSuffix=line.match(new RegExp(`^(.+?)\\s*[-–—:=]\\s*(${NUMBER})(?:\\s*/\\s*(${NUMBER}))?\\s*(${UNIT})?\\s*$`,'i'));
+      const savedProducts=getGeneralProductLog();
+      const numericIdentity=namedSuffix && /^\d/.test(namedSuffix[1]) && savedProducts ? resolveGeneralCatalogIdentity(namedSuffix[1],savedProducts) : undefined;
+      if(namedSuffix && numericIdentity?.product && ['Exact','Alias'].includes(numericIdentity.source || '')) {
+        name=namedSuffix[1];quantity=namedSuffix[2];ratioRequestedQuantity=namedSuffix[3]===undefined?undefined:quantityValue(namedSuffix[3]);unit=namedSuffix[4] || '';
+      }
+      else if (match && !startsWithSpecification) { quantity = match[1]; unit = match[2] || ''; name = match[3]; }
       else {
         match = line.match(new RegExp(`^(.+?)\\s*(?:[-–—:=·•]+\\s*|[.\u2026]+\\s*|\\s+)(?:\\[)?(${NUMBER})(?:\\s*/\\s*(${NUMBER}))?\\s*(${UNIT})?\\s*(?:\\])?\\s*[.!]?$`, 'i'));
         if (match) { name = match[1]; quantity = match[2]; ratioRequestedQuantity = match[3] === undefined ? undefined : quantityValue(match[3]); unit = match[4] || ''; }
@@ -333,7 +342,7 @@ function prepareGeneralProductComparison(customerProducts: GeneralProductEvidenc
   return { items, reviews, verifications };
 }
 
-function compareAssignedGeneralProducts(customerProducts: GeneralProductEvidence[], systemProducts: GeneralProductEvidence[], orderLimitDecisions: Record<string, boolean> = {}, support: GeneralAuditSupport = {}): GeneralComparisonItem[] {
+export function compareAssignedGeneralProducts(customerProducts: GeneralProductEvidence[], systemProducts: GeneralProductEvidence[], orderLimitDecisions: Record<string, boolean> = {}, support: GeneralAuditSupport = {}): GeneralComparisonItem[] {
   const customer = groupProducts(customerProducts);
   const fulfillmentProducts = groupProducts(systemProducts);
   // Pair canonical groups before assigning statuses. Presence is independent of
@@ -361,29 +370,45 @@ function compareAssignedGeneralProducts(customerProducts: GeneralProductEvidence
     const foundUnits = new Set(found.map(item => item.unit).filter(Boolean));
     const unitsAgree = requestedUnits.size <= 1 && foundUnits.size <= 1 &&
       (!requestedUnits.size || !foundUnits.size || [...requestedUnits][0] === [...foundUnits][0]);
-    const conversion = requestedUnits.size === 1 && foundUnits.size === 1 ? generalQuantityBasis(name, requestedQuantity, foundQuantity, [...requestedUnits][0], [...foundUnits][0], normalizeGeneralProductName) : null;
+    const conversion = requestedUnits.size === 1 && foundUnits.size <= 1 ? generalQuantityBasis(name, requestedQuantity, foundQuantity, [...requestedUnits][0], [...foundUnits][0] || '', normalizeGeneralProductName,
+      found.length > 0 && found.every(product => product.ratioRequestedQuantity !== undefined)) : null;
     const comparableRequested = conversion?.requested ?? requestedQuantity;
     const comparableSupplied = conversion?.supplied ?? foundQuantity;
     const unitsComparable = unitsAgree || !!conversion;
-    const orderLimitEligible = requested.length > 0 && found.length > 0 && unitsComparable && comparableSupplied > 0 && comparableSupplied < comparableRequested;
+    const strictStockAccounting = found.some(product=>product.stockQuantityValidation);
+    // In General Auditor, a complete zero ratio is an availability marker.
+    // Its denominator never replaces the customer's original requested amount.
+    const completeZeroStockRatio = strictStockAccounting && found.length > 0 && found.every(product=>product.quantity===0 && Number.isFinite(product.ratioRequestedQuantity) && product.ratioRequestedQuantity!>0);
+    const documentedStockout = completeZeroStockRatio || found.some(product => !!product.stockIndicator || !!product.stockSection) || found.some(isZeroStockRatio);
+    const denominator = found.every(product => product.ratioRequestedQuantity !== undefined)
+      ? found.reduce((sum, product) => sum + product.ratioRequestedQuantity!, 0) : undefined;
+    const denominatorBasis = denominator === undefined ? null : generalQuantityBasis(name, requestedQuantity, denominator, [...requestedUnits][0] || '', [...foundUnits][0] || '', normalizeGeneralProductName, true);
+    const stockQuantityConflict = !completeZeroStockRatio && strictStockAccounting && documentedStockout && requested.length > 0 && denominator !== undefined &&
+      (denominatorBasis ? denominatorBasis.requested !== denominatorBasis.supplied : denominator !== requestedQuantity);
+    const validPartialStockout = strictStockAccounting && orderLimitDecisions[key] !== true && !found.some(product=>product.orderLimitApplied) && requested.length > 0 && unitsComparable && documentedStockout && !stockQuantityConflict &&
+      (denominator !== undefined || found.every(product=>product.stockIndicator || product.stockSection)) && comparableSupplied > 0 && comparableSupplied < comparableRequested;
+    const orderLimitEligible = !validPartialStockout && !stockQuantityConflict && requested.length > 0 && found.length > 0 && unitsComparable && comparableSupplied > 0 && comparableSupplied < comparableRequested;
     const explicitOrderLimit = found.filter(product => product.quantity > 0).every(product => product.orderLimitApplied === true);
     const decision = orderLimitEligible ? Object.hasOwn(orderLimitDecisions || {}, key) && typeof orderLimitDecisions[key] === 'boolean'
       ? orderLimitDecisions[key] : explicitOrderLimit ? true : undefined : undefined;
     // Classify the canonical aggregate once. A positive duplicate line means
     // partial/full supply, even if another line for that product says 0/n.
-    const outOfStock = found.length > 0 && foundQuantity === 0 &&
-      found.every(product => product.ratioRequestedQuantity === undefined || isZeroStockRatio(product)) &&
+    const outOfStock = (!strictStockAccounting || documentedStockout) && !stockQuantityConflict && (unitsComparable || completeZeroStockRatio) && found.length > 0 && foundQuantity === 0 &&
+      (completeZeroStockRatio || found.every(product => product.ratioRequestedQuantity === undefined || isZeroStockRatio(product))) &&
       (requestedQuantity > 0 || found.some(isZeroStockRatio));
-    const baseStatus: AuditItem['status'] = outOfStock ? 'out of stock' :
+    const baseStatus: AuditItem['status'] = outOfStock || validPartialStockout ? 'out of stock' :
       !found.length ? 'missing item' : !requested.length ? 'extra item' :
       decision === true || comparableRequested === comparableSupplied && unitsComparable ? 'match' : 'quantity mismatch';
-    const fulfillmentStatus: GeneralProductResult['fulfillmentStatus'] = baseStatus === 'out of stock' ? 'out of stock' :
+    const fulfillmentStatus: GeneralProductResult['fulfillmentStatus'] = stockQuantityConflict && comparableSupplied <= comparableRequested ? 'quantity review' : baseStatus === 'out of stock' ? 'out of stock' :
       decision === true ? 'order limit applied' :
       baseStatus === 'match' ? 'fully supplied' : 'discrepancy';
     const category = generalProductCategory(name, normalizeGeneralProductName);
     const fulfillment: GeneralProductResult = { key, name, category, matchingStage: requested[0]?.matchingStage || 'distinct', clinicalAttributes: generalClinicalAttributes(name, normalizeGeneralProductName), requested: requested.length ? requestedQuantity : found.reduce((total, item) => total + (item.ratioRequestedQuantity ?? 0), 0), supplied: foundQuantity,
       difference: Math.abs(comparableRequested - comparableSupplied), fulfillmentStatus, orderLimitEligible,
-      requestedUnit: [...requestedUnits][0] || '', suppliedUnit: [...foundUnits][0] || '',
+      ...(outOfStock || validPartialStockout || documentedStockout && strictStockAccounting && comparableSupplied < comparableRequested ? { stockStatus: comparableSupplied > 0 ? 'partially out of stock' as const : 'out of stock' as const, outOfStockQuantity: Math.max(0, (stockQuantityConflict ? denominatorBasis?.supplied ?? denominator ?? comparableRequested : comparableRequested) - comparableSupplied) } : {}),
+      ...(denominator === undefined ? {} : {confirmationRequested:denominator}),
+      ...(stockQuantityConflict ? { quantityReviewRequired:comparableSupplied<=comparableRequested, quantityError: `Requested ${requestedQuantity}; confirmation records ${denominator} requested and ${foundQuantity} supplied. Stockout explains availability, but the recorded requested quantity needs verification.` } : {}),
+      requestedUnit: [...requestedUnits][0] || '', suppliedUnit: conversion?.supplyUnit || [...foundUnits][0] || '',
       discrepancyKind: baseStatus === 'missing item' ? 'missing' : baseStatus === 'extra item' ? 'extra' : 'quantity',
       registeredOutOfStock: (support.osuItems || []).some(item => normalizeGeneralProductName(item) === key),
       ...(conversion ? { conversion } : {}),
@@ -391,7 +416,7 @@ function compareAssignedGeneralProducts(customerProducts: GeneralProductEvidence
     const display = (items: GeneralProductEvidence[], quantity: number, units: Set<string>) =>
       items.length ? `${quantity}${units.size === 1 ? ` ${[...units][0]}` : ''}` : 'None';
     const requestedText = display(requested, requestedQuantity, requestedUnits);
-    const status: GeneralComparisonItem['status'] = fulfillmentStatus === 'order limit applied' ? fulfillmentStatus : baseStatus;
+    const status: GeneralComparisonItem['status'] = fulfillmentStatus === 'quantity review' || fulfillmentStatus === 'order limit applied' ? fulfillmentStatus : baseStatus;
     return { name, category, requested: requestedText, found: display(found, foundQuantity, foundUnits), status,
       fulfillment, difference: fulfillment.difference, action: decision === true ? `${name} could not be fully fulfilled because the applicable order limit was reached.` : getGeneralAuditorAction(status, name, requestedText), provenance: [...requested, ...found] };
   });
@@ -483,7 +508,7 @@ function normalizeGeneralPhone(value: string) {
   if (digits.length === 9) digits = '0' + digits;
   return digits;
 }
-export interface GeneralAuditSupport { osuItems?: string[]; allowEmptyProductsForReview?: boolean; facilityContext?: GeneralFacilityContext; semanticTimeoutMs?: number; signal?: AbortSignal; semanticCacheScope?: string; timing?: AuditTiming; onExtraction?: (customer: ReturnType<typeof extractGeneralInput>, fulfillment: ReturnType<typeof extractGeneralInput>) => void; }
+export interface GeneralAuditSupport { learnCatalogueAliases?: (aliases:{alias:string;productId:string}[])=>Promise<number>; suggestCatalogueAliases?: (suggestions:{alias:string;productId:string;confidence:number;clinicalUncertainty:boolean;reason?:string}[])=>Promise<void>; generalOrderLimitDecisions?: Record<string,boolean>; saveNameAliases?: (aliases: { alias: string; productId: string }[]) => Promise<import('../../shared/productCatalog').ProductCatalog>; osuItems?: string[]; allowEmptyProductsForReview?: boolean; facilityContext?: GeneralFacilityContext; semanticTimeoutMs?: number; signal?: AbortSignal; semanticCacheScope?: string; timing?: AuditTiming; onExtraction?: (customer: ReturnType<typeof extractGeneralInput>, fulfillment: ReturnType<typeof extractGeneralInput>) => void; }
 
 
 /** Exact normalized words, retaining the original system-side spelling as evidence. */
@@ -854,13 +879,15 @@ export function buildGeneralAuditCheckSummary(items: { status: string; requested
   for (const item of items) {
     if (item.status === 'missing item' || item.status === 'extra item') {
       failedChecks++; // No second quantity check when there is no paired product.
+    } else if (item.status === 'product identity discrepancy') {
+      failedChecks++; // Identity is unresolved; quantity cannot grant clearance.
     } else if (item.status === 'quantity mismatch' || item.status === 'vaccine pairing mismatch') {
       passedChecks++; // Paired identity.
       failedChecks++; // Quantity validation only.
     } else if (item.status === 'match' || item.status === 'order limit applied' || item.status === 'out of stock') {
       if (item.status === 'out of stock' && item.requested === 'None') continue; // Unrequested zero supply is informational.
       passedChecks += 2; // Identity plus correct quantity/valid operational condition.
-    } else if (item.status === 'pending order limit') {
+    } else if (item.status === 'pending order limit' || item.status === 'quantity review') {
       passedChecks++; // Identity is known; quantity validation has not been completed.
     }
   }
@@ -904,7 +931,7 @@ export function reconcileGeneralProductReviews(items: GeneralComparisonItem[], r
 }
 
 /** Rebuild every product-derived total while retaining authoritative header checks. */
-export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFacilityResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = [], parameters: Pick<GeneralAuditDetails, 'dropArea' | 'district' | 'productVerifications'> = {}) {
+export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFacilityResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = [], parameters: Pick<GeneralAuditDetails, 'dropArea' | 'district' | 'productVerifications' | 'extraction'> = {}) {
   const verifications: GeneralProductVerification[] = [];
   for (const product of parameters.productVerifications || []) {
     const policy = generalConfirmationPolicy(product, normalizeGeneralProductName);
@@ -948,7 +975,7 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   items = applyGeneralVaccinePairing(items, normalizeGeneralProductName);
   items = items.map(item => {
     const category = generalProductCategory(item.name, normalizeGeneralProductName, item.category);
-    const productStatus = ['missing item', 'extra item', 'vaccine pairing mismatch'].includes(item.status) ? 'product discrepancy' as const : 'product match' as const;
+    const productStatus = ['missing item', 'extra item', 'vaccine pairing mismatch', 'product identity discrepancy'].includes(item.status) ? 'product discrepancy' as const : 'product match' as const;
     if (item.fulfillment.productStatus !== productStatus) item = { ...item, fulfillment: { ...item.fulfillment, productStatus } };
     return item.category === category && item.fulfillment.category === category ? item :
       { ...item, category, fulfillment: { ...item.fulfillment, category } };
@@ -972,14 +999,16 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   // Counts remain visible; missing/extra products already contribute one issue
   // each, so a count difference must not count the same problem again.
   const discrepancies = [...metadataIssues, ...items.filter(item => item.fulfillment.fulfillmentStatus === 'discrepancy').map(item =>
+    item.fulfillment.identityError ? `${item.name}: ${item.fulfillment.identityError}` :
     item.fulfillment.vaccinePairingError ? item.fulfillment.vaccinePairingError :
     item.status === 'quantity mismatch' ? `${item.name} quantity mismatch: requested ${item.requested}, entered ${item.found}, difference ${item.difference}` :
     item.status === 'missing item' ? `${item.name} missing from System Entry` : `${item.name} extra in System Entry`)];
   const pendingOrderLimitCount = items.filter(item => item.fulfillment.fulfillmentStatus === 'pending order limit').length;
   const limitedCount = items.filter(item => item.fulfillment.fulfillmentStatus === 'order limit applied').length;
-  const stockCount = items.filter(item => item.status === 'out of stock').length;
-  const requestedStockCount = items.filter(item => item.status === 'out of stock' && item.provenance.some(product => product.source === 'customer_request')).length;
-  const stockStatus: GeneralAuditDetails['stockStatus'] = requestedStockCount === 0 ? 'in stock' : requestedStockCount === requestedCount ? 'out of stock' : 'partially out of stock';
+  const stockCount = items.filter(item => item.fulfillment.stockStatus || item.status === 'out of stock').length;
+  const quantityReviewCount = items.filter(item=>item.fulfillment.quantityReviewRequired).length;
+  const requestedStockCount = items.filter(item => (item.fulfillment.stockStatus || item.status === 'out of stock') && item.provenance.some(product => product.source === 'customer_request')).length;
+  const stockStatus: GeneralAuditDetails['stockStatus'] = requestedStockCount === 0 ? 'in stock' : requestedStockCount === requestedCount && items.filter(item => item.fulfillment.stockStatus || item.status === 'out of stock').every(item => item.fulfillment.supplied === 0) ? 'out of stock' : 'partially out of stock';
   const summary = calculateGeneralAuditSummary(items.filter(item => item.fulfillment.fulfillmentStatus !== 'pending order limit'), metadataIssues);
   const auditSummary = buildGeneralAuditCheckSummary(items, facilityName, ordererName, phone, summary.issueCount);
   for (const field of [parameters.dropArea, parameters.district]) {
@@ -994,14 +1023,14 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   if (summary.issueCount || auditSummary.failedChecks) auditSummary.confidence = Math.min(99, auditSummary.confidence);
   const ordererReview = ordererName.status === 'review required';
   const facilityReview = facilityName.status === 'review required';
-  const reviewRequiredCount = Number(facilityReview) + Number(ordererReview && !reviewNotices.some(notice => notice.field === 'ordererName')) + essentialReviewCount + missingRequired.length + optionalReviews.length;
+  const reviewRequiredCount = quantityReviewCount + Number(facilityReview) + Number(ordererReview && !reviewNotices.some(notice => notice.field === 'ordererName')) + essentialReviewCount + missingRequired.length + optionalReviews.length;
   if (reviewRequiredCount) auditSummary.reviewRequiredCount = reviewRequiredCount;
-  const allMatch = summary.allMatch && pendingOrderLimitCount === 0 && !facilityReview && !ordererReview && essentialReviewCount === 0 && missingRequired.length === 0 && optionalReviews.length === 0;
-  const finalStatus = summary.issueCount > 0 ? 'DISCREPANCY DETECTED' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : optionalReviews.length ? 'LOCATION CLARIFICATION REQUIRED' : ordererReview ? 'REVIEW REQUIRED' : facilityReview ? 'ORDER CHECKS INCOMPLETE' : essentialReviewCount ? 'ORDER DETAILS REQUIRED' : pendingOrderLimitCount > 0 ? 'ORDER LIMIT VALIDATION REQUIRED' :
+  const allMatch = summary.allMatch && quantityReviewCount === 0 && pendingOrderLimitCount === 0 && !facilityReview && !ordererReview && essentialReviewCount === 0 && missingRequired.length === 0 && optionalReviews.length === 0;
+  const finalStatus = summary.issueCount > 0 ? 'DISCREPANCY DETECTED' : quantityReviewCount ? 'OUT OF STOCK — QUANTITY REVIEW REQUIRED' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : optionalReviews.length ? 'LOCATION CLARIFICATION REQUIRED' : ordererReview ? 'REVIEW REQUIRED' : facilityReview ? 'ORDER CHECKS INCOMPLETE' : essentialReviewCount ? 'ORDER DETAILS REQUIRED' : pendingOrderLimitCount > 0 ? 'ORDER LIMIT VALIDATION REQUIRED' :
     limitedCount && requestedStockCount ? 'PARTIALLY FULFILLED — CONFIRMED' : limitedCount ? 'ORDER LIMIT APPLIED — CONFIRMED' :
     stockStatus === 'out of stock' ? 'OUT OF STOCK — CONFIRMED' : stockStatus === 'partially out of stock' ? 'PARTIALLY OUT OF STOCK — CONFIRMED' : 'MATCH — ORDER VERIFIED';
   const confirmedDecisions = Object.fromEntries(items.filter(item => item.fulfillment.orderLimitDecision !== undefined).map(item => [item.fulfillment.key, item.fulfillment.orderLimitDecision!]));
-  const message = missingRequired.length ? 'Essential order details are incomplete.' : ordererReview && !summary.issueCount ? 'Orderer name requires review before dispatch.' : optionalReviews.length ? 'Delivery/drop area or district information conflicts. Manually verify the highlighted locations before dispatch.' : essentialReviewCount && !summary.issueCount ? 'Confirm the highlighted essential order fields.' : facilityReview && !summary.issueCount ? 'Order comparison completed.' : summary.issueCount > 0 ? `${summary.issueCount} discrepanc${summary.issueCount === 1 ? 'y' : 'ies'} found — review before dispatch.${requestedStockCount ? ` ${requestedStockCount} requested product${requestedStockCount === 1 ? ' is' : 's are'} currently out of stock.` : ''}` :
+  const message = quantityReviewCount ? `${quantityReviewCount} out-of-stock product${quantityReviewCount===1?' requires':'s require'} verification of the requested quantity recorded in confirmation.` : missingRequired.length ? 'Essential order details are incomplete.' : ordererReview && !summary.issueCount ? 'Orderer name requires review before dispatch.' : optionalReviews.length ? 'Delivery/drop area or district information conflicts. Manually verify the highlighted locations before dispatch.' : essentialReviewCount && !summary.issueCount ? 'Confirm the highlighted essential order fields.' : facilityReview && !summary.issueCount ? 'Order comparison completed.' : summary.issueCount > 0 ? `${summary.issueCount} discrepanc${summary.issueCount === 1 ? 'y' : 'ies'} found — review before dispatch.${requestedStockCount ? ` ${requestedStockCount} requested product${requestedStockCount === 1 ? ' is' : 's are'} currently out of stock.` : ''}` :
     requestedStockCount && limitedCount ? `Order matches, with ${requestedStockCount} product${requestedStockCount === 1 ? '' : 's'} currently out of stock and some requested quantities affected by an order limit.` :
     requestedStockCount ? `Order matches, with ${requestedStockCount} product${requestedStockCount === 1 ? '' : 's'} currently out of stock.` :
     limitedCount ? 'Order matches, but some requested quantities were affected by an order limit.' : facilityName.requiresDispatchConfirmation !== false ? 'Order verified. Audit clearance granted.' : 'All audit checks passed — ready for dispatch.';
@@ -1009,13 +1038,14 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
     productCount: { requested: requestedCount, found: systemCount, status: requestedCount === systemCount ? 'match' : 'mismatch' }, semanticReviews }).map(notice => notice.message);
   const requiresFacilityConfirmation = facilityName.requiresDispatchConfirmation !== false || facilityName.identityStatus !== 'resolved';
   const dispatchReadiness = { requiresFacilityConfirmation, canDispatchAutomatically: allMatch && !requiresFacilityConfirmation };
-  const generalAudit: GeneralAuditDetails = { ...(parameters.productVerifications?.length ? { productVerifications: parameters.productVerifications } : {}), dispatchReadiness, facility: facilityName, orderer: ordererName, phone, dropArea: parameters.dropArea, district: parameters.district,
+  const generalAudit: GeneralAuditDetails = { ...(parameters.extraction ? {extraction:parameters.extraction} : {}), ...(parameters.productVerifications?.length ? { productVerifications: parameters.productVerifications } : {}), dispatchReadiness, facility: facilityName, orderer: ordererName, phone, dropArea: parameters.dropArea, district: parameters.district,
     message, warnings, auditSummary, ...(semanticReviews.length ? { semanticReviews } : {}),
     productCount: { requested: requestedCount, found: systemCount, status: requestedCount === systemCount ? 'match' : 'mismatch' }, discrepancies,
     counts: { fullySupplied: items.filter(item => item.fulfillment.fulfillmentStatus === 'fully supplied').length, outOfStock: stockCount, orderLimited: limitedCount, pendingOrderLimits: pendingOrderLimitCount },
+    productTotals: {requested:requestedCount, matched:items.filter(item=>item.provenance.some(p=>p.source==='customer_request') && item.provenance.some(p=>p.source==='fulfillment_confirmation') && !item.fulfillment.identityError).length, physicallyFulfilled:items.filter(item=>item.fulfillment.supplied>0).length, outOfStock:stockCount, physicallySuppliedUnits:items.reduce((sum,item)=>sum+item.fulfillment.supplied,0), missing:items.filter(item=>item.status==='missing item').length, quantityReview:quantityReviewCount, discrepancies:summary.issueCount},
     products: items.map(item => item.fulfillment), orderLimitDecisions: confirmedDecisions, pendingOrderLimitCount, stockStatus, finalStatus };
   return { items, generalAudit, ...summary, allMatch, status: allMatch ? 'resolved' as const : 'pending' as const, auditSummary, ...dispatchReadiness, confidence: auditSummary.confidence,
-    verdict: summary.issueCount > 0 ? 'DISCREPANCY' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : ordererReview || facilityReview || essentialReviewCount || optionalReviews.length ? 'CLARIFICATION REQUIRED' : pendingOrderLimitCount ? 'ORDER LIMIT VALIDATION REQUIRED' : 'MATCH', insights: discrepancies };
+    verdict: summary.issueCount > 0 ? 'DISCREPANCY' : quantityReviewCount ? 'QUANTITY REVIEW REQUIRED' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : ordererReview || facilityReview || essentialReviewCount || optionalReviews.length ? 'CLARIFICATION REQUIRED' : pendingOrderLimitCount ? 'ORDER LIMIT VALIDATION REQUIRED' : 'MATCH', insights: discrepancies };
 }
 
 /** Apply a user's answer immediately without reinterpreting products or headers. */

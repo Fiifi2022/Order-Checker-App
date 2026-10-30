@@ -11,6 +11,7 @@ import { classifyGeneralText, stripGeneralNonOrderInformation } from '../src/uti
 import { medicalProductAcronyms } from '../src/utils/medicalProductAcronyms';
 import { getGeneralTerminologyAliases, generalApprovedProductIdentities, resolveGeneralApprovedIdentity, getGeneralMedicalAmbiguity, stripGeneralLeadingSpecification } from '../src/utils/generalMedicalTerminology';
 import packaging from '../src/utils/generalPackagingCatalogue.json';
+import { projectGeneralOrderSentences } from '../src/utils/generalSentenceExtraction';
 
 export interface StructuredGeneralOrder {
   facilityName: string | null;
@@ -30,7 +31,7 @@ export interface DeterministicGeneralOrder {
   missingQuantityProducts?: string[];
 }
 const numberWords: Record<string, number> = Object.fromEntries('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty'.split(' ').map((word, n) => [word, n]));
-const unit = '(?:vials?|box(?:es)?|packs?|doses?|units?|bottles?|tablets?|capsules?|sachets?|tests?|pieces?)';
+const unit = '(?:vials?|box(?:es)?|packs?|blisters?|strips?|doses?|units?|bottles?|tablets?|capsules?|sachets?|tests?|pieces?)';
 const quantityOnly = new RegExp(`^(?:(?:quantity|qty|amount)\\s*[:=]?\\s*)?(\\d+(?:,\\d{3})*(?:\\.\\d+)?)\\s*(${unit})?\\s*[.!]?$`, 'i');
 const clinical = /^(?:patient(?:\s+(?:name|age|sex|gender))?\s*[:;=]|(?:age|sex|gender|diagnosis|clinical\s+(?:condition|history)|condition|bsct|wbct|hb|bp|pulse|temperature)\b|(?:a\s+)?\d+\s*[- ]?(?:years?\s*[- ]?old|y\/?o)\b)/i;
 const request = /\b(?:need|request|send|supply|order|quantity|qty|vials?|vails?|packs?|boxes?|doses?)\b/i;
@@ -52,8 +53,9 @@ function currentVocabulary() {
   return cachedVocabulary;
 }
 function cleanRequest(line: string) {
-  return line.replace(/^and\s+(?=(?:we|i|please|pls|send|supply)\b)/i, '').replace(/^(?:(?:hi|hello)\s+zipline[,.! ]*\s*)/i, '')
-    .replace(/^(?:(?:please|pls|kindly)[, ]*\s*)?(?:(?:we|i)\s+(?:urgently\s+)?(?:need|want|request)|(?:send|give|supply)(?:\s+(?:us|me))?)\s+/i, '')
+  return line.replace(/^[,;.!\s]+/, '').replace(/^and\s+(?=(?:we|i|please|pls|send|supply)\b)/i, '').replace(/^(?:(?:hi|hello)(?:\s+zipline)?[,.! ]*\s*)/i, '')
+    .replace(/^(?:can|could|would)\s+you\s+(?:(?:please|kindly)\s+)?(?=send|supply|give)/i, '')
+    .replace(/^(?:(?:please|pls|kindly)[, ]*\s*)?(?:(?:we|i)\s+(?:also\s+)?(?:urgently\s+)?(?:need|want|require|request|would like(?:\s+to\s+(?:order|request))?)|(?:send|give|supply)(?:\s+(?:us|me))?)\s+/i, '')
     .replace(/^(?:products?|items?|vaccines?|medicines?|drugs?)\s*[:=]\s*/i, '')
     .replace(/\s+(?:for\s+(?:continuous\s+)?(?:case\s+management|a\s+patient|the\s+patient)|because\b).*$/i, '')
     .replace(/\s+(?:please|thanks|thank you)[.!]?$/i, '').trim();
@@ -91,17 +93,14 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
     const suffix = candidate.slice(base.length).replace(/(?<![a-z])(?:mcg|mg|g|ml|l|miu|iu|units?|adult|paediatric|pediatric|oral|iv|im|sc|syrup|suspension|tablets?|capsules?|injection|infusion|solution|cream|ointment|gel|powder|bottles?)(?![a-z])/gi, '');
     return /^[\d\s]*$/.test(suffix);
   });
-  let text = recognizeGeneralDocument(stripGeneralNonOrderInformation(raw), line => ({ category: 'unresolved_order', orderChange: classifyGeneralText(line).orderChange })).auditText.normalize('NFKC').replace(/\u00a0/g, ' ');
+  const projected = projectGeneralOrderSentences(stripGeneralNonOrderInformation(raw), context, line => {
+    const classification = classifyGeneralText(line);
+    return classification.category === 'administrative' || !!classification.orderChange;
+  });
+  let text = recognizeGeneralDocument(projected, line => ({ category: 'unresolved_order', orderChange: classifyGeneralText(line).orderChange })).auditText.normalize('NFKC').replace(/\u00a0/g, ' ');
   let improved = text !== raw || raw.split('\n').some(line => {
     const labels = [...line.matchAll(new RegExp(`\\b${label}\\s*[:;=]`, 'gi'))];
     return labels.length > 1 || labels.some(match => !match[0].endsWith(':') || /^ordered by/i.test(match[0]));
-  });
-  // An explicit self-introduction supplies identities, never a patient label.
-  text = text.replace(/\b(?:i am|i['’]m|this is|my name is)\s+([\p{L}][\p{L}'’. -]+?)\s+(?:from|at)\s+([^;\n.!]+?)(?=\s+(?:and\s+)?(?:(?:please|pls|kindly)\s+)?(?:(?:we|i)\s+(?:need|want|request)|send|supply)|[;\n.!]|$)/giu, (match, name, facility) => {
-    const facilities = findGeneralFacilityNames(facility, context.records);
-    if (name.trim().split(/\s+/).length < 2 || facilities.length !== 1 || normalizeGeneralFacilityName(facilities[0]) !== normalizeGeneralFacilityName(facility)) return match;
-    improved = true;
-    return `\nOrderer: ${name.trim()}\nFacility: ${facility.trim()}\n`;
   });
   text = text.split('\n').map(line => {
     const products = parseGeneralProducts(line, source);

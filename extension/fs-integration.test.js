@@ -105,22 +105,33 @@ test('a slow previous allocation cannot overwrite a newer facility or vaccine; n
 });
 
 test('background uses authenticated read-only lookup, rejects other websites, discards stale responses and reuses balance for typing', async () => {
- let handle, finishOld, installed, calls = [], injections = [];
+ let handle, finishOld, installed, calls = [], injections = [], panels = [];
  const stored = { authSession: { idToken: 'test-only-token', expiresAt: Date.now() + 600000 } };
  const area = { async get(key) { return key === null ? { ...stored } : { [key]: stored[key] }; }, async set(data) { Object.assign(stored, data); }, async remove(key) { delete stored[key]; } };
  const listeners = { addListener() {} };
- const chrome = { storage: { session: area, local: { async get() { return {}; } }, onChanged: listeners }, tabs: { onRemoved: listeners, onUpdated: listeners, async sendMessage() {}, async query() { return [{ id: 7, url: 'https://fulfillment-gh3-production.platform.flyzipline.com/v3/orders/Draft' }, { id: 9, url: 'https://unrelated.example' }]; } }, permissions: { async contains() { return true; } }, scripting: { async executeScript(options) { injections.push(options); } }, runtime: { onInstalled: { addListener(fn) { installed = fn; } }, getURL: () => 'chrome-extension://test/', onMessage: { addListener(fn) { handle = fn; } } } };
+ const chrome = { sidePanel: { open(options) { panels.push(options); return Promise.resolve(); } }, storage: { session: area, local: { async get() { return {}; } }, onChanged: listeners }, tabs: { onRemoved: listeners, onUpdated: listeners, async sendMessage() {}, async query() { return [{ id: 7, url: 'https://fulfillment-gh3-production.platform.flyzipline.com/v3/orders/Draft' }, { id: 9, url: 'https://unrelated.example' }]; } }, permissions: { async contains() { return true; } }, scripting: { async executeScript(options) { injections.push(options); } }, runtime: { onInstalled: { addListener(fn) { installed = fn; } }, getURL: () => 'chrome-extension://test/', onMessage: { addListener(fn) { handle = fn; } } } };
  const fetch = async (url, options) => {
    calls.push({ url, options });
    const input = JSON.parse(new URL(url).searchParams.get('selection'));
    if (input.products[0]?.name === 'BCG') await new Promise(resolve => { finishOld = resolve; });
    return { ok: true, async json() { return { status: 'matched', products: input.products.map(p => ({ ...p, balance: 12 })) }; } };
  };
- vm.runInNewContext(buildSync({ entryPoints: ['extension/background.js'], bundle: true, write: false, format: 'iife' }).outputFiles[0].text, { chrome, fetch, URL, URLSearchParams, AbortController, setTimeout, clearTimeout, console });
+ vm.runInNewContext(buildSync({ entryPoints: ['extension/background-entry.js'], bundle: true, write: false, format: 'iife' }).outputFiles[0].text, { chrome, fetch, URL, URLSearchParams, AbortController, setTimeout, clearTimeout, console });
  installed(); await new Promise(resolve => setImmediate(resolve));
  assert.equal(injections.length, 1); assert.equal(injections[0].target.tabId, 7); assert.equal(injections[0].files[0], 'fs-content.js');
  const sender = { url: 'https://fulfillment-gh1-production.platform.flyzipline.com/v3/orders/Draft', tab: { id: 7 } };
  const selection = name => ({ facility: { name: 'Mumford HC' }, draft: { name, quantity: '5' }, order: [] });
+ let opened;
+ assert.equal(handle({ type: 'FS_OPEN_PANEL' }, sender, result => { opened = result; }), true);
+ assert.equal(panels.length, 1, 'Chrome open must run synchronously before yielding the click gesture');
+ assert.equal(panels[0].tabId, 7);
+ await new Promise(resolve => setImmediate(resolve));
+ assert.equal(opened.success, true);
+ handle({ type: 'FS_OPEN_PANEL' }, { ...sender, url: 'https://unrelated.example' }, result => { opened = result; });
+ assert.equal(panels.length, 1); assert.match(opened.error, /not authorized/);
+ handle({ type: 'FS_OPEN_PANEL' }, { ...sender, frameId: 2 }, result => { opened = result; });
+ assert.equal(panels.length, 1);
+
  const rejection = await new Promise(resolve => handle({ type: 'FS_SELECTION', selection: selection('BCG') }, { ...sender, url: 'https://unrelated.example' }, resolve)); assert.match(rejection.error, /not enabled/);
  const gh3Sender = { ...sender, url: 'https://fulfillment-gh3-production.platform.flyzipline.com/v3/orders/Draft', tab: { id: 8 } };
  const gh3 = await new Promise(resolve => handle({ type: 'FS_SELECTION', selection: selection('OPV') }, gh3Sender, resolve));
@@ -149,7 +160,7 @@ test('side panel renders draft separately, retains added products, removes delet
  const live = { tabId: 7, selection: { facility: { name: 'Mumford HC' }, draft: { name: 'OPV', quantity: '3' }, order: [{ name: 'BCG', quantity: '5' }] }, allocation: { status: 'matched', facility: { facilityName: 'Mumford HC', district: 'Gomoa West' }, products: [{ name: 'BCG', canonical: 'BCG', quantity: '5', balance: 12 }, { name: 'OPV', canonical: 'OPV', quantity: '3', balance: 9 }] } };
  state = live;
  globalThis.document = document;
- globalThis.chrome = { tabs: { async query() { return [{ id: 7, url: 'https://fulfillment-gh1-production.platform.flyzipline.com/v3/orders/Draft' }]; }, async get() { return { id: 7, url: 'https://fulfillment-gh1-production.platform.flyzipline.com/v3/orders/Draft' }; }, async sendMessage(id, message) { return message.type === 'FS_DIAGNOSTICS' ? { formFound: true, selection: state.selection, bridgeVersion: '2.3.21' } : state; }, onActivated: { addListener() {} }, onUpdated: { addListener() {} } }, storage: { session: { async get() { return { 'fsContext:7': state }; } }, onChanged: { addListener(fn) { changed = fn; } } }, runtime: { getManifest() { return { content_scripts: [{ js: ['fs-content.js'], matches: ['https://fulfillment-gh1-production.platform.flyzipline.com/*'] }] }; }, async sendMessage(message) { manualRequest = message; return state; } } };
+ globalThis.chrome = { tabs: { async query() { return [{ id: 7, url: 'https://fulfillment-gh1-production.platform.flyzipline.com/v3/orders/Draft' }]; }, async get() { return { id: 7, url: 'https://fulfillment-gh1-production.platform.flyzipline.com/v3/orders/Draft' }; }, async sendMessage(id, message) { return message.type === 'FS_DIAGNOSTICS' ? { formFound: true, selection: state.selection, bridgeVersion: '2.3.47' } : state; }, onActivated: { addListener() {} }, onUpdated: { addListener() {} } }, storage: { session: { async get() { return { 'fsContext:7': state }; } }, onChanged: { addListener(fn) { changed = fn; } } }, runtime: { getManifest() { return { content_scripts: [{ js: ['fs-content.js'], matches: ['https://fulfillment-gh1-production.platform.flyzipline.com/*'] }] }; }, async sendMessage(message) { manualRequest = message; return state; } } };
  try {
    setupFsPanel({ onFacility(facility) { facilities.push(facility); } }); await new Promise(resolve => setImmediate(resolve));
    const box = document.getElementById('fsLiveContext'); assert.match(box.textContent, /In order: BCG/); assert.match(box.textContent, /Draft: OPV/); assert.ok(!box.textContent.includes('PCV'));
@@ -309,4 +320,21 @@ test('Package & Script travels through initial and mutation snapshots, then clea
  page.document.getElementById('dynamic-first').remove();
  page.notify(); await tick();
  assert.equal(messages.at(-1).selection.script.text, null);
+});
+
+test('trusted Add Order click on its SVG opens the panel before scanning the new order', async () => {
+ const html = fixture.replace('<h1>Add New Order</h1>', '<button id="open-order"><svg><line></line></svg> Add Order</button><h1>Add New Order</h1>');
+ const messages = [];
+ const page = browser(html, async message => { messages.push(message); return message.type === 'FS_OPEN_PANEL' ? { success: true } : allocate(message); });
+ await tick(); messages.length = 0;
+ const event = new page.window.Event('click', { bubbles: true });
+ Object.defineProperty(event, 'isTrusted', { value: true });
+ page.document.querySelector('#open-order line').dispatchEvent(event);
+ assert.equal(messages[0].type, 'FS_OPEN_PANEL');
+ await tick();
+ assert.ok(messages.some(message => message.type === 'FS_SELECTION'));
+ messages.length = 0;
+ page.document.querySelector('button[type=button]').dispatchEvent(new page.window.Event('click', { bubbles: true }));
+ await tick();
+ assert.ok(!messages.some(message => message.type === 'FS_OPEN_PANEL'), 'Adding a product is not Add Order');
 });

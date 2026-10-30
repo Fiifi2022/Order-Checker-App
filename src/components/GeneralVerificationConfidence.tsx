@@ -24,7 +24,7 @@ export default function GeneralVerificationConfidence({ summary, pendingOrderLim
       </div>
     </div>
     <p className="text-xs text-slate-500 leading-relaxed max-w-[200px]">
-      Checks mandatory orderer, facility, products and quantities; compares delivery/drop area and district when both sides provide them.
+      Checks compulsory orderer, facility, products and quantities. Delivery/drop area and district are informational.
     </p>
   </div>;
 }

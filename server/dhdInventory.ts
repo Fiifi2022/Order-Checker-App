@@ -85,6 +85,7 @@ export function applyConfirmedDhdTopUp(input: {
   const { inventory, sheet, rowId, vaccine, quantity, distributedAfter, requestId } = input;
   const prior = inventory.history.find(entry => entry.requestId === requestId);
   if (prior?.type === 'top_up') return { success: true, inventory, sheet, entry: prior, duplicate: true };
+  if(sheet.cycleState==='closed')return {success:false,error:'This allocation cycle is closed. Reopen it with a recorded correction reason before adding stock.',status:409};
   if (!requestId || !rowId || !vaccine || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(distributedAfter) || distributedAfter < 0) {
     return { success: false, error: 'A valid facility, vaccine, quantity, and request ID are required.', status: 400 };
   }

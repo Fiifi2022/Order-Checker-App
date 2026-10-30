@@ -121,7 +121,7 @@
       host,
       render(selection, response) {
         set(facility, selection?.facility?.name ? `Facility: ${selection.facility.name}` : "Waiting for facility selection in FS");
-        set(connection, response?.error || (!response ? "Connecting to allocation service\u2026" : response.allocation?.status === "matched" ? "Connected \xB7 Blueprint facility found" : response.allocation?.message || (selection?.facility?.name ? "FS selection detected \xB7 Waiting for allocation lookup" : "Facility selection not detected \xB7 Open Detection details")));
+        set(connection, response?.error || (!response ? "Connecting to allocation service\u2026" : response.allocation?.status === "matched" ? ["Connected \xB7 Blueprint facility found", response.allocation.facility?.cycle].filter(Boolean).join(" \xB7 ") : response.allocation?.message || (selection?.facility?.name ? "FS selection detected \xB7 Waiting for allocation lookup" : "Facility selection not detected \xB7 Open Detection details")));
       },
       dispose() {
         host.remove();
@@ -171,11 +171,13 @@
         generation++;
         blocked = previous;
       },
-      read(root) {
+      read(root, doc = root?.ownerDocument) {
         let scope = root?.closest('form,[role="dialog"],main') || root;
-        if (root && !scope.querySelector('button[aria-label="Edit script"]')) {
+        const panes = [...doc?.querySelectorAll('[id^="scripts-tabpane-"][role="tabpanel"]') || []].filter(visible);
+        if (panes.length === 1) scope = panes[0];
+        if (root && scope && !scope.querySelector('button[aria-label="Edit script"]')) {
           for (let parent = scope.parentElement; parent && parent !== root.ownerDocument.body && parent !== root.ownerDocument.documentElement; parent = parent.parentElement) {
-            const named = [...parent.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')].some((el) => el.textContent.trim().toLowerCase() === "package & script");
+            const named = [...parent.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')].some((el) => /^(?:package|packaging)\s*&\s*script$/i.test(el.textContent.trim()));
             if (named && parent.querySelector('button[aria-label="Edit script"]')) {
               scope = parent;
               break;
@@ -197,7 +199,7 @@
           previous = null;
           return { orderKey: String(generation), text: null };
         }
-        const headings = [...scope.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')].filter((el) => el.textContent.trim().toLowerCase() === "package & script");
+        const headings = [...scope.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')].filter((el) => /^(?:package|packaging)\s*&\s*script$/i.test(el.textContent.trim()));
         let value = null;
         if (headings.length === 1) {
           for (let section = headings[0].parentElement; section && scope.contains(section); section = section.parentElement) {
@@ -402,7 +404,7 @@
         const qtyCell = row.querySelector("[data-quantity]") || cells[quantityIndex];
         return { name: row.dataset.productName || productCell?.textContent?.trim() || "", id: row.dataset.productId || "", quantity: row.dataset.quantity || qtyCell?.querySelector("input")?.value || qtyCell?.textContent?.trim() || "" };
       }).filter((p) => p?.name) : [];
-      return { facility, draft: product.name ? { ...product, quantity: quantityEl?.value || "" } : null, order, script: scripts.read(scope) };
+      return { facility, draft: product.name ? { ...product, quantity: quantityEl?.value || "" } : null, order, script: scripts.read(scope, doc) };
     }
     function productPlacement() {
       const scope = root(), product = control(scope, "Product"), quantity = control(scope, "Quantity");
@@ -502,7 +504,7 @@
     });
     return true;
   }
-  var FS_BRIDGE_VERSION = "2.3.21";
+  var FS_BRIDGE_VERSION = "2.3.47";
 
   // extension/fs-content-entry.js
   {
@@ -614,6 +616,15 @@
     };
     const click = (event) => {
       if (adapter.isNewOrder(event.target)) {
+        if (event.isTrusted) {
+          try {
+            void chrome.runtime.sendMessage({ type: "FS_OPEN_PANEL" }).then((result) => {
+              if (result?.error) activation.render(selection, { error: `Unable to open OrderCheck: ${result.error}. Click the OrderCheck toolbar icon.` });
+            }).catch((error) => console.warn("OrderCheck panel could not open:", error.message));
+          } catch (error) {
+            console.warn("OrderCheck panel could not open:", error.message);
+          }
+        }
         adapter.resetOrder();
         pending = null;
         suppressed = "";
