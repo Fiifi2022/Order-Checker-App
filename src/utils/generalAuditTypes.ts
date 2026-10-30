@@ -26,6 +26,7 @@ export interface GeneralAuditCheckSummary {
   confidence: number;
 }
 export interface GeneralSemanticReview {
+  requiresConfirmation?: boolean;
   reviewState?: GeneralProductReviewState;
   dosageFormKey?: string;
   kind?: 'product' | 'unparsed_text';
@@ -70,6 +71,7 @@ export interface GeneralExtractedMessage {
   unresolvedFields: string[];
 }
 export interface GeneralAuditDetails {
+  decision?: 'match' | 'discrepancy' | 'review';
   extraction?: GeneralOrderExtractionSnapshot;
   productComparisonMode?: 'names_only' | 'names_and_quantities';
   productVerifications?: GeneralProductVerification[];

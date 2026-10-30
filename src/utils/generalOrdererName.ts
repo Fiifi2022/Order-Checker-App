@@ -7,7 +7,7 @@ const aliases: Record<string, string> = {
   alex: 'alexander', geo: 'george', thos: 'thomas', ben: 'benjamin',
   mohammed: 'muhammad', mohamed: 'muhammad', muhammad: 'muhammad',
 };
-const titles = /^(?:(?:dr|doctor|nurse|mr|mrs|ms|miss|prof|sir|madam)\s+)+/;
+const titles = /^(?:(?:dr|doctor|nurse|officer|mr|mrs|ms|miss|prof|sir|madam)\s+)+/;
 export function normalizeGeneralOrdererName(value: string): string[] {
   return value.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
     .replace(/['’]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()

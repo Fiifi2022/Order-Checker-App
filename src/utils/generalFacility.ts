@@ -13,11 +13,29 @@ export interface GeneralFacilityRecord {
   sources?: string[];
 }
 export interface GeneralFacilityContext {
+  revision?: number | string;
   records?: GeneralFacilityRecord[];
   lookupUnavailable?: boolean;
   /** Explicit aliases supplied by a trusted district reference, never inferred by AI. */
   districtAliases?: readonly { name: string; verifiedAliases: readonly string[] }[];
   aiSuggestion?: { customer: string; fulfillment: string; confidence: number };
+}
+type FacilityReferenceIndex = {names: Map<string, GeneralFacilityRecord[]>; ids: Map<string, GeneralFacilityRecord[]>; signature: string};
+const preparedReferences = new WeakMap<GeneralFacilityContext, FacilityReferenceIndex>();
+export function generalFacilityContextSignature(context: GeneralFacilityContext = {}): string {
+  return preparedReferences.get(context)?.signature || JSON.stringify([context.revision, context.records, context.districtAliases, context.lookupUnavailable]);
+}
+/** Audit-local snapshot; reference mutations are picked up by the next audit. */
+export function prepareGeneralFacilityContext(context: GeneralFacilityContext = {}): GeneralFacilityContext {
+  if (preparedReferences.has(context)) return context;
+  const snapshot = structuredClone(context);
+  const names = new Map<string, GeneralFacilityRecord[]>(), ids = new Map<string, GeneralFacilityRecord[]>();
+  for (const record of snapshot.records || []) {
+    for (const name of vocabulary(record).names) names.set(name, [...(names.get(name) || []), record]);
+    if (record.id) ids.set(record.id, [...(ids.get(record.id) || []), record]);
+  }
+  preparedReferences.set(snapshot, {names, ids, signature: generalFacilityContextSignature(snapshot)});
+  return snapshot;
 }
 export interface GeneralFacilityResult extends GeneralFieldResult {
   reason?: string;
@@ -209,14 +227,20 @@ export function compareGeneralFacilities(customer: string, fulfillment: string, 
   const leftId = metadata(customerText, 'facility\\s+id'), rightId = metadata(fulfillmentText, 'facility\\s+id');
   const extra = { ...(leftId ? { customerFacilityId: leftId } : {}), ...(rightId ? { fulfillmentFacilityId: rightId } : {}) };
   if (leftId && rightId && leftId !== rightId) return result('mismatch', 'The facility identifiers are different.', extra);
-  const names = new Map<string, GeneralFacilityRecord[]>();
-  const ids = new Map<string, GeneralFacilityRecord[]>();
-  for (const record of records) {
+  const prepared = preparedReferences.get(context);
+  const names = prepared?.names || new Map<string, GeneralFacilityRecord[]>();
+  const ids = prepared?.ids || new Map<string, GeneralFacilityRecord[]>();
+  for (const record of prepared ? [] : records) {
     for (const name of vocabulary(record).names) names.set(name, [...(names.get(name) || []), record]);
     if (record.id) ids.set(record.id, [...(ids.get(record.id) || []), record]);
   }
+  const directoryWordOrderMatch = (left: string, right: string) => {
+    const a = parts(left), b = parts(right);
+    const words = (value: string) => value.split(' ').sort().join(' ');
+    return !!a.type && a.type === b.type && a.locality.split(' ').length >= 2 && words(a.locality) === words(b.locality);
+  };
   const byName = (name: string) => names.get(name) || records.filter(record =>
-    vocabulary(record).names.some(alias => generalFacilityNamesMatch(alias, name)));
+    vocabulary(record).names.some(alias => generalFacilityNamesMatch(alias, name) || directoryWordOrderMatch(alias, name)));
   const candidates = (name: string, text: string, id: string) => {
     const district = normalizeGeneralDistrictName(metadata(text, 'district'), context), region = clean(metadata(text, 'region'));
     return byName(name).filter(record => (!id || record.id === id) &&

@@ -46,6 +46,8 @@ export interface GeneralProductEvidence {
   line: number;
 }
 export interface GeneralComparisonItem extends Omit<AuditItem, 'status' | 'category'> {
+  catalogProductId?: string;
+  catalogCategory?: string;
   category: GeneralProductCategory;
   status: AuditItem['status'] | 'quantity review' | 'pending order limit' | 'order limit applied' | 'vaccine pairing mismatch' | 'product identity discrepancy';
   provenance: GeneralProductEvidence[];
@@ -900,8 +902,10 @@ export function buildGeneralAuditCheckSummary(items: { status: string; requested
 
 /** Clear an intermediate product review only when this source's complete identity
  * and numeric evidence are accounted for by a final, paired comparison. */
+export interface GeneralAuditSupport { onGeminiRequest?: () => void; }
 export function reconcileGeneralProductReviews(items: GeneralComparisonItem[], reviews: GeneralSemanticReview[], fields?: { facility: GeneralFacilityResult; orderer: GeneralFieldResult }): GeneralSemanticReview[] {
   return reviews.filter(review => {
+    if (review.requiresConfirmation) return true;
     if (review.dosageFormKey) return true; // Only explicit customer confirmation resolves this review.
     const text = generalOrderRelevantText(review.originalText).trim();
     if (!text || /^products?(?: and quantities)?\s*[:=.!]?$/i.test(text)) return false;
@@ -931,7 +935,7 @@ export function reconcileGeneralProductReviews(items: GeneralComparisonItem[], r
 }
 
 /** Rebuild every product-derived total while retaining authoritative header checks. */
-export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFacilityResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = [], parameters: Pick<GeneralAuditDetails, 'dropArea' | 'district' | 'productVerifications' | 'extraction'> = {}) {
+export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFacilityResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = [], parameters: Pick<GeneralAuditDetails, 'dropArea' | 'district' | 'productVerifications' | 'extraction' | 'decision'> = {}) {
   const verifications: GeneralProductVerification[] = [];
   for (const product of parameters.productVerifications || []) {
     const policy = generalConfirmationPolicy(product, normalizeGeneralProductName);
@@ -1043,7 +1047,11 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
     productCount: { requested: requestedCount, found: systemCount, status: requestedCount === systemCount ? 'match' : 'mismatch' }, discrepancies,
     counts: { fullySupplied: items.filter(item => item.fulfillment.fulfillmentStatus === 'fully supplied').length, outOfStock: stockCount, orderLimited: limitedCount, pendingOrderLimits: pendingOrderLimitCount },
     productTotals: {requested:requestedCount, matched:items.filter(item=>item.provenance.some(p=>p.source==='customer_request') && item.provenance.some(p=>p.source==='fulfillment_confirmation') && !item.fulfillment.identityError).length, physicallyFulfilled:items.filter(item=>item.fulfillment.supplied>0).length, outOfStock:stockCount, physicallySuppliedUnits:items.reduce((sum,item)=>sum+item.fulfillment.supplied,0), missing:items.filter(item=>item.status==='missing item').length, quantityReview:quantityReviewCount, discrepancies:summary.issueCount},
-    products: items.map(item => item.fulfillment), orderLimitDecisions: confirmedDecisions, pendingOrderLimitCount, stockStatus, finalStatus };
+    products: items.map(item => item.fulfillment), orderLimitDecisions: confirmedDecisions, pendingOrderLimitCount, stockStatus, finalStatus,
+    ...(parameters.decision ? {decision: allMatch ? 'match' :
+      facilityName.status === 'mismatch' || ordererName.status === 'mismatch' || items.some(item => item.status === 'quantity mismatch' &&
+        !item.provenance.some(p => p.quantityReview) && !item.fulfillment.requestedQuantityMissing && !item.fulfillment.suppliedQuantityMissing)
+        ? 'discrepancy' : parameters.decision} : {}) };
   return { items, generalAudit, ...summary, allMatch, status: allMatch ? 'resolved' as const : 'pending' as const, auditSummary, ...dispatchReadiness, confidence: auditSummary.confidence,
     verdict: summary.issueCount > 0 ? 'DISCREPANCY' : quantityReviewCount ? 'QUANTITY REVIEW REQUIRED' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : ordererReview || facilityReview || essentialReviewCount || optionalReviews.length ? 'CLARIFICATION REQUIRED' : pendingOrderLimitCount ? 'ORDER LIMIT VALIDATION REQUIRED' : 'MATCH', insights: discrepancies };
 }

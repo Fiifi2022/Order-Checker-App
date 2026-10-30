@@ -2,7 +2,7 @@ import { recognizeGeneralDocument } from '../src/utils/generalDocumentStructure'
 import { isGeneralKnownProductDescription } from '../src/utils/generalProductMatching';
 import { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 import { getCatalogRevision } from '../shared/productCatalog';
-import { isGeneralProductLogMatch } from '../src/utils/generalProductLog';
+import { isGeneralProductLogMatch, getGeneralProductLog, resolveGeneralCatalogIdentity } from '../src/utils/generalProductLog';
 import { getGeneralVaccineCatalogVersion } from '../shared/generalVaccineCatalog';
 import { Type } from '@google/genai';
 import { extractGeneralInput, parseGeneralProducts, normalizeGeneralProductName, stripGeneralListPrefix, isMetadataLabel, type GeneralProductSource } from './generalAuditor';
@@ -29,6 +29,8 @@ export interface DeterministicGeneralOrder {
   unresolvedText: string[];
   conflictingFields?: string[];
   missingQuantityProducts?: string[];
+  quantityReviews?: {originalText: string; reason: string}[];
+  identityReviews?: {originalText: string; reason: string}[];
 }
 const numberWords: Record<string, number> = Object.fromEntries('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty'.split(' ').map((word, n) => [word, n]));
 const unit = '(?:vials?|box(?:es)?|packs?|blisters?|strips?|doses?|units?|bottles?|tablets?|capsules?|sachets?|tests?|pieces?)';
@@ -54,11 +56,11 @@ function currentVocabulary() {
 }
 function cleanRequest(line: string) {
   return line.replace(/^[,;.!\s]+/, '').replace(/^and\s+(?=(?:we|i|please|pls|send|supply)\b)/i, '').replace(/^(?:(?:hi|hello)(?:\s+zipline)?[,.! ]*\s*)/i, '')
-    .replace(/^(?:can|could|would)\s+you\s+(?:(?:please|kindly)\s+)?(?=send|supply|give)/i, '')
-    .replace(/^(?:(?:please|pls|kindly)[, ]*\s*)?(?:(?:we|i)\s+(?:also\s+)?(?:urgently\s+)?(?:need|want|require|request|would like(?:\s+to\s+(?:order|request))?)|(?:send|give|supply)(?:\s+(?:us|me))?)\s+/i, '')
+    .replace(/^(?:can|could|would)\s+you\s+(?:(?:please|kindly)\s+)?(?:help\s+(?:us|me)\s+with\s+|(?=send|supply|give))/i, '')
+    .replace(/^(?:(?:please|pls|kindly)[, ]*\s*)?(?:(?:we|i)\s+(?:also\s+)?(?:urgently\s+)?(?:need|want|require|request|are requesting|would like(?:\s+to\s+(?:order|request))?)|(?:send|give|supply)(?:\s+(?:us|me))?)\s+/i, '')
     .replace(/^(?:products?|items?|vaccines?|medicines?|drugs?)\s*[:=]\s*/i, '')
     .replace(/\s+(?:for\s+(?:continuous\s+)?(?:case\s+management|a\s+patient|the\s+patient)|because\b).*$/i, '')
-    .replace(/\s+(?:please|thanks|thank you)[.!]?$/i, '').trim();
+    .replace(/\s+(?:please|thanks|thank you)[.!]?$/i, '').replace(/[.!?]+$/, '').trim();
 }
 /** Deliberately bounded spelling corrections: medicine identities are never fuzzy substituted. */
 export function normalizeGeneralQuantityText(text: string) {
@@ -126,6 +128,7 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
     return plain;
   }).join('\n');
   const output: string[] = [];
+  const quantityReviews: NonNullable<DeterministicGeneralOrder['quantityReviews']> = [];
   const pending: { index: number; name: string }[] = [];
   const quantities: { index: number; value: string }[] = [];
   for (const rawLine of prepared.split(/\r?\n/)) {
@@ -142,7 +145,12 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
       quantities.push({ index: output.length, value: `${amount[1]}${amount[2] ? ` ${amount[2]}` : ''}` });
       output.push(line); continue;
     }
-    const clean = cleanRequest(line);
+    const requested = cleanRequest(line);
+    const course = /^(?:(?:a|the)\s+)?full\s+course\s+of\s+/i.test(requested);
+    const clean = requested.replace(/^(?:(?:a|the)\s+)?full\s+course\s+of\s+/i, '')
+      .replace(/\s+(?:qty|quantity)\s*[:=]?\s*(\d+(?:\.\d+)?)$/i, ' - $1')
+      .replace(/\s*[x×]\s*(\d+(?:\.\d+)?)$/i, ' - $1');
+    if (course) quantityReviews.push({originalText: rawLine, reason: 'A full course was requested. Confirm what the stated quantity represents and its unit; no course-to-vial conversion has been assumed.'});
     // Split an inline list only when every segment independently names a known product.
     const parts = clean.split(/\s*,\s*|\s+and\s+/i);
     if (parts.length > 1 && !(parseGeneralProducts(clean, source).length === 1 && knownName(parseGeneralProducts(clean, source)[0].name)) && parts.every(part => {
@@ -150,7 +158,7 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
       return product.length === 1 && knownName(product[0].name);
     })) { improved = true; output.push(...parts); continue; }
     const parsed = parseGeneralProducts(clean, source);
-    if (clean !== line && (parsed.length === 1 && knownName(parsed[0].name) || knownName(clean))) {
+    if (clean !== line && (parsed.length === 1 && (knownName(parsed[0].name) || course) || knownName(clean))) {
       improved = true;
       output.push(clean);
     } else { output.push(line); }
@@ -203,12 +211,29 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
       unresolvedText.push(...matches.map(match => match[0]));
     }
   }
-  const certainProducts = extracted.products.filter(product => !product.quantityReview && knownName(product.name) && !getGeneralMedicalAmbiguity(product.name));
-  const unresolvedFields = [extracted.facilityName === 'N/A' ? 'facilityName' : '', extracted.ordererName === 'N/A' ? 'ordererName' : '', !certainProducts.length || unresolvedText.some(line => !/^(?:name of orderer|orderer|ordered by|requested by|name of health facility|health facility|facility|hospital)\s*:/i.test(line) && !/^(?:signed(?: by)?|duty (?:nurse|officer)(?: is)?|my name is)\b/i.test(line)) ? 'products' : ''].filter(Boolean);
-  return { text, changed: improved, unresolvedText, conflictingFields, missingQuantityProducts: pending.filter(item => output[item.index] === item.name && !getGeneralMedicalAmbiguity(item.name) && !extracted.products.some(product => product.normalizedName === normalizeGeneralProductName(item.name) && (product.stockSection || product.stockIndicator))).map(item => item.name), order: {
+  const ambiguousAcronyms = extracted.products.filter(product => {
+    if (!/^arv(?:\s+venom)?$/i.test(product.name) || !/\b(?:need|send|supply|request|want|help)\b/i.test(raw) ||
+      /\b(?:rabies|antirabies|anti[- ]rabies|antiretroviral)\b/i.test(raw)) return false;
+    const catalog = getGeneralProductLog();
+    const approved = catalog && resolveGeneralCatalogIdentity(product.name, catalog);
+    return /^arv$/i.test(product.name) || !approved?.product || !['Exact', 'Alias'].includes(approved.source || '');
+  });
+  const identityReviews = ambiguousAcronyms.map(product => ({originalText: product.originalText,
+    reason: 'ARV has multiple clinical meanings. Confirm the intended catalogue product; it has not been substituted with anti-snake venom.'}));
+  const certainProducts = extracted.products.filter(product => !product.quantityReview && !ambiguousAcronyms.includes(product) && knownName(product.name) && !getGeneralMedicalAmbiguity(product.name));
+  const productName = (product: typeof extracted.products[number]) => {
+    if (ambiguousAcronyms.includes(product) || !knownName(product.name)) return product.name;
+    const catalog = getGeneralProductLog();
+    const approved = catalog && resolveGeneralCatalogIdentity(product.name, catalog);
+    // A whole approved alias takes precedence over an acronym embedded in it.
+    const identityText = approved?.product && ['Exact', 'Alias'].includes(approved.source || '') ? approved.product.name : product.name;
+    return resolveGeneralApprovedIdentity(identityText)?.canonicalName || product.name;
+  };
+  const unresolvedFields = [extracted.facilityName === 'N/A' ? 'facilityName' : '', extracted.ordererName === 'N/A' ? 'ordererName' : '', !certainProducts.length || identityReviews.length || unresolvedText.some(line => !/^(?:name of orderer|orderer|ordered by|requested by|name of health facility|health facility|facility|hospital)\s*:/i.test(line) && !/^(?:signed(?: by)?|duty (?:nurse|officer)(?: is)?|my name is)\b/i.test(line)) ? 'products' : '', ...(quantityReviews.length ? ['quantity', 'unit'] : [])].filter(Boolean);
+  return { text, changed: improved, unresolvedText, conflictingFields, quantityReviews, identityReviews, missingQuantityProducts: pending.filter(item => output[item.index] === item.name && !getGeneralMedicalAmbiguity(item.name) && !extracted.products.some(product => product.normalizedName === normalizeGeneralProductName(item.name) && (product.stockSection || product.stockIndicator))).map(item => item.name), order: {
     facilityName: extracted.facilityName === 'N/A' ? null : extracted.facilityName,
     ordererName: extracted.ordererName === 'N/A' ? null : extracted.ordererName,
-    products: certainProducts.map(product => ({ name: resolveGeneralApprovedIdentity(product.name)?.canonicalName || product.name, quantity: product.quantity, unit: product.unit })),
+    products: extracted.products.filter(product => !product.quantityReview && (certainProducts.includes(product) || quantityReviews.length || ambiguousAcronyms.includes(product))).map(product => ({ name: productName(product), quantity: product.quantity, unit: product.unit || null })),
     deliveryArea: fields(/^(?:delivery\s*\/\s*drop area|delivery drop area|drop area|delivery area)\s*:\s*(.+)$/im),
     district: fields(/^district(?: name)?\s*:\s*(.+)$/im),
     unresolvedFields, extractionConfidence: unresolvedFields.length ? 0 : 1,

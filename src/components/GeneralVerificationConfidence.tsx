@@ -1,14 +1,16 @@
 import type { GeneralAuditCheckSummary } from '../utils/generalAuditTypes';
 
-export default function GeneralVerificationConfidence({ summary, pendingOrderLimits = 0, allMatch }: {
+export default function GeneralVerificationConfidence({ summary, pendingOrderLimits = 0, allMatch, decision }: {
   summary: GeneralAuditCheckSummary;
   pendingOrderLimits?: number;
   allMatch?: boolean;
+  decision?: 'match' | 'discrepancy' | 'review';
 }) {
   const matched = (allMatch ?? (summary.totalChecks > 0 && summary.failedChecks === 0)) && summary.discrepancyCount === 0 && pendingOrderLimits === 0 && !summary.reviewRequiredCount && !summary.missingRequiredCount;
-  const label = summary.discrepancyCount > 0 ? 'DISCREPANCY DETECTED' : matched ? 'SYSTEM MATCH' : 'CLARIFICATION REQUIRED';
-  const color = matched ? '#22C55E' : summary.confidence >= 75 ? '#F59E0B' : '#EF4444';
-  const textColor = matched ? 'text-green-600' : summary.confidence >= 75 ? 'text-amber-600' : 'text-red-600';
+  const review = decision === 'review';
+  const label = review ? 'REVIEW REQUIRED' : summary.discrepancyCount > 0 ? 'DISCREPANCY DETECTED' : matched ? 'SYSTEM MATCH' : 'CLARIFICATION REQUIRED';
+  const color = matched ? '#22C55E' : review || summary.confidence >= 75 ? '#F59E0B' : '#EF4444';
+  const textColor = matched ? 'text-green-600' : review || summary.confidence >= 75 ? 'text-amber-600' : 'text-red-600';
   return <div className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm flex flex-col items-center text-center">
     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Verification Confidence</span>
     <div className="relative flex items-center justify-center my-4" title={`${summary.passedChecks} of ${summary.totalChecks} checks passed`}>

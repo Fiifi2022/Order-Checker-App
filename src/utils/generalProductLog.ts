@@ -226,10 +226,15 @@ function resolveCurrentCatalogIdentity(name: string, current: readonly CatalogPr
     if(vaccineContext?.product)return vaccineContext;
   }
   if(literalCanonical) return literalCanonical;
-  const literalAlias=pick(literalMatches,true);
+  const labelKey = catalogKey(name);
+  const approvedAliases = literalMatches.filter(row => row.product.aliases.some(alias => catalogKey(alias) === labelKey));
+  const displayNames = literalMatches.filter(row => row.product.displayName && catalogKey(row.product.displayName) === labelKey);
+  const fulfillmentNames = literalMatches.filter(row => row.product.fulfillmentSystemName && catalogKey(row.product.fulfillmentSystemName) === labelKey);
+  const prioritizedLiteral = approvedAliases.length ? approvedAliases : displayNames.length ? displayNames : fulfillmentNames.length ? fulfillmentNames : literalMatches;
+  const literalAlias=pick(prioritizedLiteral,true);
   if(literalAlias?.product) return literalAlias;
   if(literalAlias) {
-    const preferredLiteral=pick(literalMatches.filter(row=>preferredIds.includes(row.product.id)),true);
+    const preferredLiteral=pick(prioritizedLiteral.filter(row=>preferredIds.includes(row.product.id)),true);
     return preferredLiteral?.product ? preferredLiteral : literalAlias;
   }
   const packed=packedCatalogKey(name);
@@ -312,6 +317,9 @@ let catalogIdentitySignature = '';
 const catalogIdentityCache = new Map<string, GeneralCatalogResolution>();
 export function resolveGeneralCatalogIdentity(name: string, current: readonly CatalogProduct[], preferredIds: readonly string[] = []): GeneralCatalogResolution {
   const signature = JSON.stringify(current);
+  return resolveCatalogSnapshot(name, current, preferredIds, signature);
+}
+function resolveCatalogSnapshot(name: string, current: readonly CatalogProduct[], preferredIds: readonly string[], signature: string): GeneralCatalogResolution {
   if (signature !== catalogIdentitySignature) { catalogIdentitySignature = signature; catalogIdentityCache.clear(); indexCurrentCatalog(current); }
   const key = JSON.stringify([name, [...preferredIds].sort()]);
   const cached = catalogIdentityCache.get(key);
@@ -322,6 +330,21 @@ export function resolveGeneralCatalogIdentity(name: string, current: readonly Ca
     catalogIdentityCache.set(key, result);
   }
   return result;
+}
+/** One immutable repository snapshot and signature per audit. Both successful
+ * and unresolved lookups are reused locally; a new audit observes new edits. */
+export function createGeneralCatalogResolver(current: readonly CatalogProduct[]) {
+  const snapshot = structuredClone(current), signature = JSON.stringify(snapshot);
+  const resolutions = new Map<string, GeneralCatalogResolution>();
+  return (name: string, preferredIds: readonly string[] = []) => {
+    const key = JSON.stringify([name, [...preferredIds].sort()]);
+    let result = resolutions.get(key);
+    if (!result) {
+      result = resolveCatalogSnapshot(name, snapshot, preferredIds, signature);
+      resolutions.set(key, result);
+    }
+    return result;
+  };
 }
 /** Review routing only: shared ingredient words never establish equivalence. */
 export function relatedGeneralCatalogDescriptions(a: string, b: string): boolean {

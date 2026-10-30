@@ -313,6 +313,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   const generalDetails = (result as (AuditRecord & { generalAudit?: GeneralAuditDetailsPayload }) | null)?.generalAudit;
   const facilityReviewRequired = generalDetails?.facility.status === 'review required';
   const generalReviewRequired = facilityReviewRequired || Boolean(generalDetails?.auditSummary?.reviewRequiredCount);
+  const generalDecisionReview = !result?.allMatch && generalDetails?.decision === 'review';
 
   const [savingAuditStorage,setSavingAuditStorage]=useState(false);
   const [auditStorageError,setAuditStorageError]=useState('');
@@ -1245,17 +1246,17 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                     <div className={`p-5 rounded-2xl border-l-8 border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm bg-white ${
                       result.allMatch 
                         ? 'border-green-200 border-l-green-600' 
-                        : (generalDetails?.pendingOrderLimitCount || generalReviewRequired) && result.issueCount === 0 ? 'border-amber-200 border-l-amber-500' : 'border-rose-200 border-l-rose-500'
+                        : generalDecisionReview || (generalDetails?.pendingOrderLimitCount || generalReviewRequired) && result.issueCount === 0 ? 'border-amber-200 border-l-amber-500' : 'border-rose-200 border-l-rose-500'
                     }`}>
                       <div className="flex items-start gap-4">
                         <div className={`p-2.5 rounded-full shrink-0 flex items-center justify-center ${
-                          result.allMatch ? 'bg-green-100 text-green-700' : (generalDetails?.pendingOrderLimitCount || generalReviewRequired) && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700'
+                          result.allMatch ? 'bg-green-100 text-green-700' : generalDecisionReview || (generalDetails?.pendingOrderLimitCount || generalReviewRequired) && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700'
                         }`}>
                           {result.allMatch ? <CheckCircle className="w-7 h-7" /> : <AlertCircle className="w-7 h-7" />}
                         </div>
                         <div>
                           <h3 className="font-black text-[#3B1A5E] text-lg leading-tight md:text-xl flex items-center gap-2 flex-wrap">
-                            {generalDetails && result.allMatch ? generalDetails.finalStatus : generalDetails?.finalStatus || result.verdict}
+                            {generalDecisionReview ? 'REVIEW REQUIRED' : generalDetails?.finalStatus || result.verdict}
                             <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-mono font-medium">{result.storage?.status==='saved'?'Saved audit':'Session Log'}</span>
                             {verificationTime !== null && (
                               <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded font-mono font-semibold flex items-center gap-1">
@@ -1278,9 +1279,9 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                       </div>
                       <div className="text-right shrink-0 flex items-center gap-3 flex-wrap sm:flex-nowrap">
                         <span className={`text-[10px] font-mono px-3 py-1.5 rounded-full font-bold shadow-sm uppercase ${
-                          result.allMatch ? 'bg-green-100 text-green-805' : (generalReviewRequired || generalDetails?.pendingOrderLimitCount) && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+                          result.allMatch ? 'bg-green-100 text-green-805' : generalDecisionReview || (generalReviewRequired || generalDetails?.pendingOrderLimitCount) && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
                         }`}>
-                          {result.allMatch ? generalDetails ? 'NO DISCREPANCY' : 'VERIFIED MATCH' : result.issueCount > 0 ? 'DISCREPANCY' : generalDetails?.auditSummary?.missingRequiredCount ? 'MISSING REQUIRED INFORMATION' : generalDetails?.productTotals?.quantityReview && result.issueCount===0 ? 'QUANTITY REVIEW REQUIRED' : generalReviewRequired && result.issueCount === 0 ? 'CLARIFICATION REQUIRED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
+                          {result.allMatch ? generalDetails ? 'NO DISCREPANCY' : 'VERIFIED MATCH' : generalDecisionReview ? 'REVIEW REQUIRED' : result.issueCount > 0 ? 'DISCREPANCY' : generalDetails?.auditSummary?.missingRequiredCount ? 'MISSING REQUIRED INFORMATION' : generalDetails?.productTotals?.quantityReview && result.issueCount===0 ? 'QUANTITY REVIEW REQUIRED' : generalReviewRequired && result.issueCount === 0 ? 'CLARIFICATION REQUIRED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
                         </span>
                         {result.allMatch ? (
                           <button
@@ -1437,6 +1438,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
 
                         {/* Confidence Score Gauge */}
                         {generalDetails ? <GeneralVerificationConfidence
+                          decision={generalDetails.decision}
                           summary={generalDetails.auditSummary ?? buildGeneralAuditCheckSummary(result.items, generalDetails.facility, generalDetails.orderer, generalDetails.phone, result.issueCount)}
                           pendingOrderLimits={generalDetails.pendingOrderLimitCount}
                           allMatch={result.allMatch}

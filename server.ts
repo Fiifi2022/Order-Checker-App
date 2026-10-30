@@ -1062,7 +1062,8 @@ app.post('/api/verify', async (req, res) => {
           auditReadBudget(req, readManagedGeneralDirectory).catch(() => { throw Object.assign(new Error('Facility list unavailable. Retry before dispatch.'), { status: 503 }); }), optionalSheets
         ]);
         return readGeneralFacilityContext(async () => { if (!identity.sheets) throw new Error('Identity reference unavailable'); return identity.sheets; },
-          Math.max(1, auditRemainingMs(req)), activeGeneralFacilities(managedDirectory), excludedGeneralFacilities(managedDirectory));
+          Math.max(1, auditRemainingMs(req)), activeGeneralFacilities(managedDirectory), excludedGeneralFacilities(managedDirectory))
+          .then(context => ({...context, revision: managedDirectory.revision}));
       };
       const facilityContext = await (auditTiming(req)?.measureAsync('facilityRecords', () => auditReadBudget(req, readFacilityContext)) ?? auditReadBudget(req, readFacilityContext));
       response = { text: JSON.stringify(await auditReadBudget(req, () => runGeneralProductNameAudit(whatsappMessage, fulfillmentConfirmation, res.locals.auditCatalog, {
