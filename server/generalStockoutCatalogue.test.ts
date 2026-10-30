@@ -90,7 +90,7 @@ test('any positive zero-ratio denominator means stockout without a quantity revi
    assert.equal(p.stockStatus,'out of stock');assert.equal(p.fulfillmentStatus,'out of stock');assert.equal(p.requested,5);assert.equal(p.confirmationRequested,denominator);assert.equal(p.supplied,0);
    assert.equal(p.quantityReviewRequired,undefined);assert.equal(p.quantityError,undefined);
    assert.equal(r.generalAudit.counts.outOfStock,1);assert.equal(r.generalAudit.productTotals?.quantityReview,0);
-   assert.match(r.generalAudit.finalStatus,/NO DISCREPANCY.*OUT OF STOCK/);
+   assert.match(r.generalAudit.finalStatus,/NO DISCREPANCY/);
   }
  }
  for(const quantity of ['0/0','0/-1']){const invalid=await audit('RDT 5',`Malaria Rapid Diagnostic Test Kit [${quantity}]`);assert.equal(invalid.allMatch,false);}

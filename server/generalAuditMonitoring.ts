@@ -1,7 +1,7 @@
-import { runGeneralAuditor, normalizeGeneralProductName } from './generalAuditor';
+import { runGeneralAuditor, normalizeGeneralProductName, generalFourParameterRecord } from './generalAuditor';
 import { generalPackagingCatalogueSize, getGeneralPackagingFactor } from '../src/utils/generalPackaging';
 export function generalAuditHistory(records: any[]) {
-  return [...new Map(records.filter(record => !record.isDemo && record.generalAudit && (record.auditScope === 'general_auditor' || !record.auditScope)).map(record => [record.id, record])).values()].sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
+  return [...new Map(records.filter(record => !record.isDemo && record.generalAudit && (record.auditScope === 'general_auditor' || !record.auditScope)).map(record => [record.id, generalFourParameterRecord(record)])).values()].sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
 }
 export function generalAuditAnalytics(records: any[]) {
   const rows = generalAuditHistory(records);

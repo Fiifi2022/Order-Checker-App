@@ -39,7 +39,8 @@ export default function GeneralFulfillmentSummary({ details }: { details: Genera
   const reviewCount = Math.max(0, (details.auditSummary?.reviewRequiredCount || 0) - Number(details.facility.status === 'review required' && facilityNameMatched));
   const status = /POSSIBLE FACILITY MATCH/i.test(details.finalStatus) ? 'ORDER CHECKS' : /UNRESOLVED TEXT/i.test(details.finalStatus) ? notices.length ? 'ORDER DETAILS REQUIRED' : 'ORDER CHECKS' : details.finalStatus;
   const warnings = (details.warnings || []).filter(warning => !fieldWarnings.has(warning) && !obsoleteWarning.test(warning));
-  const groups = [
+  const groups: {status: string; kind?: string; title: string; review?: boolean}[] = [
+    {status: 'discrepancy', review: true, title: 'Product Identity Review'},
     { status: 'discrepancy', kind: 'identity', title: 'Product Identity Discrepancies' },
     { status: 'discrepancy', kind: 'missing', title: 'Missing Products' },
     { status: 'discrepancy', kind: 'extra', title: 'Extra Products' },
@@ -50,15 +51,15 @@ export default function GeneralFulfillmentSummary({ details }: { details: Genera
     { status: 'order limit applied', title: 'Order Limit Applied' },
     { status: 'out of stock', title: 'Out of Stock' }
   ];
-  const metadata = [details.dropArea?.status === 'mismatch' && 'Location Mismatch — Delivery/Drop Area', details.district?.status === 'mismatch' && 'District Mismatch', details.facility.status === 'mismatch' && 'Facility Mismatch', details.orderer.status === 'mismatch' && 'Orderer Name Mismatch'].filter(Boolean);
+  const metadata = [details.facility.status === 'mismatch' && 'Facility Mismatch', details.orderer.status === 'mismatch' && 'Orderer Name Mismatch'].filter(Boolean);
   return <section className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm space-y-4" aria-label="Fulfillment summary">
     <h4 className="font-bold text-[#3B1A5E]">{status}</h4>
     {details.message && !obsoleteWarning.test(details.message) && <p className="text-sm">{details.message}</p>}
     {!!warnings.length && <div className="text-xs text-amber-800"><h5 className="font-semibold">Warnings</h5><ul>{warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></div>}
     {metadata.length > 0 && <div className="text-xs text-red-800"><h5 className="font-semibold">Metadata Discrepancies</h5><ul>{metadata.map(issue => <li key={String(issue)}>{issue}</li>)}</ul></div>}
     {groups.map(group => {
-      const products = details.products.filter(product => product.fulfillmentStatus === group.status && (!group.kind || product.discrepancyKind === group.kind));
-      return products.length ? <div key={group.title} className={`text-xs space-y-1 ${['out of stock','quantity review'].includes(group.status) ? 'text-amber-800' : ''}`}>
+      const products = details.products.filter(product => product.fulfillmentStatus === group.status && (!group.kind || product.discrepancyKind === group.kind) && Boolean(product.identityReviewRequired) === Boolean(group.review));
+      return products.length ? <div key={group.title} className={`text-xs space-y-1 ${group.review || ['out of stock','quantity review'].includes(group.status) ? 'text-amber-800' : ''}`}>
         <h5 className="font-semibold">{group.title}</h5>
         <ul className="list-disc pl-4 space-y-1">{products.map(product => <li key={product.key}>
           <GeneralProductCategoryBadge category={product.category} />{' '}

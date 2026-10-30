@@ -57,7 +57,8 @@ test('duplicate repair retains header mismatches and other semantic product deci
   const result = completeGeneralAuditRun(createGeneralAuditRun({ whatsappMessage: request, fulfillmentConfirmation: system }, 1, {}, {}, true), record);
   assert.equal(result.items.length, 3);
   assert.equal(result.items.at(-1), original);
-  assert.equal(result.meta, record.meta);
+  assert.deepEqual(result.meta.ordererName, record.meta.ordererName);
+  assert.deepEqual(result.meta.facilityName, record.meta.facilityName);
   assert.equal(result.generalAudit.facility.status, 'mismatch');
   assert.equal(result.generalAudit.orderer.status, 'mismatch');
   assert.equal(result.issueCount, 3);

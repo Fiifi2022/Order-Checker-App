@@ -4,6 +4,24 @@ import { classifyGeneralText, generalOrderRelevantText } from './generalTextClas
 
 export type GeneralEssentialField = 'ordererName' | 'facilityName' | 'products' | 'quantity';
 export interface GeneralEssentialNotice { field: GeneralEssentialField; message: string }
+/** The same four field decisions drive the website and extension. */
+export function generalFourParameterStatuses(details: GeneralAuditDetails) {
+  if (!details.facility || !details.orderer || !details.productCount || !Array.isArray(details.products)) {
+    return {facility: details.facility?.status || 'review required' as const, orderer: details.orderer?.status || 'review required' as const,
+      products: 'review required' as const, quantities: 'review required' as const};
+  }
+  const notices = generalAuditClarifications(details);
+  const identity = (status: GeneralAuditDetails['orderer']['status']) => ['match', 'mismatch'].includes(status) ? status : 'review required' as const;
+  const products = !details.productCount.requested || !details.productCount.found ? 'review required' as const
+    : details.products.some(product => product.fulfillmentStatus === 'discrepancy' && product.discrepancyKind !== 'quantity')
+      ? details.decision === 'review' ? 'review required' as const : 'mismatch' as const
+      : details.productVerifications?.some(product => product.status !== 'customer verified') || notices.some(notice => notice.field === 'products') ? 'review required' as const : 'match' as const;
+  const quantities = details.products.some(product => product.discrepancyKind === 'quantity' && product.fulfillmentStatus === 'discrepancy' &&
+    !product.requestedQuantityMissing && !product.suppliedQuantityMissing && !product.quantityReviewRequired) ? 'mismatch' as const
+    : details.pendingOrderLimitCount || products !== 'match' || notices.some(notice => notice.field === 'quantity') ||
+      details.products.some(product => product.quantityReviewRequired || product.requestedQuantityMissing || product.suppliedQuantityMissing) ? 'review required' as const : 'match' as const;
+  return {facility: identity(details.facility.status), orderer: identity(details.orderer.status), products, quantities};
+}
 
 /** Explicit metadata labels take priority over a generic extraction category. */
 export function generalReviewField(review: GeneralSemanticReview): GeneralEssentialField {

@@ -39,15 +39,15 @@ test('current raw inputs survive parsing, a legacy API response, and actual fiel
   assert.equal(record.id, 'current-audit');
   assert.equal(record.whatsappMessage, customerRequestRaw);
   assert.equal(record.fulfillmentConfirmation, fulfillmentRaw);
-  assert.equal(record.verdict, 'MISSING REQUIRED INFORMATION');
+  assert.equal(record.verdict, 'REVIEW REQUIRED');
   assert.equal(record.issueCount, 0);
   assert.equal(record.auditSummary.missingRequiredCount, 2);
   assert.deepEqual(record.items.map(item => item.name), ['Multivitamin Syrup', 'Paracetamol 120mg/5mL Syrup, 100mL']);
   const html = renderDetails(record);
   assert.match(html, /Customer Request: Isaac Awuyem/);
   assert.match(html, /Customer Request: Gbimsi CHPS/);
-  assert.match(html, /ORDERER NAME NOT FOUND/);
-  assert.match(html, /FACILITY NOT FOUND/);
+  assert.match(html, /REVIEW REQUIRED/);
+  assert.match(html, /REVIEW REQUIRED/);
   assert.match(html, /Fulfilment Confirmation: Not found/);
   assert.match(html, /System Entry: Not available/);
   assert.doesNotMatch(JSON.stringify(record) + html, /Orderer Name Missing|Facility Name Missing|Unrelated old product/);
@@ -81,8 +81,8 @@ test('missing customer fields use customer-specific states even if system is als
     assert.equal(record.generalAudit.orderer.status, 'missing from customer request');
     assert.equal(record.generalAudit.facility.status, 'missing from customer request');
     const html = renderDetails(record);
-    assert.match(html, /ORDERER NAME NOT FOUND/);
-    assert.match(html, /FACILITY NOT FOUND/);
+    assert.match(html, /REVIEW REQUIRED/);
+    assert.match(html, /REVIEW REQUIRED/);
   }
 });
 
@@ -112,7 +112,7 @@ test('orderer found in fulfillment sentence survives API completion and renders 
   assert.equal(record.generalAudit.orderer.status, 'match');
   const html = renderDetails(record);
   assert.match(html, /Fulfilment Confirmation: Isaac Awuyem/);
-  assert.match(html, /FACILITY NOT FOUND/);
+  assert.match(html, /REVIEW REQUIRED/);
   assert.doesNotMatch(html, /ORDERER NAME MISMATCH|ORDERER NAME MISSING/);
 });
 
@@ -120,7 +120,7 @@ test('different sentence orderer renders the current name and an orderer discrep
   const record = completeGeneralAuditRun(createGeneralAuditRun({ ...inputs, fulfillmentConfirmation: 'Order received for John Mensah.\n' + fulfillmentRaw }, 8), {});
   assert.equal(record.issueCount, 1);
   assert.equal(record.auditSummary.missingRequiredCount, 1);
-  assert.equal(record.verdict, 'DISCREPANCY');
+  assert.equal(record.verdict, 'DISCREPANCY DETECTED');
   const html = renderDetails(record);
   assert.match(html, /Fulfilment Confirmation: John Mensah/);
   assert.match(html, /ORDERER NAME MISMATCH/);
@@ -163,6 +163,6 @@ test('API completion preserves an out-of-stock record without reviving a legacy 
   assert.equal(record.items[0].found, '0');
   assert.equal(record.hasOutOfStockItems, true);
   assert.equal(record.issueCount, 0);
-  assert.equal(record.verdict, 'MATCH');
+  assert.equal(record.verdict, 'NO DISCREPANCY');
   assert.doesNotMatch(renderDetails(record), /DISCREPANCY FOUND|MISMATCH/);
 });

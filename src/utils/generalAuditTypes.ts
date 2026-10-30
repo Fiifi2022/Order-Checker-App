@@ -98,6 +98,7 @@ export interface GeneralAuditDetails {
 
 export type GeneralFulfillmentStatus = 'fully supplied' | 'quantity review' | 'out of stock' | 'pending order limit' | 'order limit applied' | 'discrepancy';
 export interface GeneralProductResult {
+  identityReviewRequired?: boolean;
   productStatus?: GeneralProductReviewState;
   matchingStage?: import('./generalProductMatching').GeneralMatchingStage;
   clinicalAttributes?: import('./generalProductMatching').GeneralClinicalAttributes;

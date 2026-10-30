@@ -561,3 +561,23 @@ test('General verify retains a failed history write and a same-ID retry creates 
  app.setWriteFailure(false);const saved=await route(body);assert.equal(saved.body.storage.status,'saved');assert.equal(saved.body.id,body.checkId);
  assert.equal([...app.records.keys()].filter(key=>key.startsWith('audits/')).length,1);assert.equal(saved.body.generalAudit.counts.outOfStock,1);assert.equal(saved.body.createdByUserId,'cca');assert.equal(app.balance('OPV'),15);
 });
+
+test('General verify persists four-parameter clearance even when all optional metadata differs', async () => {
+  const app = fixture(); await app.refresh();
+  const catalog = {revision: 1300, products: [{id: 'rdt', scope: 'general' as const, name: 'Malaria Rapid Diagnostic Test Kit', aliases: ['RDT'], contextualAliases: [], category: 'diagnostic', note: ''}]};
+  app.records.set('product_catalog/current', catalog); applyCatalog(catalog);
+  const route = verifyRoute(app);
+  const body = {checkId: 'AUD-four-parameters', auditScope: 'general_auditor',
+    whatsappMessage: 'Orderer: Grace Akabati\nFacility: Example HC\nRDT 5\nDistrict: North\nDropsite: Front gate\nPhone: 0241234567\nDate: 30/10/2026',
+    fulfillmentConfirmation: 'Orderer: Grace Akabati\nFacility: Example Health Centre\nMalaria Rapid Diagnostic Test Kit [5/5]\nDistrict: South\nDropsite: Back gate\nPhone: 0209998888\nDate: 01/11/2026'};
+  const response = await route(body);
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(response.body.allMatch, true, JSON.stringify(response.body)); assert.equal(response.body.issueCount, 0);
+  assert.equal(response.body.generalAudit.finalStatus, 'NO DISCREPANCY');
+  assert.equal(response.body.confidence, 100); assert.equal(response.body.storage.status, 'saved');
+  const saved = app.records.get('audits/' + body.checkId);
+  assert.equal(saved.finalVerdict, 'NO DISCREPANCY'); assert.equal(saved.issueCount, 0);
+  assert.equal(saved.whatsappMessage, body.whatsappMessage);
+  assert.equal(saved.fulfillmentConfirmation, body.fulfillmentConfirmation);
+  assert.equal(app.balance('IPV'), 20, 'General auditing never deducts a vaccine allocation');
+});

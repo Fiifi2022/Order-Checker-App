@@ -636,6 +636,7 @@ export function locateGeneralSystemFacility(text: string, customerFacilityName: 
 }
 
 export function runGeneralAuditor(customerRequest: string, fulfillmentConfirmation: string, orderLimitDecisions: Record<string, boolean> = {}, support: GeneralAuditSupport = {}) {
+  const facilityContextCustomer = customerRequest, facilityContextSystem = fulfillmentConfirmation;
   customerRequest = generalOrderRelevantText(customerRequest);
   fulfillmentConfirmation = generalOrderRelevantText(fulfillmentConfirmation);
   const measure = <T,>(stage: import('../../shared/auditPerformance').AuditStage, task: () => T) => support.timing ? support.timing.measure(stage, task) : task();
@@ -643,7 +644,7 @@ export function runGeneralAuditor(customerRequest: string, fulfillmentConfirmati
   const customerIdentity = extractGeneralIdentity(customerRequest, 'customer_request', 'N/A', 'N/A', support.timing);
   const systemIdentity = extractGeneralIdentity(fulfillmentConfirmation, 'fulfillment_confirmation', customerIdentity.ordererName, customerIdentity.facilityName, support.timing);
   const ordererName = compareGeneralOrdererNames(customerIdentity.ordererName, systemIdentity.ordererName);
-  const facilityName = measure('facilityIdentification', () => compareGeneralFacilities(customerIdentity.facilityName, systemIdentity.facilityName, customerRequest, fulfillmentConfirmation, support.facilityContext));
+  const facilityName = measure('facilityIdentification', () => compareGeneralFacilities(customerIdentity.facilityName, systemIdentity.facilityName, facilityContextCustomer, facilityContextSystem, support.facilityContext));
   // Contact numbers identify a communication channel, not the requested order.
   const phone: GeneralFieldResult = { whatsappValue: customerIdentity.phone, fulfillmentValue: systemIdentity.phone, status: 'optional not provided' };
   const customerExtraction = { ...customerIdentity, products: measure('productExtraction', () => parseGeneralProducts(customerRequest, 'customer_request', support.timing)) };
@@ -875,9 +876,7 @@ export function buildGeneralAuditCheckSummary(items: { status: string; requested
     if (field.status === 'match') passedChecks++;
     else failedChecks++;
   }
-  // Phone is optional, but when both sides supply it its comparison is audited.
-  if (phone.status === 'mismatch') failedChecks++;
-  else if (phone.status === 'match' && phone.whatsappValue !== 'N/A' && phone.fulfillmentValue !== 'N/A') passedChecks++;
+  // Contact information never contributes to a General Auditor score.
   for (const item of items) {
     if (item.status === 'missing item' || item.status === 'extra item') {
       failedChecks++; // No second quantity check when there is no paired product.
@@ -936,6 +935,11 @@ export function reconcileGeneralProductReviews(items: GeneralComparisonItem[], r
 
 /** Rebuild every product-derived total while retaining authoritative header checks. */
 export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilityName: GeneralFacilityResult, ordererName: GeneralFieldResult, phone: GeneralFieldResult, requestedCount: number, systemCount: number, semanticReviews: GeneralSemanticReview[] = [], parameters: Pick<GeneralAuditDetails, 'dropArea' | 'district' | 'productVerifications' | 'extraction' | 'decision'> = {}) {
+  const unresolvedProduct = (item: GeneralComparisonItem) => item.fulfillment.fulfillmentStatus === 'discrepancy' &&
+    item.provenance.length > 0 && item.provenance.some(p => p.matchedProductKey?.startsWith('unresolved:'));
+  parameters = {...parameters,
+    ...(parameters.dropArea ? {dropArea: {...parameters.dropArea, status: 'informational' as const}} : {}),
+    ...(parameters.district ? {district: {...parameters.district, status: 'informational' as const}} : {})};
   const verifications: GeneralProductVerification[] = [];
   for (const product of parameters.productVerifications || []) {
     const policy = generalConfirmationPolicy(product, normalizeGeneralProductName);
@@ -978,6 +982,7 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   phone = { ...phone, status: 'optional not provided' };
   items = applyGeneralVaccinePairing(items, normalizeGeneralProductName);
   items = items.map(item => {
+    if (unresolvedProduct(item)) item = {...item, fulfillment: {...item.fulfillment, identityReviewRequired: true}};
     const category = generalProductCategory(item.name, normalizeGeneralProductName, item.category);
     const productStatus = ['missing item', 'extra item', 'vaccine pairing mismatch', 'product identity discrepancy'].includes(item.status) ? 'product discrepancy' as const : 'product match' as const;
     if (item.fulfillment.productStatus !== productStatus) item = { ...item, fulfillment: { ...item.fulfillment, productStatus } };
@@ -988,21 +993,18 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
     item.provenance.some(product => product.source === 'customer_request')).length);
   const metadataIssues = [
     ordererName.status === 'mismatch' ? 'Orderer Name Mismatch' : '',
-    facilityName.status === 'mismatch' ? 'Facility Name Mismatch' : '',
-    parameters.dropArea?.status === 'mismatch' ? 'Location Mismatch — Delivery/Drop Area' : '',
-    parameters.district?.status === 'mismatch' ? 'District Mismatch' : '',
-    phone.status === 'mismatch' ? 'Phone Number Mismatch' : ''
+    facilityName.status === 'mismatch' ? 'Facility Name Mismatch' : ''
   ].filter(Boolean);
   const missingRequired = [
     ordererName.status !== 'match' && ordererName.status !== 'mismatch' && ordererName.status !== 'review required' ? 'Name of Orderer' : '',
     facilityName.status !== 'match' && facilityName.status !== 'mismatch' && facilityName.status !== 'review required' ? 'Name of Health Facility' : '',
     (requestedCount === 0 || systemCount === 0) && !hasProductReview ? 'Products and Quantities' : ''
   ].filter(Boolean);
-  const optionalReviews = [parameters.dropArea, parameters.district].filter(field => field?.status === 'mismatch' || field?.status === 'review required');
+  const optionalReviews: GeneralFieldResult[] = [];
   const essentialReviewCount = reviewNotices.length;
   // Counts remain visible; missing/extra products already contribute one issue
   // each, so a count difference must not count the same problem again.
-  const discrepancies = [...metadataIssues, ...items.filter(item => item.fulfillment.fulfillmentStatus === 'discrepancy').map(item =>
+  const discrepancies = [...metadataIssues, ...items.filter(item => item.fulfillment.fulfillmentStatus === 'discrepancy' && !unresolvedProduct(item)).map(item =>
     item.fulfillment.identityError ? `${item.name}: ${item.fulfillment.identityError}` :
     item.fulfillment.vaccinePairingError ? item.fulfillment.vaccinePairingError :
     item.status === 'quantity mismatch' ? `${item.name} quantity mismatch: requested ${item.requested}, entered ${item.found}, difference ${item.difference}` :
@@ -1013,12 +1015,8 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   const quantityReviewCount = items.filter(item=>item.fulfillment.quantityReviewRequired).length;
   const requestedStockCount = items.filter(item => (item.fulfillment.stockStatus || item.status === 'out of stock') && item.provenance.some(product => product.source === 'customer_request')).length;
   const stockStatus: GeneralAuditDetails['stockStatus'] = requestedStockCount === 0 ? 'in stock' : requestedStockCount === requestedCount && items.filter(item => item.fulfillment.stockStatus || item.status === 'out of stock').every(item => item.fulfillment.supplied === 0) ? 'out of stock' : 'partially out of stock';
-  const summary = calculateGeneralAuditSummary(items.filter(item => item.fulfillment.fulfillmentStatus !== 'pending order limit'), metadataIssues);
+  const summary = calculateGeneralAuditSummary(items.filter(item => item.fulfillment.fulfillmentStatus !== 'pending order limit' && !unresolvedProduct(item)), metadataIssues);
   const auditSummary = buildGeneralAuditCheckSummary(items, facilityName, ordererName, phone, summary.issueCount);
-  for (const field of [parameters.dropArea, parameters.district]) {
-    if (field?.status === 'match') auditSummary.passedChecks++;
-    else if (field?.status === 'mismatch' || field?.status === 'review required') auditSummary.failedChecks++;
-  }
   if (!items.length && !semanticReviews.length && (requestedCount === 0 || systemCount === 0)) auditSummary.failedChecks++;
   if (missingRequired.length) auditSummary.missingRequiredCount = missingRequired.length;
   auditSummary.failedChecks += essentialReviewCount;
@@ -1029,10 +1027,9 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
   const facilityReview = facilityName.status === 'review required';
   const reviewRequiredCount = quantityReviewCount + Number(facilityReview) + Number(ordererReview && !reviewNotices.some(notice => notice.field === 'ordererName')) + essentialReviewCount + missingRequired.length + optionalReviews.length;
   if (reviewRequiredCount) auditSummary.reviewRequiredCount = reviewRequiredCount;
-  const allMatch = summary.allMatch && quantityReviewCount === 0 && pendingOrderLimitCount === 0 && !facilityReview && !ordererReview && essentialReviewCount === 0 && missingRequired.length === 0 && optionalReviews.length === 0;
-  const finalStatus = summary.issueCount > 0 ? 'DISCREPANCY DETECTED' : quantityReviewCount ? 'OUT OF STOCK — QUANTITY REVIEW REQUIRED' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : optionalReviews.length ? 'LOCATION CLARIFICATION REQUIRED' : ordererReview ? 'REVIEW REQUIRED' : facilityReview ? 'ORDER CHECKS INCOMPLETE' : essentialReviewCount ? 'ORDER DETAILS REQUIRED' : pendingOrderLimitCount > 0 ? 'ORDER LIMIT VALIDATION REQUIRED' :
-    limitedCount && requestedStockCount ? 'PARTIALLY FULFILLED — CONFIRMED' : limitedCount ? 'ORDER LIMIT APPLIED — CONFIRMED' :
-    stockStatus === 'out of stock' ? 'OUT OF STOCK — CONFIRMED' : stockStatus === 'partially out of stock' ? 'PARTIALLY OUT OF STOCK — CONFIRMED' : 'MATCH — ORDER VERIFIED';
+  const allMatch = summary.allMatch && !items.some(unresolvedProduct) && quantityReviewCount === 0 && pendingOrderLimitCount === 0 && !facilityReview && !ordererReview && essentialReviewCount === 0 && missingRequired.length === 0;
+  const decision = summary.issueCount > 0 ? 'discrepancy' : allMatch ? 'match' : 'review';
+  const finalStatus = decision === 'discrepancy' ? 'DISCREPANCY DETECTED' : allMatch ? 'NO DISCREPANCY' : 'REVIEW REQUIRED';
   const confirmedDecisions = Object.fromEntries(items.filter(item => item.fulfillment.orderLimitDecision !== undefined).map(item => [item.fulfillment.key, item.fulfillment.orderLimitDecision!]));
   const message = quantityReviewCount ? `${quantityReviewCount} out-of-stock product${quantityReviewCount===1?' requires':'s require'} verification of the requested quantity recorded in confirmation.` : missingRequired.length ? 'Essential order details are incomplete.' : ordererReview && !summary.issueCount ? 'Orderer name requires review before dispatch.' : optionalReviews.length ? 'Delivery/drop area or district information conflicts. Manually verify the highlighted locations before dispatch.' : essentialReviewCount && !summary.issueCount ? 'Confirm the highlighted essential order fields.' : facilityReview && !summary.issueCount ? 'Order comparison completed.' : summary.issueCount > 0 ? `${summary.issueCount} discrepanc${summary.issueCount === 1 ? 'y' : 'ies'} found — review before dispatch.${requestedStockCount ? ` ${requestedStockCount} requested product${requestedStockCount === 1 ? ' is' : 's are'} currently out of stock.` : ''}` :
     requestedStockCount && limitedCount ? `Order matches, with ${requestedStockCount} product${requestedStockCount === 1 ? '' : 's'} currently out of stock and some requested quantities affected by an order limit.` :
@@ -1047,16 +1044,23 @@ export function summarizeGeneralProducts(items: GeneralComparisonItem[], facilit
     productCount: { requested: requestedCount, found: systemCount, status: requestedCount === systemCount ? 'match' : 'mismatch' }, discrepancies,
     counts: { fullySupplied: items.filter(item => item.fulfillment.fulfillmentStatus === 'fully supplied').length, outOfStock: stockCount, orderLimited: limitedCount, pendingOrderLimits: pendingOrderLimitCount },
     productTotals: {requested:requestedCount, matched:items.filter(item=>item.provenance.some(p=>p.source==='customer_request') && item.provenance.some(p=>p.source==='fulfillment_confirmation') && !item.fulfillment.identityError).length, physicallyFulfilled:items.filter(item=>item.fulfillment.supplied>0).length, outOfStock:stockCount, physicallySuppliedUnits:items.reduce((sum,item)=>sum+item.fulfillment.supplied,0), missing:items.filter(item=>item.status==='missing item').length, quantityReview:quantityReviewCount, discrepancies:summary.issueCount},
-    products: items.map(item => item.fulfillment), orderLimitDecisions: confirmedDecisions, pendingOrderLimitCount, stockStatus, finalStatus,
-    ...(parameters.decision ? {decision: allMatch ? 'match' :
-      facilityName.status === 'mismatch' || ordererName.status === 'mismatch' || items.some(item => item.status === 'quantity mismatch' &&
-        !item.provenance.some(p => p.quantityReview) && !item.fulfillment.requestedQuantityMissing && !item.fulfillment.suppliedQuantityMissing)
-        ? 'discrepancy' : parameters.decision} : {}) };
+    products: items.map(item => item.fulfillment), orderLimitDecisions: confirmedDecisions, pendingOrderLimitCount, stockStatus, finalStatus, decision };
   return { items, generalAudit, ...summary, allMatch, status: allMatch ? 'resolved' as const : 'pending' as const, auditSummary, ...dispatchReadiness, confidence: auditSummary.confidence,
-    verdict: summary.issueCount > 0 ? 'DISCREPANCY' : quantityReviewCount ? 'QUANTITY REVIEW REQUIRED' : missingRequired.length ? 'MISSING REQUIRED INFORMATION' : ordererReview || facilityReview || essentialReviewCount || optionalReviews.length ? 'CLARIFICATION REQUIRED' : pendingOrderLimitCount ? 'ORDER LIMIT VALIDATION REQUIRED' : 'MATCH', insights: discrepancies };
+    verdict: finalStatus, insights: discrepancies };
 }
 
 /** Apply a user's answer immediately without reinterpreting products or headers. */
+export function generalFourParameterRecord<T>(record: T): T {
+  const value = record as any, details = value?.generalAudit;
+  if (!details?.facility || !details.orderer || !details.phone || !details.productCount || !Array.isArray(value.items) ||
+    !value.items.every((item: any) => item.fulfillment && Array.isArray(item.provenance))) return record;
+  const rebuilt = summarizeGeneralProducts(value.items, details.facility, details.orderer, details.phone,
+    details.productCount.requested, details.productCount.found, details.semanticReviews || [], details);
+  return {...value, ...rebuilt, generalAudit: {...details, ...rebuilt.generalAudit}, auditDecision: rebuilt.generalAudit.decision,
+    ...(value.status === 'resolved' ? {status: value.status} : {}),
+    finalVerdict: rebuilt.generalAudit.finalStatus, generalCounts: rebuilt.generalAudit.counts};
+}
+
 export function applyGeneralOrderLimitDecision<T extends ReturnType<typeof runGeneralAuditor>>(result: T, key: string, answer: boolean) {
   const target = result.items.find(item => item.fulfillment.key === key);
   if (!target?.fulfillment.orderLimitEligible) return result;
@@ -1080,12 +1084,12 @@ export function enforceGeneralIdentityMatches<T extends ReturnType<typeof runGen
   const supplied = extractGeneralIdentity(fulfillment, 'fulfillment_confirmation', requested.ordererName, requested.facilityName);
   const original = {
     orderer: compareGeneralOrdererNames(
-      requested.ordererName === 'N/A' && result.generalAudit.orderer.whatsappValue !== 'N/A' && customer.includes(result.generalAudit.orderer.whatsappValue)
+      requested.ordererName === 'N/A' && result.generalAudit.orderer.whatsappValue !== 'N/A' && generalOrderRelevantText(customer).includes(result.generalAudit.orderer.whatsappValue)
         ? result.generalAudit.orderer.whatsappValue : requested.ordererName,
       supplied.ordererName, result.generalAudit.orderer.nameEvidence),
     facility: compareGeneralFacilities(
-      requested.facilityName === 'N/A' && customer.includes(result.generalAudit.facility.whatsappValue) ? result.generalAudit.facility.whatsappValue : requested.facilityName,
-      supplied.facilityName === 'N/A' && fulfillment.includes(result.generalAudit.facility.fulfillmentValue) ? result.generalAudit.facility.fulfillmentValue : supplied.facilityName,
+      requested.facilityName === 'N/A' && generalOrderRelevantText(customer).includes(result.generalAudit.facility.whatsappValue) ? result.generalAudit.facility.whatsappValue : requested.facilityName,
+      supplied.facilityName === 'N/A' && generalOrderRelevantText(fulfillment).includes(result.generalAudit.facility.fulfillmentValue) ? result.generalAudit.facility.fulfillmentValue : supplied.facilityName,
       customer, fulfillment, facilityContext)
   };
   const optional = compareGeneralOptionalFields(customer, fulfillment, facilityContext);
@@ -1097,7 +1101,7 @@ export function enforceGeneralIdentityMatches<T extends ReturnType<typeof runGen
   const orderer = original.orderer;
   if (orderer.status === 'not available in system entry') {
     const value = details.orderer.fulfillmentValue;
-    if (value !== 'N/A' && (` ${normalizeAuditText(fulfillment)} `).includes(` ${normalizeAuditText(value)} `)) {
+    if (value !== 'N/A' && (` ${normalizeAuditText(generalOrderRelevantText(fulfillment))} `).includes(` ${normalizeAuditText(value)} `)) {
       original.orderer = compareGeneralOrdererNames(orderer.whatsappValue, value, result.generalAudit.orderer.nameEvidence);
     }
   }

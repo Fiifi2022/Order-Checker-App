@@ -20,7 +20,7 @@ test('clicking Yes immediately confirms the item and yields a green order withou
   assert.equal(result.issueCount, 0);
   assert.equal(result.allMatch, true);
   assert.deepEqual(result.insights, []);
-  assert.equal(result.generalAudit.finalStatus, 'ORDER LIMIT APPLIED — CONFIRMED');
+  assert.equal(result.generalAudit.finalStatus, 'NO DISCREPANCY');
   assert.equal(result.generalAudit.orderLimitDecisions[key], true);
   const html = renderToStaticMarkup(createElement(GeneralOrderLimitPrompt, {
     product: result.generalAudit.products[0], onDecision() {} }));

@@ -38,7 +38,7 @@ test('the same full log is cleared when the actual orderer names agree', async (
   assert.equal(result.allMatch, true);
   assert.equal(result.status, 'resolved');
   assert.equal(result.generalAudit.orderer.status, 'match');
-  assert.equal(result.generalAudit.finalStatus, 'MATCH — ORDER VERIFIED');
+  assert.equal(result.generalAudit.finalStatus, 'NO DISCREPANCY');
   assert.deepEqual(result.generalAudit.warnings, []);
   assert.equal(result.confidence, 100);
   assert.match(render(result.generalAudit), /MATCH — CLEARED/);

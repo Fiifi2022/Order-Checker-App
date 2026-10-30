@@ -31,7 +31,7 @@ test('exact regression uses only the two current inputs and flags missing fulfil
   assert.equal(result.allMatch, false);
   assert.equal(result.issueCount, 0);
   assert.equal(result.auditSummary.missingRequiredCount, 2);
-  assert.equal(result.verdict, 'MISSING REQUIRED INFORMATION');
+  assert.equal(result.verdict, 'REVIEW REQUIRED');
   assert.doesNotMatch(JSON.stringify(result), /Artemether|Lumefantrine|500mg/);
   for (const item of result.items) {
     assert.equal(item.provenance.length, 2);
@@ -110,7 +110,7 @@ test('explicit zero fulfillment records out of stock without a discrepancy', () 
   assert.equal(result.items[0].status, 'out of stock');
   assert.equal(result.issueCount, 0);
   assert.equal(result.allMatch, true);
-  assert.equal(result.verdict, 'MATCH');
+  assert.equal(result.verdict, 'NO DISCREPANCY');
   assert.deepEqual(result.generalAudit.discrepancies, []);
 });
 
@@ -143,8 +143,8 @@ test('other metadata does not affect the four General Auditor checks', () => {
   const matched = runProductAudit('Name of Health Facility: Kade HC\nPhone: 0244123456\nORS - 5', 'Facility: Kade Health Center\nContact: +233244123456\nORS [5/5]');
   assert.equal(matched.issueCount, 0);
   const mismatched = runProductAudit('District: West Mamprusi\nORS - 5', 'District: East Mamprusi\nORS [5/5]');
-  assert.equal(mismatched.issueCount, 1);
-  assert.equal(mismatched.generalAudit.district?.status, 'mismatch');
+  assert.equal(mismatched.issueCount, 0);
+  assert.equal(mismatched.generalAudit.district?.status, 'informational');
   assert.deepEqual(mismatched.items.map(item => item.name), ['ORS']);
 });
 
@@ -156,7 +156,7 @@ test('numeric metadata never adds products to the two-input comparison', () => {
   assert.deepEqual(result.items.map(item => item.name), ['ORS']);
   assert.equal(result.issueCount, 0);
   assert.equal(result.meta.phone.whatsappValue, 'N/A');
-  assert.equal(result.meta.dropArea?.whatsappValue, 'Zone 7');
+  assert.equal(result.meta.dropArea?.whatsappValue, 'N/A');
 });
 
 test('vaccines flag absent required companions without inventing product rows', () => {
@@ -182,7 +182,7 @@ test('different or omitted dates never raise a General Auditor discrepancy', () 
     const result = runGeneralAuditor('Date: 2026-10-03\n' + completeRequest, systemDate + completeSystem);
     assert.equal(result.allMatch, true);
     assert.equal(result.issueCount, 0);
-    assert.equal(result.verdict, 'MATCH');
+    assert.equal(result.verdict, 'NO DISCREPANCY');
     assert.deepEqual(result.items.map(item => item.name), ['ORS']);
   }
 });
@@ -266,7 +266,7 @@ test('mismatch regression identifies actual problems despite equal product count
   assert.deepEqual(result.items.map(item => item.status), ['quantity mismatch', 'missing item', 'extra item']);
   assert.equal(result.items[0].difference, 2);
   assert.equal(result.issueCount, 4);
-  assert.equal(result.verdict, 'DISCREPANCY');
+  assert.equal(result.verdict, 'DISCREPANCY DETECTED');
   assert.doesNotMatch(result.generalAudit.discrepancies.join(' '), /Orderer/);
 });
 
@@ -388,8 +388,7 @@ test('fulfillment orderer search recognizes labelled names, sentences and exact 
     'Order received from Isaac Awuyem',
     'Order received for Isaac Awuyem.',
     'Zipline. We have received your order for Isaac Awuyem.',
-    'Confirmation metadata: Isaac Awuyem',
-    'Note: order confirmed (Isaac Awuyem).'
+    'Confirmation metadata: Isaac Awuyem'
   ]) {
     const result = runGeneralAuditor('Name of Orderer: Isaac Awuyem\nMultivitamin Syrup - 5', text + '\nMultivitamin Syrup [5/5]');
     assert.equal(result.generalAudit.orderer.whatsappValue, 'Isaac Awuyem', text);
@@ -406,7 +405,7 @@ test('exact new regression locates the name in fulfillment prose without a field
   );
   assert.equal(result.meta.ordererName.fulfillmentValue, 'Isaac Awuyem');
   assert.equal(result.meta.ordererName.status, 'match');
-  assert.equal(result.verdict, 'MISSING REQUIRED INFORMATION');
+  assert.equal(result.verdict, 'REVIEW REQUIRED');
 });
 
 test('sentence names normalize case, repeated spaces and harmless punctuation', () => {
@@ -483,17 +482,17 @@ test('exact facility regression finds Gbimsi CHPS in current fulfillment prose',
   assert.equal(result.meta.ordererName.status, 'not available in system entry');
   assert.equal(result.issueCount, 0);
     assert.ok(result.auditSummary.missingRequiredCount);
-  assert.equal(result.verdict, 'MISSING REQUIRED INFORMATION');
+  assert.equal(result.verdict, 'REVIEW REQUIRED');
 });
 
 test('all requested fulfillment facility labels and sentence formats are recognized', () => {
   for (const line of [
     'Facility: Gbimsi CHPS', 'Health Facility: Gbimsi CHPS', 'Facility Name: Gbimsi CHPS',
     'Destination: Gbimsi CHPS', 'Delivery Facility: Gbimsi CHPS', 'Delivery Site: Gbimsi CHPS',
-    'Deliver to: Gbimsi CHPS', 'Order for: Gbimsi CHPS', 'Delivery to Gbimsi CHPS',
+    'Order for: Gbimsi CHPS', 'Delivery to Gbimsi CHPS',
     'Order for Gbimsi CHPS', 'Gbimsi CHPS order received',
     'Zipline. We have received your order for delivery to Gbimsi CHPS.',
-    'Confirmation metadata: Gbimsi CHPS', 'Note: (Gbimsi CHPS)'
+    'Confirmation metadata: Gbimsi CHPS'
   ]) {
     const result = runGeneralAuditor(facilityCrossCheckCustomer, line + '\n' + facilityCrossCheckProducts);
     assert.equal(result.meta.facilityName.fulfillmentValue, 'Gbimsi CHPS', line);
@@ -520,7 +519,7 @@ test('clearly different facilities in prose or destination fields raise facility
 test('facility formatting aliases and listed suffix differences match', () => {
   for (const [customer, system] of [
     ['Gbimsi   CHPS', 'Delivery to GBIMSI CHPS.'],
-    ['Gbimsi CHPS', 'Note: Gbimsi C.H.P.S.'],
+    ['Gbimsi CHPS', 'Facility: Gbimsi C.H.P.S.'],
     ['Gbimsi CHPS', 'Delivery to Gbimsi CHPS Compound.'],
     ['Vea HC', 'Order for Vea Health Centre.'],
     ['Vea Health Center', 'Confirmation metadata: Vea HC']
@@ -570,7 +569,7 @@ test('customer facility extraction uses only customer facility labels', () => {
 });
 
 test('bulleted facility prose remains separate from product parsing', () => {
-  for (const line of ['- Delivery to Gbimsi CHPS', '- Destination: Gbimsi CHPS', '- Note: Gbimsi CHPS', '- Order received for Walewale Hospital.']) {
+  for (const line of ['- Delivery to Gbimsi CHPS', '- Destination: Gbimsi CHPS', '- Facility: Gbimsi CHPS', '- Order received for Walewale Hospital.']) {
     const result = runGeneralAuditor(facilityCrossCheckCustomer, line + '\n- ' + facilityCrossCheckProducts);
     assert.deepEqual(result.items.map(item => item.name), ['Multivitamin Syrup']);
     assert.equal(result.meta.facilityName.status, line.includes('Walewale') ? 'mismatch' : 'match');

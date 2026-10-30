@@ -54,12 +54,12 @@ export default function GeneralProductVerification({ product, onConfirm, disable
   if (policy.state !== 'dosage/formulation confirmation required' && policy.state !== 'product match' && policy.state !== 'product discrepancy') return null;
   return <details ref={panel} className="text-xs rounded-lg border border-purple-200 p-3" aria-label={`Product verification: ${product.productName}`}>
     <summary className="cursor-pointer font-semibold text-[#5C2D91] rounded focus-visible:outline-2 focus-visible:outline-purple-700">
-      {product.confirmation ? 'View verification details / Correct confirmation' : 'Confirm Dosage / Formulation'}
+      {product.confirmation ? 'View verification details / Correct confirmation' : 'Confirm Product Identity'}
     </summary>
     <div className="pt-3 space-y-3">
       <p>Requested: {product.productName}</p>
       <p>Suggested: {product.suggestedProduct || 'Select a catalogue product'}</p>
-      <p>Confirm the exact formulation with the customer.</p>
+      <p>Confirm the exact catalogue product with the customer.</p>
       {product.confirmation && <div className="text-slate-600 space-y-1">
         <p>Confirmed: {product.confirmation.productName}</p>
         <p>Confirmed by: {product.confirmation.confirmedBy?.name || 'CCA'} — <time dateTime={product.confirmation.confirmedAt}>{product.confirmation.confirmedAt}</time></p>

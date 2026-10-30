@@ -125,7 +125,7 @@ for (const directive of [
   assert.ok(!JSON.stringify(result.generalAudit).includes(restock));
 });
 
-test('missing mandatory identities and optional location conflicts survive restocking text', async () => {
+test('missing compulsory identities remain reviewable while optional location differences are ignored', async () => {
   for (const label of ['Name of Orderer: Kwame Mensah\n', 'Name of Health Facility: Example Health Centre\n']) {
     const result = await runGeneralSemanticAudit(header + products, header.replace(label, '') + products + '\n' + footer, {}, {}, offline);
     assert.equal(result.allMatch, false);
@@ -133,9 +133,10 @@ test('missing mandatory identities and optional location conflicts survive resto
     assert.equal(result.generalAudit.semanticReviews?.length || 0, 0);
   }
   const conflict = await audit(products + '\nDistrict: First\nDrop Area: One', products + '\nDistrict: Second\nDrop Area: Two\n' + footer);
-  assert.equal(conflict.allMatch, false);
-  assert.equal(conflict.generalAudit.district?.status, 'mismatch');
-  assert.equal(conflict.generalAudit.dropArea?.status, 'mismatch');
+  assert.equal(conflict.allMatch, true);
+  assert.equal(conflict.issueCount, 0);
+  assert.equal(conflict.generalAudit.district?.status, 'informational');
+  assert.equal(conflict.generalAudit.dropArea?.status, 'informational');
 });
 
 test('stock section headings remain operative and are never discarded as generic notices', async () => {

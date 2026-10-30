@@ -22,7 +22,7 @@ test('correct orders receive clearance after source-grounded identity and produc
   const final = { ...base, ...summarizeGeneralProducts(base.items, base.generalAudit.facility, base.generalAudit.orderer, base.generalAudit.phone, 2, 2, reviews) };
   assert.equal(final.allMatch, true);
   assert.equal(final.status, 'resolved');
-  assert.equal(final.verdict, 'MATCH');
+  assert.equal(final.verdict, 'NO DISCREPANCY');
   assert.deepEqual(final.generalAudit.warnings, []);
   assert.equal(final.auditSummary.failedChecks, 0);
   assert.match(markup(final), /MATCH — CLEARED/);

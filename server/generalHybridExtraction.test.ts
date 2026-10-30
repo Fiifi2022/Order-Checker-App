@@ -47,8 +47,8 @@ test('optional locations may be absent, while provided values are extracted', as
   assert.equal(result.extractedOrder.deliveryArea, null);
   assert.equal(result.extractedOrder.district, null);
   const order = extract(conversational + '\nDrop area: Main gate\nDistrict: Mamprugu Moagduri', 'customer_request').order;
-  assert.equal(order.deliveryArea, 'Main gate');
-  assert.equal(order.district, 'Mamprugu Moagduri');
+  assert.equal(order.deliveryArea, null);
+  assert.equal(order.district, null);
 });
 
 test('explicit catalogue synonyms and common spelling corrections preserve medicine identity', async () => {

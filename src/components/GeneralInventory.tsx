@@ -46,8 +46,8 @@ export default function GeneralInventory({ items, details, onConfirm, onOrderLim
       const paired = compared.find(item => item.provenance.some(source => source.source === 'customer_request'));
       const quantity = paired?.fulfillment || compared[0]?.fulfillment;
       const pendingConfirmation = product?.status === 'customer confirmation required';
-      const requiresReview = product?.status === 'review required';
-      const discrepancy = product?.confirmation ? product.reviewState === 'product discrepancy' : !pendingConfirmation && compared.some(item => ['missing item', 'extra item', 'vaccine pairing mismatch', 'product identity discrepancy'].includes(item.status));
+      const requiresReview = product?.status === 'review required' || quantity?.identityReviewRequired;
+      const discrepancy = product?.confirmation ? product.reviewState === 'product discrepancy' : !requiresReview && !pendingConfirmation && compared.some(item => ['missing item', 'extra item', 'vaccine pairing mismatch', 'product identity discrepancy'].includes(item.status));
       const productStatus = requiresReview ? 'Review Required' : pendingConfirmation ? 'Customer Confirmation Required' : compared.some(item=>item.status==='product identity discrepancy') ? 'Product Identity Discrepancy' : discrepancy ? 'Product Discrepancy' : product?.confirmation ? 'Customer Verified — Product Match' : 'MATCH';
       const quantityStatus = quantity?.quantityReviewRequired ? 'OUT OF STOCK — QUANTITY REVIEW REQUIRED' : requiresReview ? 'Awaiting product review' : pendingConfirmation ? 'Awaiting product verification' : quantity?.orderLimitEligible && quantity.orderLimitDecision === undefined ? 'Order Limit Verification Required' : quantity?.fulfillmentStatus === 'order limit applied' ? 'Order Limit Applied' : quantity?.fulfillmentStatus === 'out of stock' ? quantity.stockStatus === 'partially out of stock' ? 'PARTIALLY OUT OF STOCK' : 'OUT OF STOCK' : quantity?.fulfillmentStatus === 'discrepancy' ? 'Quantity Discrepancy' : 'Match';
       const requestedQuantity = product?.requestedQuantity ?? quantity?.requested ?? 0;

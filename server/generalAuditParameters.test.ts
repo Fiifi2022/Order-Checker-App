@@ -15,7 +15,7 @@ const audit = (customer: string, system: string, decisions = {}) => runGeneralAu
 const html = (result: ReturnType<typeof runGeneralAuditor>) => renderToStaticMarkup(createElement(GeneralAuditDetails, { details: result.generalAudit }));
 
 for (const [label, left, right] of [
-  ['all five parameters match', optional, optional],
+  ['all four compulsory parameters match', optional, optional],
   ['delivery area absent from customer', 'District: West Mamprusi\n', optional],
   ['delivery area absent from fulfilment', optional, 'District: West Mamprusi\n'],
   ['district absent from customer', 'Delivery/Drop Area: Gbimsi\n', optional],
@@ -29,17 +29,15 @@ for (const [label, left, right] of [
   assert.equal(result.allMatch, true); assert.equal(result.issueCount, 0);
   assert.equal(result.generalAudit.warnings?.length, 0);
   assert.equal(result.generalAudit.products.length, 2);
-  assert.match(html(result), /Delivery\/Drop Area/); assert.match(html(result), /District/);
+  assert.doesNotMatch(html(result), /Delivery\/Drop Area|District/);
   assert.match(html(result), /Name of Orderer \(mandatory\)<\/span><span class="text-green-700">MATCH/);
 });
 
-test('both optional conflicts are separate review discrepancies with their source values', () => {
+test('optional location differences cannot create discrepancies, warnings or confidence penalties', () => {
   const result = audit(headers + optional + products, headers + 'Delivery/Drop Area: Walewale\nDistrict: East Mamprusi\n' + products);
-  assert.equal(result.allMatch, false); assert.equal(result.generalAudit.dropArea?.status, 'mismatch');
-  assert.equal(result.generalAudit.district?.status, 'mismatch'); assert.equal(result.issueCount, 2);
-  assert.ok(result.insights.some(value => /Location Mismatch/.test(value)));
-  assert.ok(result.insights.some(value => /District Mismatch/.test(value)));
-  assert.match(html(result), /LOCATION MISMATCH/); assert.match(html(result), /DISTRICT MISMATCH/);
+  assert.equal(result.allMatch, true); assert.equal(result.issueCount, 0);
+  assert.equal(result.confidence, 100);
+  assert.doesNotMatch(html(result), /LOCATION MISMATCH|DISTRICT MISMATCH|Delivery\/Drop Area|District/);
 });
 
 for (const side of ['customer', 'fulfilment'] as const) {
@@ -48,8 +46,8 @@ for (const side of ['customer', 'fulfilment'] as const) {
     const result = audit(side === 'customer' ? missing : headers + products, side === 'fulfilment' ? missing : headers + products);
     assert.equal(result.allMatch, false); assert.equal(result.issueCount, 0);
     assert.equal(result.auditSummary.missingRequiredCount, 1);
-    assert.match(result.generalAudit.finalStatus, /MISSING REQUIRED INFORMATION/);
-    assert.match(html(result), /MISSING REQUIRED INFORMATION/);
+    assert.equal(result.generalAudit.finalStatus, 'REVIEW REQUIRED');
+    assert.match(html(result), /REVIEW REQUIRED/);
   });
 }
 
@@ -86,12 +84,12 @@ test('stock and explicit order-limit exceptions remain verified when optional fi
   }
 });
 
-test('answering an order-limit prompt cannot erase location conflicts or required-field warnings', () => {
+test('order-limit approval retains required name reviews and ignores optional location differences', () => {
   for (const right of [headers.replace('Name of Orderer: Kwame Mensah\n', ''), headers + 'District: East Mamprusi\n']) {
     const pending = audit(headers + optional + 'Multivitamin Syrup - 5', right + 'Multivitamin Syrup [3/5]');
     const result = applyGeneralOrderLimitDecision(pending, pending.items[0].fulfillment.key, true);
-    assert.equal(result.allMatch, false);
-    assert.ok(result.auditSummary.missingRequiredCount || result.generalAudit.district?.status === 'mismatch');
+    assert.equal(result.allMatch, right.includes('Kwame Mensah'));
+    if (!right.includes('Kwame Mensah')) assert.equal(result.auditSummary.missingRequiredCount, 1);
   }
 });
 
@@ -100,27 +98,27 @@ test('Gemini unavailable does not affect exact products or omitted optional fiel
   const result = await runGeneralSemanticAudit(headers + optional + products, headers + products, {}, support, () => { calls++; throw Error('Unavailable'); });
   assert.equal(result.allMatch, true); assert.equal(calls, 0); assert.equal(result.semanticAnalysis.status, 'skipped');
   const fallback = await runGeneralSemanticAudit(headers + optional + products + '\nPlease include something unusual.', headers + products, {}, support, () => { throw Error('Unavailable'); });
-  assert.equal(fallback.generalAudit.dropArea?.status, 'optional not provided');
-  assert.equal(fallback.generalAudit.district?.status, 'optional not provided');
+  assert.equal(fallback.generalAudit.dropArea?.status, 'informational');
+  assert.equal(fallback.generalAudit.district?.status, 'informational');
   assert.equal(fallback.generalAudit.products.every(item => item.fulfillmentStatus === 'fully supplied'), true);
 });
 
-test('accepted server results cannot waive explicit location conflicts or missing source identities', () => {
+test('accepted server results retain missing compulsory identities while ignoring location differences', () => {
   const customer = headers + optional + products;
   const system = headers.replace('Name of Orderer: Kwame Mensah\n', '') + 'District: East Mamprusi\n' + products;
   const forged = audit(headers + optional + products, headers + optional + products);
   const enforced = enforceGeneralIdentityMatches(forged, customer, system, support.facilityContext);
-  assert.equal(enforced.allMatch, false); assert.equal(enforced.generalAudit.district?.status, 'mismatch');
+  assert.equal(enforced.allMatch, false); assert.equal(enforced.generalAudit.district?.status, 'informational');
   assert.equal(enforced.auditSummary.missingRequiredCount, 1);
   const result = completeGeneralAuditRun(createGeneralAuditRun({ whatsappMessage: customer, fulfillmentConfirmation: system }, 1, {}, support, true), { ...forged, auditEngine: 'general-deterministic-v1' });
-  assert.equal(result.allMatch, false); assert.equal(result.generalAudit.district?.status, 'mismatch');
+  assert.equal(result.allMatch, false); assert.equal(result.generalAudit.district?.status, 'informational');
 });
 
-test('district alias equivalence requires a verified mapping; similar unverified spellings conflict', () => {
+test('district aliases are supporting context and never an independent audit parameter', () => {
   const a = headers + 'District: Test District Name\n' + products, b = headers + 'District: TDN\n' + products;
   const explicit = runGeneralAuditor(a, b, {}, { facilityContext: { districtAliases: [{ name: 'Test District Name', verifiedAliases: ['TDN'] }] } });
-  assert.equal(explicit.generalAudit.district?.status, 'match');
-  assert.equal(audit(a, b).generalAudit.district?.status, 'mismatch');
+  assert.equal(explicit.allMatch, true);
+  assert.equal(audit(a, b).allMatch, true);
 });
 
 test('unavailable placeholders cannot become verified mandatory names or optional locations', () => {
@@ -129,7 +127,7 @@ test('unavailable placeholders cannot become verified mandatory names or optiona
       headers.replace('Kwame Mensah', value) + `Drop Area: ${value}\n` + products);
     assert.equal(result.allMatch, false); assert.equal(result.issueCount, 0);
     assert.equal(result.auditSummary.missingRequiredCount, 1);
-    assert.equal(result.generalAudit.dropArea?.status, 'optional not provided');
+    assert.equal(result.generalAudit.dropArea?.status, 'informational');
   }
 });
 
@@ -137,6 +135,6 @@ test('an unclear additional product keeps verified items while the product field
   const result = await runGeneralSemanticAudit(headers + products + '\nInclude something unusual.', headers + products, {}, support, () => { throw Error('Unavailable'); });
   assert.equal(result.allMatch, false);
   const markup = html(result);
-  assert.match(markup, /Products and Quantities \(mandatory\)<\/span><span class="text-amber-800">CLARIFICATION REQUIRED/);
+  assert.match(markup, /Products \(mandatory\)<\/span><span class="text-amber-800">REVIEW REQUIRED/);
   assert.ok(result.items.every(item => item.status === 'match'));
 });

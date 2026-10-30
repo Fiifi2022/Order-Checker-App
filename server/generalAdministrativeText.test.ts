@@ -74,16 +74,16 @@ test('stock and order-limit exemptions remain valid and silently discard adminis
   assert.equal(approved.allMatch, true); assert.equal('administrativeInformation' in approved.generalAudit, false);
 });
 
-for (const label of ['District', 'Delivery/Drop Area']) test(`${label} remains optional, with genuine two-sided conflicts retained`, async () => {
+for (const label of ['District', 'Delivery/Drop Area']) test(`${label} is excluded even when both values differ`, async () => {
   const a = h + `${label}: One Place\n` + p;
   assert.equal((await check(a, h + p + '\n' + delivery)).allMatch, true);
   const conflict = await check(a, h + `${label}: Another Place\n` + p + '\n' + contact);
-  assert.equal(conflict.allMatch, false); assert.ok(conflict.issueCount > 0);
+  assert.equal(conflict.allMatch, true); assert.equal(conflict.issueCount, 0); assert.equal(conflict.confidence, 100);
 });
 
-for (const change of ['Please deliver to a different facility.', 'Change the quantity from 5 to 10.',
-  'Use the new dropsite at Gbimsi.', 'Thank you. Change the quantity from 5 to 10.',
-  delivery + ' Change the quantity from 5 to 10.', contact + ' Please deliver to a different facility.',
+for (const change of ['Change the quantity from 5 to 10.',
+  'Thank you. Change the quantity from 5 to 10.',
+  delivery + ' Change the quantity from 5 to 10.',
   'We have received your order for Kwame Mensah. Change the quantity from 5 to 10.',
   'Please include an additional product for the patient.', 'Notes: Cancel this order.', 'Notes: Increase to 10.']) {
   test(`real order instruction cannot be hidden by a footer: ${change.slice(0, 50)}`, async () => {

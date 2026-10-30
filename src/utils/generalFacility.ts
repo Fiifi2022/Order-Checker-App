@@ -1,4 +1,5 @@
 import type { GeneralFieldResult } from './generalAuditTypes';
+import {generalOrderRelevantText} from './generalTextClassification';
 
 /** Trusted server-side records only. IDs belong to the source system, never to an inferred name. */
 export interface GeneralFacilityRecord {
@@ -199,7 +200,7 @@ export function compareGeneralFacilities(customer: string, fulfillment: string, 
   const namesFor = (name: string, text: string) => {
     const labelled = /^\s*(?:[-*•]\s*)?(?:name of (?:health )?facility|health facility|facility(?: name)?|hospital|clinic|delivery (?:facility|site)|destination)\s*[:=–—-]/im.test(text);
     if (labelled && name !== 'N/A') return [name];
-    const mentions = findGeneralFacilityNames(text, records);
+    const mentions = findGeneralFacilityNames(generalOrderRelevantText(text), records);
     if (mentions.length > 1) return mentions;
     if (mentions.length === 1 && records.some(record => [record.name, ...(record.verifiedAliases || [])].some(alias =>
       normalizeGeneralFacilityName(alias) === normalizeGeneralFacilityName(mentions[0]))) &&
@@ -243,9 +244,14 @@ export function compareGeneralFacilities(customer: string, fulfillment: string, 
     vocabulary(record).names.some(alias => generalFacilityNamesMatch(alias, name) || directoryWordOrderMatch(alias, name)));
   const candidates = (name: string, text: string, id: string) => {
     const district = normalizeGeneralDistrictName(metadata(text, 'district'), context), region = clean(metadata(text, 'region'));
-    return byName(name).filter(record => (!id || record.id === id) &&
+    const named = byName(name).filter(record => !id || record.id === id);
+    // Geography only disambiguates duplicate identities. It cannot reject a
+    // unique facility or become an independently audited district check.
+    if (new Set(named.map(record => record.id || record.source)).size <= 1) return named;
+    const scoped = named.filter(record =>
       (!district || !record.district || district === normalizeGeneralDistrictName(vocabulary(record).district, context)) &&
       (!region || !record.region || region === vocabulary(record).region));
+    return scoped.length ? scoped : named;
   };
   const ac = candidates(a.name, customerText, leftId), bc = candidates(b.name, fulfillmentText, rightId);
   for (const [id, name, scoped] of [[leftId, a.name, ac], [rightId, b.name, bc]] as const) {
@@ -302,11 +308,6 @@ export function compareGeneralFacilities(customer: string, fulfillment: string, 
     return result('mismatch', 'The facility names identify different numbered sites.', { ...extra, evidence });
   }
   if (a.type && b.type && a.type !== b.type) return result('mismatch', 'The names specify different facility types; they cannot be assumed to be the same facility.', { ...extra, evidence });
-  const geographyConflict = ['district', 'region'].some(label => {
-    const x = metadata(customerText, label), y = metadata(fulfillmentText, label);
-    return x && y && (label === 'district' ? normalizeGeneralDistrictName(x, context) !== normalizeGeneralDistrictName(y, context) : clean(x) !== clean(y));
-  });
-  if (geographyConflict) return result('review required', 'The district or region differs. Verify the intended facility using its official identifier.', { ...extra, evidence });
   if (a.name === b.name && !(leftId || rightId)) return result('match', 'The complete facility names match after standard abbreviation and formatting normalization.', { verification: 'normalized' });
   const suggestion = context.aiSuggestion;
   const aiPossible = suggestion && suggestion.confidence >= 0.95 && suggestion.customer === left && suggestion.fulfillment === right &&

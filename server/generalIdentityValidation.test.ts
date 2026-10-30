@@ -118,9 +118,9 @@ test('missing requested identity fields require review and cannot be waived by a
     assert.equal(confirmed.issueCount, 0);
     assert.equal(confirmed.auditSummary.missingRequiredCount, count);
     assert.equal(confirmed.allMatch, false);
-    assert.equal(confirmed.generalAudit.finalStatus, 'MISSING REQUIRED INFORMATION');
+    assert.equal(confirmed.generalAudit.finalStatus, 'REVIEW REQUIRED');
     const html = renderToStaticMarkup(createElement(GeneralAuditDetails, { details: confirmed.generalAudit }));
-    assert.match(html, /MISSING REQUIRED INFORMATION/);
+    assert.match(html, /REVIEW REQUIRED/);
     assert.match(html, /Facility: Confirm the requesting health facility|Orderer: Confirm the name of the person placing the order/);
     assert.match(html, /text-amber-800/);
   }

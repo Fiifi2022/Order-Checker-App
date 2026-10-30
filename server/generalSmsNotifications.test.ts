@@ -105,11 +105,11 @@ test('mixed stale review is cleaned and deduplicated before confidence calculati
   assert.equal(mixed.generalAudit.semanticReviews?.[0].originalText, change);
 });
 
-test('notifications cannot satisfy missing mandatory identity or suppress optional conflicts', async () => {
+test('notifications cannot satisfy missing compulsory identity and optional differences never create conflicts', async () => {
   const missing = await runGeneralSemanticAudit(order, 'Multivitamin Syrup — 5 bottles\n' + sms, {}, {}, offline);
   assert.equal(missing.allMatch, false);
   assert.equal(missing.auditSummary.missingRequiredCount, 2);
   const conflict = await runGeneralSemanticAudit(order + '\nDistrict: One Place', order + '\nDistrict: Another Place\n' + sms, {}, {}, offline);
-  assert.equal(conflict.generalAudit.district?.status, 'mismatch');
-  assert.equal(conflict.allMatch, false);
+  assert.equal(conflict.generalAudit.district?.status, 'informational');
+  assert.equal(conflict.allMatch, true);
 });

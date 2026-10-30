@@ -17,7 +17,7 @@ import GeneralScreenshotInput, { type GeneralScreenshotHandle } from './componen
 import GeneralMonitoring from './components/GeneralMonitoring';
 import { GeneralOrderLimitPrompt, GeneralProductName } from './components/GeneralFulfillmentSummary';
 import { createGeneralAuditRun, completeGeneralAuditRun, isCurrentGeneralAuditRun, type GeneralAuditRun } from './utils/generalAuditRun';
-import { buildGeneralAuditCheckSummary, type runGeneralAuditor } from './utils/generalAuditor';
+import { buildGeneralAuditCheckSummary, generalFourParameterRecord, type runGeneralAuditor } from './utils/generalAuditor';
 import GeneralVerificationConfidence from './components/GeneralVerificationConfidence';
 import GeneralDiscrepancySubtitle from './components/GeneralDiscrepancySubtitle';
 /**
@@ -404,6 +404,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   const pendingSavedAudit = useRef<AuditRecord | null>(null);
   const savedAuditStorageKey = `general-auditor:last-audit:${activeUser?.id}`;
   const openSavedGeneralAudit = (record: AuditRecord) => {
+    record = generalFourParameterRecord(record);
     if (!(record as AuditRecord & { generalAudit?: GeneralAuditDetailsPayload }).generalAudit) return;
     invalidateGeneralAudit();
     if (record.whatsappMessage === currentGeneralInputs.current.whatsappMessage && record.fulfillmentConfirmation === currentGeneralInputs.current.fulfillmentConfirmation) setResult(record);

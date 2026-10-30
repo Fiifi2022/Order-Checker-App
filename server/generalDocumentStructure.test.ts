@@ -133,9 +133,9 @@ test('identity section captions do not replace labelled identities or become pro
   assert.equal(result.generalAudit.semanticReviews?.length || 0, 0);
 });
 
-test('repeated structural preprocessing is stable and preserves meaningful destination instructions', () => {
+test('repeated structural preprocessing is stable and excludes optional destination instructions', () => {
   const source = headers + 'Products & Quantities:\n' + products + '\nPlease deliver tomorrow morning to Gbimsi CHPS';
   const projected = generalOrderRelevantText(source);
   assert.equal(generalOrderRelevantText(projected), projected);
-  assert.match(projected, /Gbimsi CHPS/);
+  assert.doesNotMatch(projected, /Gbimsi CHPS/);
 });

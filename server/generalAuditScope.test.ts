@@ -106,6 +106,6 @@ test('General Auditor verdicts show operational statuses and missing-name warnin
   assert.ok(absentNames.generalAudit.warnings?.includes('Orderer: Confirm the name of the person placing the order.'));
   assert.ok(absentNames.generalAudit.warnings?.includes('Facility: Confirm the requesting health facility.'));
   const fields = renderToStaticMarkup(createElement(Details, { details: absentNames.generalAudit }));
-  assert.match(fields, /ORDERER NAME NOT FOUND/);
-  assert.match(fields, /FACILITY NOT FOUND/);
+  assert.match(fields, /REVIEW REQUIRED/);
+  assert.match(fields, /REVIEW REQUIRED/);
 });

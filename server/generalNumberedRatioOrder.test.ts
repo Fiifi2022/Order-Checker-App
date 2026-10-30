@@ -74,8 +74,8 @@ test('the exact screenshot order matches clear products, retains the stock exemp
   assert.match(reviews[0].reason, /omits the dosage form/);
   assert.match(reviews[0].reason, /Requested quantity: 20/);
   assert.match(reviews[0].reason, /2 supplied/);
-  assert.equal(result.generalAudit.dropArea?.status, 'optional not provided');
-  assert.equal(result.generalAudit.district?.status, 'optional not provided');
+  assert.equal(result.generalAudit.dropArea?.status, 'informational');
+  assert.equal(result.generalAudit.district?.status, 'informational');
   const html = renderToStaticMarkup(createElement(Details, { details: result.generalAudit }));
   assert.doesNotMatch(html, /Artesunate[^<]*missing|Artesunate[^<]*extra|Date23\/10/);
   const inputs = { whatsappMessage: customer, fulfillmentConfirmation: fulfillment };

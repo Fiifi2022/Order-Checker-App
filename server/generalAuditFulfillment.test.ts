@@ -16,7 +16,7 @@ test('mixed stock availability confirms without any discrepancy and groups every
   assert.equal(result.issueCount, 0);
   assert.equal(result.allMatch, true);
   assert.equal(result.generalAudit.stockStatus, 'partially out of stock');
-  assert.equal(result.generalAudit.finalStatus, 'PARTIALLY OUT OF STOCK — CONFIRMED');
+  assert.equal(result.generalAudit.finalStatus, 'NO DISCREPANCY');
   assert.deepEqual(result.items.map(item => item.status), ['match', 'out of stock', 'match', 'out of stock']);
   const html = summaryMarkup(result);
   for (const text of ['Fully Supplied / In Stock', 'Out of Stock', 'Product A — 1/1', 'Product B — 0/1', 'Product C — 1/1', 'Product D — 0/1', 'Audit Result: MATCH']) assert.ok(html.includes(text), text);
@@ -27,7 +27,7 @@ test('fully out of stock confirms all identified products and lists each unavail
   assert.equal(result.issueCount, 0);
   assert.equal(result.allMatch, true);
   assert.equal(result.generalAudit.stockStatus, 'out of stock');
-  assert.equal(result.generalAudit.finalStatus, 'OUT OF STOCK — CONFIRMED');
+  assert.equal(result.generalAudit.finalStatus, 'NO DISCREPANCY');
   assert.equal(result.generalAudit.products.length, 3);
   assert.ok(result.generalAudit.products.every(product => product.fulfillmentStatus === 'out of stock'));
   assert.match(summaryMarkup(result), /Product B — 0\/2/);
@@ -60,7 +60,7 @@ test('Yes confirms the order limit while preserving requested, supplied and diff
   assert.equal(result.generalAudit.products[0].orderLimitDecision, true);
   assert.equal(result.allMatch, true);
   assert.equal(result.issueCount, 0);
-  assert.equal(result.generalAudit.finalStatus, 'ORDER LIMIT APPLIED — CONFIRMED');
+  assert.equal(result.generalAudit.finalStatus, 'NO DISCREPANCY');
   assert.match(summaryMarkup(result), /Requested 10, Supplied 5, Difference 5; Reason: Order Limit/);
 });
 
@@ -83,7 +83,7 @@ test('combined order limit, stock shortage and full supply produces the valid co
   assert.equal(pending.allMatch, false);
   const confirmed = runGeneralAuditor(customer, system, limit('Product A', true));
   assert.equal(confirmed.allMatch, true);
-  assert.equal(confirmed.generalAudit.finalStatus, 'PARTIALLY FULFILLED — CONFIRMED');
+  assert.equal(confirmed.generalAudit.finalStatus, 'NO DISCREPANCY');
   assert.deepEqual(confirmed.items.map(item => item.status), ['order limit applied', 'out of stock', 'match']);
   const html = summaryMarkup(confirmed);
   for (const text of ['Product C — 4/4', 'Product A — Requested 10, Supplied 5', 'Product B — 0/2', 'Audit Result: MATCH']) assert.ok(html.includes(text));

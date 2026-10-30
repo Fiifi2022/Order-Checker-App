@@ -26,9 +26,9 @@ for (const prefix of [header, 'Bagurugu CHPS\nAdam Fauzia\n', '- Bagurugu CHPS\n
     const result = await audit(inputs.whatsappMessage, inputs.fulfillmentConfirmation, {}, {}, () => { calls++; return offline(); });
     assert.equal(calls, 0);
     assert.equal(result.allMatch, true);
-    assert.equal(result.verdict, 'MATCH');
+    assert.equal(result.verdict, 'NO DISCREPANCY');
     assert.equal(result.status, 'resolved');
-    assert.equal(result.generalAudit.finalStatus, 'MATCH — ORDER VERIFIED');
+    assert.equal(result.generalAudit.finalStatus, 'NO DISCREPANCY');
     assert.equal(result.generalAudit.facility.status, 'match');
     assert.equal(result.generalAudit.orderer.status, 'match');
     assert.deepEqual(result.items.map(item => item.status), ['match', 'match']);
@@ -39,7 +39,7 @@ for (const prefix of [header, 'Bagurugu CHPS\nAdam Fauzia\n', '- Bagurugu CHPS\n
     assert.equal(final.allMatch, true);
     assert.equal(final.status, 'resolved');
     assert.match(render(final), /ALL MATCHED/);
-    assert.match(render(final), /MATCH — ORDER VERIFIED/);
+    assert.match(render(final), /NO DISCREPANCY/);
     assert.doesNotMatch(render(final), /ORDER DETAILS REQUIRED|REVIEW REQUIRED|Product: Confirm/);
   });
 }
@@ -50,7 +50,7 @@ test('six validated checks cannot retain a seventh stale product penalty', () =>
   const result = summarizeGeneralProducts(base.items, base.generalAudit.facility, base.generalAudit.orderer, base.generalAudit.phone, 2, 2, stale);
   assert.equal(result.allMatch, true);
   assert.equal(result.status, 'resolved');
-  assert.equal(result.generalAudit.finalStatus, 'MATCH — ORDER VERIFIED');
+  assert.equal(result.generalAudit.finalStatus, 'NO DISCREPANCY');
   assert.deepEqual(result.generalAudit.warnings, []);
   assert.deepEqual(result.generalAudit.semanticReviews || [], []);
   assert.equal(result.auditSummary.totalChecks, 6);
@@ -67,7 +67,7 @@ test('client completion rebuilds old status, warnings and 86% confidence from fi
   const result = completeGeneralAuditRun(createGeneralAuditRun(inputs, 2, {}, {}, true), stale);
   assert.equal(result.allMatch, true);
   assert.equal(result.status, 'resolved');
-  assert.equal(result.verdict, 'MATCH');
+  assert.equal(result.verdict, 'NO DISCREPANCY');
   assert.equal(result.confidence, 100);
   assert.deepEqual(result.generalAudit.warnings, []);
   assert.doesNotMatch(render(result), /86%|REVIEW REQUIRED|ORDER DETAILS REQUIRED|Product: Confirm/);

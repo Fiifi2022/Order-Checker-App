@@ -54,7 +54,7 @@ test('OSU is supporting evidence and never adds products or overrides actual qua
   assert.equal(positive.allMatch, true); assert.equal(positive.generalAudit.products.length, 1);
   assert.equal(positive.generalAudit.products[0].registeredOutOfStock, true);
   assert.equal(positive.generalAudit.products[0].fulfillmentStatus, 'fully supplied');
-  assert.equal(runGeneralAuditor('ORS - 5', 'ORS (0/5)').generalAudit.finalStatus, 'OUT OF STOCK — CONFIRMED');
+  assert.equal(runGeneralAuditor('ORS - 5', 'ORS (0/5)').generalAudit.finalStatus, 'NO DISCREPANCY');
 });
 test('General analytics exclude vaccine, demo, and legitimate shortages from discrepancy rates', () => {
   const record = (id: string, request: string, supplied: string, extra = {}) => ({ id, ...runGeneralAuditor(request, supplied), durationSec: 2, ...extra });

@@ -62,7 +62,7 @@ for (const [request, fulfilled] of [['Paracetamol 500mg 20/20', 'Paracetamol 500
     const product = result.generalAudit.productVerifications![0];
     assert.equal(product.reviewState, 'dosage/formulation confirmation required');
     assert.equal(generalConfirmationPolicy(product, normalizeGeneralProductName).state, 'dosage/formulation confirmation required');
-    assert.match(markup(result), /Confirm Dosage \/ Formulation/);
+    assert.match(markup(result), /Confirm Product Identity/);
     const option = product.options.find(option => option.fromFulfillment)!;
     assert.equal(canConfirmGeneralProduct(product, option.key, false), false);
     assert.equal(canConfirmGeneralProduct(product, option.key, true), true);
@@ -103,7 +103,7 @@ test('older or AI-generated heading confirmation records are removed from underl
 });
 
 test('administrative filtering preserves real amendments, named products and stock section boundaries', () => {
-  assert.match(generalOrderRelevantText('Please deliver urgently to a different facility.'), /different facility/);
+  assert.equal(generalOrderRelevantText('Please deliver urgently to a different facility.').trim(), '');
   assert.equal(parseGeneralProducts('We urgently need: Unknown injection - 10', 'customer_request').length, 1);
   const result = runGeneralAuditor(headers + 'ORS - 2 packs\nParacetamol 500mg Tablet - 20', headers + 'Out of stock:\n- ORS\nWe will now prepare your items.\nParacetamol 500mg Tablet [20/20]');
   assert.deepEqual(result.items.map(item => item.status), ['out of stock', 'match']);

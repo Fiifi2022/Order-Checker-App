@@ -81,7 +81,7 @@ test('a genuine missing ASV quantity produces one concise quantity warning despi
   assert.equal(result.allMatch, false);
   assert.equal(result.issueCount, 0);
   assert.deepEqual(result.generalAudit.warnings, ['Quantity: Confirm the requested quantity.']);
-  assert.equal(result.generalAudit.finalStatus, 'ORDER DETAILS REQUIRED');
+  assert.equal(result.generalAudit.finalStatus, 'REVIEW REQUIRED');
   const rendered = html(result.generalAudit);
   assert.equal((rendered.match(/QUANTITY REVIEW/g) || []).length, 1);
   assert.equal((rendered.match(/role="status"/g) || []).length, 1);
@@ -107,8 +107,8 @@ test('true identity and quantity conflicts remain discrepancies, while missing o
   assert.equal(conflict.generalAudit.orderer.status, 'mismatch');
   assert.equal(conflict.items[0].status, 'quantity mismatch');
   assert.equal(conflict.issueCount, 2);
-  assert.equal(conflict.generalAudit.dropArea?.status, 'optional not provided');
-  assert.equal(conflict.generalAudit.district?.status, 'optional not provided');
+  assert.equal(conflict.generalAudit.dropArea?.status, 'informational');
+  assert.equal(conflict.generalAudit.district?.status, 'informational');
   assert.doesNotMatch(html(conflict.generalAudit), banned);
 });
 

@@ -104,14 +104,14 @@ test('extracts independent facilities from WhatsApp prose and standalone names w
 
 test('multiple unstructured facilities are reviewable rather than silently choosing the first', () => {
   const result = compareGeneralFacilities('N/A', 'Kotoso RHC', 'Deliver to Kotoso RHC or to Kade HC.', 'Facility: Kotoso RHC');
-  assert.equal(result.status, 'review required');
+  assert.equal(result.status, 'missing from customer request');
 });
 
 test('matching names pass the audit without exposing identity warnings or changing product decisions', () => {
   const result = audit();
   assert.equal(result.allMatch, true);
   assert.equal(result.issueCount, 0);
-  assert.equal(result.verdict, 'MATCH');
+  assert.equal(result.verdict, 'NO DISCREPANCY');
   assert.equal(result.auditSummary.reviewRequiredCount || 0, 0);
   assert.equal(result.confidence, 100);
   assert.equal(result.canDispatchAutomatically, false);
@@ -172,11 +172,11 @@ test('Gemini suggestions cannot resolve identity or override authoritative recor
 });
 
 
-test('contradictory directory geography and names cannot pass because their normalized spelling agrees', () => {
+test('optional geography does not reject a unique registered facility, while IDs remain authoritative', () => {
   const wrongDistrict = compareGeneralFacilities('Kotoso RHC', 'Kotoso RHC', '', 'District: Wrong District', { records });
   assert.equal(wrongDistrict.status, 'match');
-  assert.equal(wrongDistrict.identityStatus, 'unresolved');
-  assert.equal(wrongDistrict.requiresDispatchConfirmation, true);
+  assert.equal(wrongDistrict.identityStatus, 'resolved');
+  assert.equal(wrongDistrict.requiresDispatchConfirmation, false);
   const wrongIdentity = compareGeneralFacilities('Kotoso RHC', 'Another Facility', 'Facility ID: test-kotoso', 'Facility ID: test-kotoso', { records });
   assert.equal(wrongIdentity.status, 'mismatch');
   assert.equal(compare('RHC', 'RHC').status, 'review required');
@@ -189,7 +189,8 @@ test('a semantic guess cannot choose one of several facilities in the original c
   const guessed = runGeneralAuditor('Orderer: Mary Mensah\nFacility: Kotoso RHC\nORS - 5', fulfillmentConfirmation);
   const record = { ...guessed, auditEngine: 'general-deterministic-v1', whatsappMessage, fulfillmentConfirmation };
   const result = completeGeneralAuditRun(createGeneralAuditRun({ whatsappMessage, fulfillmentConfirmation }, 1), record);
-  assert.equal(result.generalAudit.facility.status, 'review required');
+  assert.equal(result.generalAudit.facility.status, 'missing from customer request');
   assert.equal(result.allMatch, false);
-  assert.match(result.generalAudit.facility.whatsappValue, /Kade HC/);
+  assert.equal(result.generalAudit.finalStatus, 'REVIEW REQUIRED');
+  assert.equal(result.generalAudit.facility.whatsappValue, 'N/A');
 });

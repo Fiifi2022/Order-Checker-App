@@ -69,6 +69,7 @@ function extractNames(text: string, source: GeneralProductEvidence['source']): G
 
 export async function runGeneralProductNameAudit(customer: string, fulfillment: string, catalog: ProductCatalog, support: GeneralAuditSupport,
   getClient: () => any, _legacySaveAliases?: (aliases: LearnedNameAlias[]) => Promise<ProductCatalog>) {
+  const facilitySourceCustomer = customer, facilitySourceSystem = fulfillment;
   let geminiRequests = 0;
   const observeGemini = support.onGeminiRequest;
   support = {...support, facilityContext: prepareGeneralFacilityContext(support.facilityContext),
@@ -305,12 +306,8 @@ export async function runGeneralProductNameAudit(customer: string, fulfillment: 
   for(const review of base.generalAudit.semanticReviews || []) if(classifyGeneralText(review.originalText).orderChange &&
     !extractionReviews.some(other=>other.source===review.source && other.originalText===review.originalText)) extractionReviews.push(review);
   const details = base.generalAudit;
-  // Optional geography/drop-area text must not indirectly reject an otherwise
-  // established compulsory facility identity through directory scoping.
-  const identityText=(text:string)=>recognizeGeneralDocument(text).lines.map(line=>
-    line.field==='district' || line.field==='delivery' ? '' : line.originalText).join('\n');
   details.facility=compareGeneralFacilities(details.facility.whatsappValue,details.facility.fulfillmentValue,
-    identityText(customer),identityText(fulfillment),support.facilityContext);
+    facilitySourceCustomer,facilitySourceSystem,support.facilityContext);
   for (const [field,key] of [['orderer','ordererName'],['facility','facilityName']] as const) {
     if(extractionReviews.some(review=>review.field===key)) details[field]={...details[field],status:'review required',reason:`Confirm the ${field} stated in this message.`};
   }
@@ -353,15 +350,10 @@ export async function runGeneralProductNameAudit(customer: string, fulfillment: 
   result.generalAudit.message = result.generalAudit.productTotals?.quantityReview ? `${result.generalAudit.productTotals.quantityReview} out-of-stock products require verification of the requested quantity recorded in confirmation.` : result.allMatch ? 'Product names and quantities match the fulfilment log.' :
     !result.issueCount && result.generalAudit.pendingOrderLimitCount ? 'Confirm whether an order limit applies to the highlighted quantity shortfalls.' : 'Product names, quantities or identity details do not match.';
   if (result.allMatch) {
-    result.generalAudit.finalStatus=result.generalAudit.stockStatus === 'in stock' ? 'Audit Passed — All compulsory order information and products match.' : `NO DISCREPANCY — ${result.generalAudit.stockStatus.toUpperCase()}`;
+    result.generalAudit.finalStatus='NO DISCREPANCY';
     result.generalAudit.message=result.generalAudit.finalStatus;
   }
-  const genuineMismatch = details.facility.status === 'mismatch' || details.orderer.status === 'mismatch' || items.some(item =>
-    ['missing item', 'extra item', 'vaccine pairing mismatch'].includes(item.status) && item.provenance.some(p => !!resolvedProduct(p)) ||
-    item.status === 'quantity mismatch' && !item.provenance.some(p => p.quantityReview) &&
-      !item.fulfillment.requestedQuantityMissing && !item.fulfillment.suppliedQuantityMissing ||
-    item.status === 'product identity discrepancy' && item.provenance.length > 1 && item.provenance.every(p => !!resolvedProduct(p)));
-  const auditDecision = result.allMatch ? 'match' : genuineMismatch ? 'discrepancy' : 'review';
+  const auditDecision = result.generalAudit.decision!;
   result.generalAudit.decision = auditDecision;
   if (auditDecision === 'review') {
     result.generalAudit.finalStatus = 'REVIEW REQUIRED';

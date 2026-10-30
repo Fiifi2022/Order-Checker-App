@@ -13,6 +13,25 @@ const revisedIdentity = /\b(?:facility|orderer|recipient|destination|district|dr
 const essentialInstruction = /\b(?:(?:we|i)\s+(?:need|want|request)|(?:please|pls|kindly)\s+(?:send|supply|give|include)|send|supply|(?:orderer|ordered by|requested by|facility)(?=\s*[:;=])|(?:change|amend|correct|replace|cancel|increase|reduce)\b[^.!?;]*\b(?:order|quantity|qty|product|facility|orderer|destination|district)|quantity|qty|order limit|out of stock)\b/i;
 const nonOrderLabel = /^(?:(?:patient|client)(?:\s*\/\s*(?:patient|client))?(?:['’]s)?(?:\s+(?:full\s+)?name|\s+age|\s+sex|\s+gender|\s+details?)?|name of (?:patient|client)|age(?: of (?:patient|client))?|sex|gender|clinical(?:\s+(?:condition|history|details|observations?))?|condition|symptoms?|observations?|medical observations?|test results?|status(?: description)?|contact(?: details?| numbers?)?|phone(?: numbers?)?|telephone|tel|mobile(?: numbers?)?)\s*[:;=–—|-]\s*/i;
 const nonOrderHeading = /^(?:(?:patient|client)(?:\s*\/\s*(?:patient|client))?(?:\s+(?:full\s+)?name|\s+age|\s+sex|\s+gender|\s+details?)?|name of (?:patient|client)|age|sex|gender|clinical(?:\s+(?:condition|history|details|observations?))?|condition|symptoms?|observations?|medical observations?|test results?|status(?: description)?|contact(?: details?| numbers?)?|phone(?: numbers?)?|telephone|tel|mobile(?: numbers?)?)\s*[:;=–—|-]?$/i;
+// Four compulsory parameters only. Optional metadata is retained in the raw
+// source, but cannot become product evidence or a compulsory review.
+const excludedMetadata = /^(?:(?:district|region|sub[- ]?district|dropsite|drop site|delivery\s*\/\s*drop area|delivery drop area|delivery area|drop area|drop location|delivery location|delivery instructions?|delivery date|delivery time|gps(?: coordinates)?|coordinates?|latitude|longitude|tracking(?: link| number)?|order\s*(?:id|number|reference)|reference(?: number)?|date|contact(?: details?| numbers?)?|phone(?: numbers?)?|telephone|tel|mobile(?: numbers?)?|priority(?: reason)?|delivery priority|budget holder|notes?)\s*[:;=–—-]|(?:(?:please|kindly)\s+)?(?:deliver|dispatch)(?:\s+(?:it|them|the order|these items))?\s+(?:to|at|behind|before|after|between|on|tomorrow|today|urgently)\b)/i;
+export function generalCompulsoryText(value: string): string {
+  const optionalChange = /^(?:(?:please|kindly)\s+)?(?:use|change|update|correct)\s+(?:the\s+)?(?:(?:new|different|updated)\s+)?(?:district|region|dropsite|drop site|drop area|delivery location|delivery instructions?|date|phone|contact|gps|coordinates?)\b/i;
+  if (!excludedMetadata.test(value.trim()) && !optionalChange.test(value.trim())) return value;
+  // Keep the actual order clause in mixed text, without interpreting the
+  // surrounding location, date or contact number as part of the product.
+  const directives = /\b(?:(?:please|pls|kindly)\s+)?(?:(?:we|i)\s+(?:need|want|require|request)|send|supply|include|add|replace|substitute|increase|decrease|reduce|remove|cancel|change|amend|correct)\b/gi;
+  for (const match of value.matchAll(directives)) {
+    const tail = value.slice(match.index!);
+    const object = tail.replace(/^(?:(?:please|pls|kindly)\s+)?(?:(?:we|i)\s+)?\w+\s+/i, '').replace(/^(?:the\s+)?/i, '');
+    if (/^(?:district|region|drop\s*(?:area|site|off)|delivery|location|gps|coordinates?|date|phone|contact|tracking|order\s*(?:id|number))\b/i.test(object)) continue;
+    return tail;
+  }
+  const included = value.match(/\b(?:with|plus|and)\s+(.+?\s+\d+(?:\.\d+)?(?:\s*\/\s*\d+)?\s*(?:vials?|boxes?|packs?|units?|tablets?|bottles?)?[.!]?\s*)$/i)?.[1];
+  if (included && !/^(?:gps|coordinates?|date|phone|contact|tracking|district|region|gate|road|street|house|entrance|junction|ward|address)\b/i.test(included)) return included;
+  return '';
+}
 export function isGeneralNonOrderInformation(value: string): boolean {
   const text = value.trim().replace(/^[•*]\s*/, '').replace(/[.!]+$/, '').trim();
   if (!text || essentialInstruction.test(text)) return false;
@@ -35,6 +54,11 @@ export function stripGeneralNonOrderInformation(text: string): string {
   return text.split(/\r?\n/).map(line => {
     const filtered = line.split(/(;|(?<=[.!?])\s+(?=[a-z])|,\s*(?=(?:please|pls|kindly|we need|i need|patient|client|age|sex|gender|status|symptoms?|bsct|wbct|contact|phone)\b))/i).map(part => {
       if (part === ';' || !part.trim()) return part;
+      const compulsory = generalCompulsoryText(part);
+      // Keep empty labels long enough to pair multiline values. Remove inline
+      // metadata now so a following semicolon-separated product survives.
+      if (!compulsory.trim() && !/^[\p{L}\s/()-]+\s*[:=]\s*$/u.test(part)) return '';
+      if (compulsory.trim()) part = compulsory;
       const plain = part.trim();
       if (valueFollows) {
         valueFollows = false;
@@ -117,6 +141,9 @@ function standaloneOrderDate(text: string): boolean {
 
 export function classifyGeneralText(raw: string): GeneralTextClassification {
   const text = raw.trim().replace(/^(?:[-*•]\s+|\d+[.)]\s+)/, '');
+  const compulsory = generalCompulsoryText(text);
+  if (!compulsory.trim()) return {category: 'administrative', reason: 'Excluded metadata; not one of the four compulsory audit parameters.'};
+  if (compulsory !== text) return classifyGeneralText(compulsory);
   if (isGeneralNonOrderInformation(text)) return { category: 'administrative', reason: 'Patient, clinical, status or contact information; excluded from order checks.' };
   const structure = generalDocumentLabel(text);
   if (structure && !structure.value) return { category: structure.field === 'date' ? 'administrative' : 'mandatory_order', reason: 'Recognized document field or section heading.' };

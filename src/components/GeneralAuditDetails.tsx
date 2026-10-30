@@ -1,5 +1,5 @@
 import { generalFacilityDisplayStatus } from '../utils/generalFacility';
-import { generalAuditClarifications, generalReviewEvidence, generalReviewExplanation } from '../utils/generalAuditReviews';
+import { generalAuditClarifications, generalReviewEvidence, generalReviewExplanation, generalFourParameterStatuses } from '../utils/generalAuditReviews';
 import type { GeneralAuditDetails as Details } from '../utils/generalAuditTypes';
 
 export default function GeneralAuditDetails({ details, onConfirmProduct, confirmationDisabled = false }: {
@@ -11,25 +11,25 @@ export default function GeneralAuditDetails({ details, onConfirmProduct, confirm
   if (generalReviewEvidence(details.semanticReviews?.filter(review => !review.dosageFormKey), 'quantity').length && !reviewNotices.some(notice => notice.field === 'quantity')) {
     reviewNotices.push({ field: 'quantity', message: 'QUANTITY REVIEW' });
   }
-  const optionalAbsent = { whatsappValue: 'N/A', fulfillmentValue: 'N/A', status: 'optional not provided' as const };
-  const productStatus = details.productCount.requested === 0 || details.productCount.found === 0 ? 'missing from customer request'
-    : details.products.some(product => product.fulfillmentStatus === 'discrepancy') ? 'mismatch'
-    : details.productVerifications?.some(product => product.status !== 'customer verified') || details.pendingOrderLimitCount || reviewNotices.some(notice => notice.field === 'products' || notice.field === 'quantity') ? 'review required' : 'match';
+  const statuses = generalFourParameterStatuses(details);
   const fields = [
     { unavailable: 'Not available', label: 'Facility Name', required: true, customer: details.facility.whatsappValue, system: details.facility.fulfillmentValue, status: generalFacilityDisplayStatus(details.facility) },
     { unavailable: 'Not found', label: 'Name of Orderer', required: true, customer: details.orderer.whatsappValue, system: details.orderer.fulfillmentValue, status: details.orderer.status, reason: details.orderer.reason },
-    ...([['Delivery/Drop Area', details.dropArea], ['District', details.district]] as const).map(([label, field]) => ({ unavailable: 'Not provided — optional', label, required: false, customer: (field || optionalAbsent).whatsappValue, system: (field || optionalAbsent).fulfillmentValue, status: (field || optionalAbsent).status })),
-    { unavailable: 'Not available', label: details.productComparisonMode === 'names_only' ? 'Product Names' : 'Products and Quantities', required: true, customer: `${details.productCount.requested} products`, system: `${details.productCount.found} products`, status: productStatus }
+    { unavailable: 'Not available', label: 'Products', required: true, customer: `${details.productCount.requested} products`, system: `${details.productCount.found} products`, status: statuses.products },
+    { unavailable: 'Not available', label: 'Quantities', required: true,
+      customer: details.products.map(product => `${product.name}: ${product.requested} ${product.requestedUnit || ''}`.trim()).join('; '),
+      system: details.products.map(product => `${product.name}: ${product.supplied} ${product.suppliedUnit || ''}`.trim()).join('; '),
+      status: statuses.quantities }
   ];
   const statusText = (field: typeof fields[number]) => {
     if(field.status==='informational') return 'OPTIONAL — INFORMATION ONLY';
     if (field.status === 'optional not provided' || !field.required && (field.status === 'missing from customer request' || field.status === 'not available in system entry')) return field.customer === 'N/A' && field.system === 'N/A' ? 'OPTIONAL — NOT PROVIDED'
       : `OPTIONAL — NOT PROVIDED IN ${field.customer === 'N/A' ? 'CUSTOMER REQUEST' : 'FULFILMENT'}`;
-    if (field.required && (field.status === 'missing from customer request' || field.status === 'not available in system entry')) return field.label === 'Name of Orderer' ? 'ORDERER NAME NOT FOUND — MISSING REQUIRED INFORMATION' : field.label === 'Facility Name' ? 'FACILITY NOT FOUND — MISSING REQUIRED INFORMATION' : 'MISSING REQUIRED INFORMATION';
+    if (field.required && (field.status === 'missing from customer request' || field.status === 'not available in system entry')) return 'REVIEW REQUIRED';
     if (field.label === 'Name of Orderer' && field.status === 'review required') return 'REVIEW REQUIRED';
     if (field.label === 'Name of Orderer' && field.status === 'match') return 'MATCH';
-    if (field.status === 'review required') return field.label === 'Facility Name' ? 'NOT COMPARED' : 'CLARIFICATION REQUIRED';
-    if (field.status === 'match') return field.label === 'Facility Name' ? 'MATCH' : ['Products and Quantities', 'Product Names'].includes(field.label) ? 'ALL MATCHED' : 'VERIFIED MATCH';
+    if (field.status === 'review required') return 'REVIEW REQUIRED';
+    if (field.status === 'match') return field.label === 'Facility Name' ? 'MATCH' : ['Products', 'Quantities'].includes(field.label) ? 'ALL MATCHED' : 'VERIFIED MATCH';
     if (field.label === 'Delivery/Drop Area') return 'LOCATION MISMATCH';
     if (field.label === 'District') return 'DISTRICT MISMATCH';
     return 'DISCREPANCY';

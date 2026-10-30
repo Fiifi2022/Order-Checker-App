@@ -317,16 +317,17 @@ test('requested medicine pairs match approved repository IDs without missing/ext
  assert.doesNotMatch(conflict.generalAudit.discrepancies.join(' '),/missing|extra/i);
 });
 
-test('unresolved iron syrup is one identity discrepancy in both clients and cannot become a capsule alias',async()=>{
+test('unresolved iron syrup is one identity review in both clients and cannot become a capsule alias',async()=>{
  const {buildGeneralReport}=await import('../extension/general-report.js');
  const result=await runGeneralProductNameAudit(headers+'syrup Iron iii polymaltose 20/20',headers+'Iron (III) Hydroxide Polymaltose Complex Suspension [10/10]',{revision:1,products:defaultProducts()},{},noAI);
- assert.equal(result.allMatch,false);assert.equal(result.items.length,1);assert.equal(result.issueCount,1);
+ assert.equal(result.allMatch,false);assert.equal(result.items.length,1);assert.equal(result.issueCount,0);
+ assert.equal(result.generalAudit.finalStatus,'REVIEW REQUIRED');
  assert.equal(result.items[0].status,'product identity discrepancy');assert.equal(result.items[0].fulfillment.orderLimitEligible,false);
  assert.equal(result.items[0].fulfillment.requested,20);assert.equal(result.items[0].fulfillment.supplied,10);
  const main=renderToStaticMarkup(createElement(Summary,{details:result.generalAudit}));
  const extension=buildGeneralReport(result);
  for(const html of [main,extension]) {
-  assert.match(html,/Product Identity Discrepanc/i);assert.doesNotMatch(html,/Missing Products|Extra Products|missing from System Entry|extra in System Entry/);
+  assert.match(html,/Product Identity Review/i);assert.doesNotMatch(html,/Missing Products|Extra Products|missing from System Entry|extra in System Entry/);
   assert.doesNotMatch(html,/Dosage \/ formulation|clinical specifications conflict/i);
  }
 });
@@ -359,7 +360,7 @@ test('optional delivery areas and districts never create discrepancies',async()=
  for(const [a,b] of [['Delivery/Drop area: Back gate\nDistrict: Alpha\n','Delivery/Drop area: Front gate\nDistrict: Beta\n'],['District: Alpha\n',''],['','District: Beta\n']]) {
   const result=await runGeneralProductNameAudit(headers+a+'PCM Qty 20',headers+b+'Paracetamol 500mg Tablet [20/20]',catalog,{},noAI);
   assert.equal(result.allMatch,true,JSON.stringify(result.generalAudit));assert.equal(result.issueCount,0);
-  assert.equal(result.items[0].fulfillment.requested,20);assert.match(result.generalAudit.finalStatus,/Audit Passed/);
+  assert.equal(result.items[0].fulfillment.requested,20);assert.match(result.generalAudit.finalStatus,/NO DISCREPANCY/);
  }
 });
 
