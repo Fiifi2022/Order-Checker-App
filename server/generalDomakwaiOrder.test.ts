@@ -1,3 +1,4 @@
+import {applyIdentityDecision} from './generalIdentityDecision';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
@@ -36,9 +37,11 @@ for (const heading of ['ProductsQuantities:', 'ProductsAndQuantities:', 'Product
   });
 }
 
-test('screenshot compares both identities and equivalent 50 blisters / 5 FS packs without AI or unrelated findings', async () => {
+test('screenshot preserves equivalent pack quantities and clears after the CCA confirms the facility spelling', async () => {
   let calls = 0;
-  const result = await runGeneralSemanticAudit(customer, fulfillment, {}, {}, () => { calls++; throw Error('Routine templates and explicit quantities need no AI'); });
+  const pending = await runGeneralSemanticAudit(customer, fulfillment, {}, {}, () => { calls++; throw Error('Routine templates and explicit quantities need no AI'); });
+  assert.equal(pending.generalAudit.facility.status,'review required');
+  const result=applyIdentityDecision({...pending,whatsappMessage:customer,fulfillmentConfirmation:fulfillment},'facility','confirm',{id:'test-cca',name:'CCA'});
   assert.equal(calls, 0);
   assert.equal(result.allMatch, true);
   assert.equal(result.issueCount, 0);

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OrderCheck",
-  "version": "2.3.47",
+  "version": "2.3.64",
   "description": "OrderCheck side panel with product-specific General Auditor verification and live FS allocation support.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -11,7 +11,7 @@
     "sidePanel"
   ],
   "host_permissions": [
-    "http://localhost:3000/*",
+    "https://ordercheck-production.up.railway.app/*",
     "https://fulfillment-gh1-production.platform.flyzipline.com/*",
     "https://fulfillment-gh2-production.platform.flyzipline.com/*",
     "https://fulfillment-gh3-production.platform.flyzipline.com/*",

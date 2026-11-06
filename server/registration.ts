@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express';
+import {accountAvailabilityError} from './accountAvailability';
 
 export interface Registration { uid: string; email: string; name: string; position: string; nest: string; createdAt: string; updatedAt: string }
 export function registrationFields(body: any) {
@@ -18,7 +19,7 @@ export function registrationHandlers(store: {
 }) {
   const get: RequestHandler = async (_req, res) => {
     try { res.json(await store.get(res.locals.identity.uid)); }
-    catch { res.status(503).json({ error: 'Could not load your profile. Please retry.' }); }
+    catch(error) { res.status(503).json(accountAvailabilityError(error)); }
   };
   const save: RequestHandler = async (req, res) => {
     let fields: ReturnType<typeof registrationFields>;
@@ -26,7 +27,7 @@ export function registrationHandlers(store: {
     catch (error: any) { res.status(400).json({ error: error.message }); return; }
     const identity = res.locals.identity;
     try { res.json(await store.save(identity.uid, fields, identity.email.toLowerCase())); }
-    catch { res.status(503).json({ error: 'Could not save your profile. Please retry.' }); }
+    catch(error) { res.status(503).json(accountAvailabilityError(error)); }
   };
   return { get, save };
 }

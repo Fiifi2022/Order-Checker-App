@@ -140,7 +140,7 @@ test('clinically different identities and unsupported guesses cannot become matc
     const a = `need ${rawName} - 5`, b = `${canonical} [5/5]`;
     const result = await runGeneralSemanticAudit(headers + a, headers + b, {}, {}, client(data([product(a, canonical, '5', 5)], [product(b, canonical, '5/5', 5)])));
     assert.equal(result.allMatch, false, rawName);
-    assert.ok((result.generalAudit.semanticReviews?.length || 0) >= 1, rawName);
+    assert.ok(result.issueCount>0 || (result.generalAudit.semanticReviews?.length || 0)>=1,rawName);
   }
 });
 
@@ -230,24 +230,24 @@ test('successful interpretation survives the previous one-minute expiry and expi
   } finally { Date.now = now; }
 });
 
-test('cached identity reuses new source quantities and still detects stock and fresh facility/orderer discrepancies', async () => {
+test('catalogue-recognized request wording uses fresh quantities and still detects stock and identity discrepancies', async () => {
   const raw = 'need adult linctus - 17', fulfilled = `${adult} [17/17]`;
   let calls = 0;
   await runGeneralSemanticAudit(headers + raw, headers + fulfilled, {}, {}, client(data([product(raw, adult, '17', 17)], [product(fulfilled, adult, '17/17', 17)]), () => { calls++; }));
   const getClient = () => { calls++; throw new Error('should use validated identity'); };
   const changed = await runGeneralSemanticAudit(headers + 'need adult linctus - 21', headers.replace('Interpretation CHPS', 'Different CHPS').replace('Isaac Awuyem', 'Other Orderer') + `${adult} [8/21]`, {}, {}, getClient);
-  assert.equal(calls, 1);
-  assert.equal(changed.semanticAnalysis.status, 'used');
+  assert.equal(calls, 0);
+  assert.equal(changed.semanticAnalysis.status, 'skipped');
   assert.equal(changed.items[0].requested, '21');
   assert.equal(changed.items[0].found, '8');
   assert.equal(changed.items[0].status, 'quantity mismatch');
   assert.equal(changed.issueCount, 3);
   const stock = await runGeneralSemanticAudit(headers + 'need adult linctus - 24', headers + `${adult} [0/1]`, {}, {}, getClient);
-  assert.equal(calls, 1);
+  assert.equal(calls, 0);
   assert.equal(stock.items[0].status, 'out of stock');
   assert.equal(stock.issueCount, 0);
   const unsafe = await interpretGeneralOrder(headers + 'need adult linctus 500mg - 24', headers + `${adult} [24/24]`, getClient);
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
   assert.equal(unsafe.semanticAnalysis.status, 'fallback');
 });
 

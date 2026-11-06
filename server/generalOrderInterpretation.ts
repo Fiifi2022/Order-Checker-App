@@ -1,3 +1,5 @@
+import {GEMINI_MODEL,GEMINI_THINKING_CONFIG} from './geminiModel';
+import {geminiProviderTimeout} from './geminiTransport';
 import { isGeneralKnownProductDescription, matchGeneralClinicalProducts } from '../src/utils/generalProductMatching';
 import { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 import { classifyGeneralText, generalOrderRelevantText } from '../src/utils/generalTextClassification';
@@ -172,7 +174,7 @@ function protectedProductLines(customer: string, fulfilment: string) {
 
 function quantityFragment(product: GeneralInterpretedProduct, source: 'customer_request' | 'fulfillment_confirmation') {
   if (product.quantity === null || !Number.isFinite(product.quantity) || product.quantity < 0 || !product.quantityText) return null;
-  const pattern = /^(\d+(?:,\d{3})*(?:\.\d+)?)(?:\s*\/\s*(\d+(?:,\d{3})*(?:\.\d+)?))?(?:\s*(units?|vials?|packs?|boxes?|cards?|doses?|sachets?|tablets?|capsules?|bottles?|pieces?|pcs?|tests?))?$/i;
+  const pattern = /^(\d+(?:,\d{3})*(?:\.\d+)?)(?:\s*\/\s*(\d+(?:,\d{3})*(?:\.\d+)?))?(?:\s*(units?|vials?|packs?|boxes?|cards?|doses?|sachets?|tablets?|capsules?|bottles?|btls?|pieces?|pcs?|pics|tests?))?$/i;
   const m = product.quantityText.match(pattern);
   if (!m || Number(m[1].replace(/,/g, '')) !== product.quantity) return null;
   const raw = stripGeneralListPrefix(product.originalText);
@@ -185,13 +187,13 @@ function quantityFragment(product: GeneralInterpretedProduct, source: 'customer_
   if (!parsed.length && (/\d\s*$/.test(raw.slice(0, offset)) || /\b(?:mg|ml|mcg|iu)\b/i.test(product.quantityText) || /[\/+*-]\s*$/.test(raw.slice(0, offset)))) return null;
   if (!parsed.length && !/^(?:\s*[\])]*\s*[.!]?)$/.test(raw.slice(offset + product.quantityText.length)) && !/^\s*(?:of\s+)?[a-z]/i.test(raw.slice(offset + product.quantityText.length))) return null;
   if (source === 'customer_request' && m[2] && /\b(?:syrup|suspension|injection)\b/i.test(raw) && !parsed.some(hasExplicitGeneralOrderRatio)) return null;
-  const observedUnit = parsed[0]?.unit || raw.slice(offset + product.quantityText.length).match(/^\s*(units?|vials?|packs?|boxes?|cards?|doses?|sachets?|tablets?|capsules?|bottles?|pieces?|pcs?|tests?)\b/i)?.[1] || '';
+  const observedUnit = parsed[0]?.unit || raw.slice(offset + product.quantityText.length).match(/^\s*(units?|vials?|packs?|boxes?|cards?|doses?|sachets?|tablets?|capsules?|bottles?|btls?|pieces?|pcs?|pics|tests?)\b/i)?.[1] || '';
   return { text: m[2] === undefined ? `${product.quantity}` : `${product.quantity}/${m[2]}`, unit: m[3] || observedUnit, offset };
 }
 
 function cleanIntentName(value: string): string {
   return value.replace(/^(?:(?:i\s+)?(?:need|want)|(?:please|pls)\s+(?:send|supply|pack|give)(?:\s+me)?|(?:send|give|supply|pack)(?:\s+me)?|we\s+have\s+packed|packed)\s+/i, '')
-    .replace(/^(?:units?|vials?|packs?|boxes?|cards?|doses?|sachets?|tablets?|capsules?|bottles?|pieces?|pcs?|tests?)\s+(?:of\s+)?/i, '')
+    .replace(/^(?:units?|vials?|packs?|boxes?|cards?|doses?|sachets?|tablets?|capsules?|bottles?|btls?|pieces?|pcs?|pics|tests?)\s+(?:of\s+)?/i, '')
     .replace(/\s+(?:for\s+)?(?:today|tomorrow)[.!]?$/i, '').trim();
 }
 
@@ -377,9 +379,9 @@ export async function interpretGeneralOrder(customer: string, fulfilment: string
       client = getClient();
       if ((quotaCooldown.get(client) || 0) > Date.now()) return fallback('fallback', 'Gemini quota cooldown; deterministic parser used');
       const accepted = await geminiUsage.run(() => optionalAuditAi(async signal => {
-        const response = await client.models.generateContent({ model: 'gemini-2.5-flash-lite',
+        const response = await client.models.generateContent({ model: GEMINI_MODEL,
           contents: JSON.stringify({ customerRequest: customer, fulfilmentConfirmation: fulfilment, ...context, abbreviationMeanings: relevantGeneralAbbreviations(`${customer}\n${fulfilment}`) }),
-          config: { abortSignal: signal, systemInstruction: prompt, responseMimeType: 'application/json', responseSchema: generalOrderInterpretationSchema, temperature: 0.1, httpOptions: { timeout: Math.max(1, timeoutMs), retryOptions: { attempts: 1 } } } });
+          config: { abortSignal: signal, systemInstruction: prompt, responseMimeType: 'application/json', responseSchema: generalOrderInterpretationSchema, thinkingConfig: GEMINI_THINKING_CONFIG, httpOptions: { timeout: geminiProviderTimeout(timeoutMs), retryOptions: { attempts: 1 } } } });
         if (signal.aborted) throw new Error('AI fallback time budget exceeded');
         const data = JSON.parse(response.text || '');
         const rich = interpretRich(data, customer, fulfilment, context.knownProductCatalog);
@@ -393,7 +395,7 @@ export async function interpretGeneralOrder(customer: string, fulfilment: string
           return { ...interpretAuditInputs(legacy, customer, fulfilment, 'general'), reviews: [], semanticAnalysis: { status: 'used' as const, reason: 'Validated legacy extraction; deterministic rules authoritative', evidence: legacy } };
         }
         throw new Error('Invalid interpretation');
-      }, timeoutMs, options.signal));
+      }, timeoutMs, options.signal),client);
       return accepted;
     } catch (error: any) {
       if (client && Number(error?.status || error?.code) === 429) quotaCooldown.set(client, Date.now() + 60_000);

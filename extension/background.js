@@ -1,3 +1,6 @@
+// extension/backend-target.js
+var PRODUCTION_BACKEND_URL = "https://ordercheck-production.up.railway.app";
+
 // extension/fs-origins.js
 function fsOrigins(config, manifest) {
   const patterns = manifest?.content_scripts?.filter((script) => script.js?.includes("fs-content.js")).flatMap((script) => script.matches || []) || [];
@@ -104,7 +107,7 @@ async function backendRequest(baseUrl, endpoint, options = {}, timeoutMs) {
       tokenTimer = setTimeout(() => reject(new Error("The audit could not be completed within the available processing time. Please retry.")), limit);
     })]) : await getToken();
     clearTimeout(tokenTimer);
-    return await fetchJson(`${baseUrl}${endpoint}`, {
+    return await fetchJson(`${PRODUCTION_BACKEND_URL}${endpoint}`, {
       ...options,
       headers: { ...options.headers, Authorization: `Bearer ${token}` }
     }, audit ? Math.max(1, limit - (Date.now() - started)) : limit);
@@ -214,8 +217,7 @@ async function update(tabId, selection, manualFacilityId, refresh = false) {
   if (versions.get(tabId) !== version) return { stale: true };
   if (manualFacilityId === void 0) manualFacilityId = JSON.stringify(prior?.selection?.facility) === JSON.stringify(selection.facility) ? prior?.manualFacilityId || "" : "";
   const identity = (s) => JSON.stringify([s.facility, selectionProducts(s).map((p) => [p.name, p.id])]);
-  const { customBackendUrl } = await chrome.storage.local.get("customBackendUrl");
-  const base = customBackendUrl || extensionConfig2.backendUrl;
+  const base = PRODUCTION_BACKEND_URL;
   const cycleKey = allocationCycleKey(base), cycleSetting = await chrome.storage.local.get(cycleKey);
   const allocationCycle = typeof cycleSetting[cycleKey] === "string" ? cycleSetting[cycleKey] : "";
   if (versions.get(tabId) !== version) return { stale: true };

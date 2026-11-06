@@ -94,7 +94,7 @@ test('backend completion, stored JSON and both interfaces retain exactly the fou
   const accepted = completeGeneralAuditRun(createGeneralAuditRun(input, 1, {}, {facilityContext: context}, true), stored);
   assert.equal(accepted.allMatch, true); assert.equal(accepted.generalAudit.finalStatus, 'NO DISCREPANCY');
   for (const html of [renderToStaticMarkup(createElement(Details, {details: accepted.generalAudit})), buildGeneralReport(accepted)]) {
-    assert.match(html, /Products/); assert.match(html, /Quantities/);
+    assert.match(html, /Products/); assert.doesNotMatch(html, /Quantities \(mandatory\)|<strong>Quantities<\/strong>/);
     assert.doesNotMatch(html, /District|Dropsite|Delivery.*Drop area|Phone|Date|GPS/);
   }
   const legacy = runGeneralAuditor(customer, fulfillment);

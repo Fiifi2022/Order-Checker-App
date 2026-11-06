@@ -28,9 +28,9 @@ async function audit(customer:string,fulfillment=log(),support={}) {
 for (const intro of ['Hello, this is Grace Akabati from Abasua HC.', 'I am Grace from Abasua HC,', "I'm Grace Akabati calling from Abasua Health Centre and", 'My name is Grace Akabati. We are ordering from Abasua HC.']) {
   test(`sentence request: ${intro}`, async()=>{
     const r=await audit(`${intro} Please send us 2 RDT kits.`);
-    assert.equal(r.allMatch,true,JSON.stringify(r.generalAudit));
+    assert.equal(r.allMatch,!intro.startsWith('I am Grace from'),JSON.stringify(r.generalAudit));
     assert.equal(r.generalAudit.facility.status,'match');
-    assert.equal(r.generalAudit.orderer.status,'match');
+    assert.equal(r.generalAudit.orderer.status,intro.startsWith('I am Grace from')?'review required':'match');
     assert.equal(r.items.length,1);
     assert.equal(r.items[0].fulfillment.requested,2);
     assert.equal(r.items[0].fulfillment.supplied,2);
@@ -105,14 +105,15 @@ test('sentence reading retains stockouts, missing products, extras, wrong facili
   assert.equal(approved.allMatch,true);
 });
 
-test('main app and extension receive the same extraction preview and authoritative audit',async()=>{
+test('main app and extension retain extraction internally without displaying extraction details',async()=>{
   const inputs={whatsappMessage:'This is Grace Akabati from Abasua HC. We need RDT 2.',fulfillmentConfirmation:log()};
   const backend=await audit(inputs.whatsappMessage,inputs.fulfillmentConfirmation);
   const accepted=completeGeneralAuditRun(createGeneralAuditRun(inputs,1,{}, {},true),{...backend,...inputs});
   assert.equal(accepted.allMatch,true);
   const web=renderToStaticMarkup(createElement(Details,{details:accepted.generalAudit}));
   const extension=buildGeneralReport(accepted);
-  for(const html of [web,extension]) {assert.match(html,/What we understood/);assert.match(html,/Grace Akabati/);assert.match(html,/edit the original message/);}
+  assert.ok(accepted.generalAudit.extraction);
+  for(const html of [web,extension]) {assert.doesNotMatch(html,/What we understood|edit the original message/i);assert.match(html,/Grace Akabati/);}
 });
 
 test('unparsed additional product requests cannot disappear behind a valid match',async()=>{

@@ -1,3 +1,4 @@
+import {APPROVED_VACCINE_CATALOGUE_LABELS} from '../shared/generalVaccineCatalog';
 import { productReceivingHints } from '../src/utils/productReceivingHints';
 import { intentAliases } from '../shared/generalIntentAliases';
 import { createHash } from 'node:crypto';
@@ -5,7 +6,7 @@ import type { RequestHandler } from 'express';
 import { assignedRoles } from '../shared/roles';
 import packaging from '../src/utils/generalPackagingCatalogue.json';
 import { generalApprovedProductIdentities } from '../src/utils/generalMedicalTerminology';
-import { catalogProductNames, setCatalogRevision, canManageCatalog, catalogKey, checkAliasConflicts, validateCatalogProduct, type CatalogProduct, type ProductCatalog } from '../shared/productCatalog';
+import { catalogProductNames, catalogAliasKey, catalogMatchLabelKey, setCatalogRevision, canManageCatalog, catalogKey, checkAliasConflicts, validateCatalogProduct, type CatalogProduct, type ProductCatalog } from '../shared/productCatalog';
 import { generalMedicalTerminology } from '../src/utils/generalMedicalTerminology';
 import { medicalProductAcronyms } from '../src/utils/medicalProductAcronyms';
 import { applyGeneralCatalog } from '../src/utils/productCatalog';
@@ -51,15 +52,31 @@ export function defaultProducts(): CatalogProduct[] {
       contextualAliases: existing?.contextualAliases || [], note: existing?.note || '',
       terminology: { ...existing?.terminology, canonicalId: identity.canonicalId } });
   }
-  return [...general.values(), ...Object.entries({ ...vaccineService.getAliases(), 'R21': ['R21', 'R21 vaccine'], 'Soloshot 0.05ml': ['Soloshot 0.05ml'], 'Soloshot 0.5ml': ['Soloshot 0.5ml'], 'Syringe and needle 2ml': ['Syringe and needle 2ml', 'Syringes and needles 2ml'], 'Syringe and needle 5ml': ['Syringe and needle 5ml', 'Syringes and needles 5ml'] }).map(([name, aliases]): CatalogProduct => ({
+  return [...general.values(), ...Object.entries({ ...vaccineService.getAliases(), 'R21': ['R21', ...APPROVED_VACCINE_CATALOGUE_LABELS.R21], 'Soloshot 0.05ml': ['Soloshot 0.05ml'], 'Soloshot 0.5ml': ['Soloshot 0.5ml'], 'Syringe and needle 2ml': ['Syringe and needle 2ml', 'Syringes and needles 2ml'], 'Syringe and needle 5ml': ['Syringe and needle 5ml', 'Syringes and needles 5ml'] }).map(([name, aliases]): CatalogProduct => ({
     id: productId('vaccine', name), scope: 'vaccine', name, category: /diluent|dropper/i.test(name) ? 'companion' : 'vaccine',
     aliases: [...aliases], contextualAliases: [], note: '',
-  }))];
+  }))].map(product=>({...product,aliases:[...new Set([...product.aliases,...(APPROVED_VACCINE_CATALOGUE_LABELS[product.name]||[])])]}));
+}
+/** Upgrade saved catalogues once without reviving rejected or edited mappings. */
+export function ensureApprovedVaccineCatalogueLabels(catalog:ProductCatalog):ProductCatalog {
+ let changed=false;
+ const products=catalog.products.map(product=>{
+  if(product.scope!=='vaccine' && product.category!=='vaccine')return product;
+  const entry=Object.entries(APPROVED_VACCINE_CATALOGUE_LABELS).find(([name])=>catalogKey(name)===catalogKey(product.name));
+  if(!entry || catalog.products.filter(other=>other.scope===product.scope && catalogKey(other.name)===catalogKey(product.name)).length!==1)return product;
+  const aliases=entry[1].filter(alias=>!catalogProductNames(product).some(name=>catalogMatchLabelKey(name)===catalogMatchLabelKey(alias)) &&
+    !catalog.aliasRecords?.some(record=>record.normalizedText===catalogAliasKey(alias)) &&
+    !catalog.products.some(other=>other.id!==product.id && other.scope===product.scope && catalogProductNames(other).some(name=>catalogMatchLabelKey(name)===catalogMatchLabelKey(alias))));
+  if(!aliases.length || product.aliases.length+aliases.length>150)return product;
+  changed=true;return {...product,aliases:[...product.aliases,...aliases]};
+ });
+ return changed?{...catalog,products,revision:catalog.revision+1,updatedAt:new Date().toISOString(),updatedBy:'catalogue-approved-vaccine-labels'}:catalog;
 }
 export function applyCatalog(catalog: ProductCatalog) {
   setCatalogRevision(catalog.revision);
   applyGeneralCatalog(catalog.products);
   vaccineService.replaceAliases(Object.fromEntries(catalog.products.filter(product => product.scope === 'vaccine').map(product => [product.name, catalogProductNames(product)])));
+  vaccineService.setSyringeCatalogue(catalog.products);
 }
 export function saveCatalogProduct(catalog: ProductCatalog, input: any, actor: string): ProductCatalog {
   if (input?.revision !== catalog.revision) throw Object.assign(new Error('The catalog changed. Reload it before saving.'), { status: 409 });

@@ -44,7 +44,8 @@ test('aliases preserve clinical strengths and forms', () => {
 test('facility locality and orderer identities normalize without accepting different identities', () => {
   const customer = 'Facility: Vea Health Centre\nOrderer: Mary A. Mensah\nORS - 5';
   const supplied = 'Facility: VEA Health Center\nOrderer: Nurse Mary Mensah\nORS - 5';
-  assert.equal(runGeneralAuditor(customer, supplied).allMatch, true);
+  assert.equal(runGeneralAuditor(customer, supplied).allMatch, false);
+  assert.equal(runGeneralAuditor(customer, supplied).generalAudit.orderer.status,'review required');
   assert.equal(runGeneralAuditor(customer, supplied.replace('VEA Health Center', 'VEA Hospital')).generalAudit.facility.status, 'mismatch');
   assert.equal(runGeneralAuditor(customer, supplied.replace('VEA Health Center', 'Kade Hospital')).generalAudit.facility.status, 'mismatch');
   assert.equal(runGeneralAuditor(customer, supplied.replace('Mary Mensah', 'Jane Mensah')).generalAudit.orderer.status, 'mismatch');

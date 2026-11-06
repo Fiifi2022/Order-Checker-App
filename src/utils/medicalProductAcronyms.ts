@@ -62,6 +62,9 @@ export let medicalProductAcronyms: readonly ProductAcronym[] = [
   { name: 'PC', aliases: ['PC'], category: 'blood', contextual: true, note: 'May mean platelet concentrate or packed cells. Blood group alone does not resolve it; keep PC and warn unless explicit component context resolves it.' }
 ];
 
+// Recognition vocabulary only; repository resolution still owns product IDs.
+export const medicalBloodComponentVocabulary = medicalProductAcronyms.filter(entry=>entry.category==='blood' && !entry.contextual);
+
 export const medicalProductAcronymReference = `MEDICAL AND BLOOD PRODUCT ACRONYM REFERENCE
 This is a maintained vocabulary of known catalogue and common clinical product abbreviations, not an exhaustive list of every local acronym. These identity rules take precedence over broad synonym shortcuts.
 ${medicalProductAcronyms.map(entry => `- ${entry.aliases.join(' / ')} => ${entry.name}${entry.contextual ? ' [CONTEXT REQUIRED]' : ''}.${entry.note ? ` ${entry.note}` : ''}`).join('\n')}

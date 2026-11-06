@@ -13,7 +13,7 @@ const catalog:ProductCatalog={revision:1,products:[
 ]};
 async function audit(request='RDT 1',supply='Malaria Rapid Diagnostic Test Kit [0/1] - currently out of stock',support={}){
  applyCatalog(catalog);let calls=0;
- const result=await runGeneralProductNameAudit('Orderer: Grace\nFacility: Abasua Health Centre\n'+request,
+ const result=await runGeneralProductNameAudit('Orderer: Grace Akabati\nFacility: Abasua Health Centre\n'+request,
  'Orderer: Grace Akabati\nFacility: Abasua HC\n'+supply,catalog,{semanticTimeoutMs:0,...support},()=>{calls++;throw Error('Catalogue match must not use AI');});
  assert.equal(calls,0);return result;
 }

@@ -1,6 +1,6 @@
 // Use the same source evidence, catalog revision, and order-limit decisions as the portal.
 export function auditBody(whatsappMessage, fulfillmentConfirmation, revision, decisions = {}, previousAudit) {
-  return { whatsappMessage, fulfillmentConfirmation, auditScope: 'general_auditor', includeProductCatalog: true, productCatalogRevision: revision,
+  return { whatsappMessage, fulfillmentConfirmation, auditScope: 'general_auditor',deferProductResearch:true, includeProductCatalog: true, productCatalogRevision: revision,
     generalOrderLimitDecisions: decisions, checkSource: 'companion_extension', checkId: previousAudit?.generalAudit && previousAudit.id || `EXT-${crypto.randomUUID()}`,
     ...(previousAudit?.generalAudit && previousAudit.id ? { restoreProductConfirmations: true } : {}) };
 }

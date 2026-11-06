@@ -107,13 +107,14 @@ test('new input discards an earlier resolved duplicate identity', () => {
   assert.equal(result.canDispatchAutomatically, false);
 });
 
-test('old duplicate-record results cannot expose record lists or facility ambiguity notices', () => {
+test('retained uncertain facility records show inline confirmation instead of a contradictory green status', () => {
   const result = runGeneralAuditor(customer, system);
   const details = { ...result.generalAudit, facility: { ...result.generalAudit.facility, status: 'review required' as const, reason: 'The name resolves to multiple facility records. Verify the facility ID, district and region.', evidence: records }, warnings: ['FACILITY REVIEW REQUIRED'], finalStatus: 'REVIEW REQUIRED — POSSIBLE FACILITY MATCH', message: 'Possible facility match. Manually verify the facility before dispatch.' };
   const markup = render(details);
-  assert.doesNotMatch(markup, banned);
-  assert.match(markup, /Facility Name \(mandatory\)<\/span><span class="text-green-700">MATCH/);
-  assert.doesNotMatch(markup, /role="status"/);
+  assert.doesNotMatch(markup, /Region One|Region Two|Facility record:/);
+  assert.match(markup, /Awaiting CCA Confirmation/);
+  assert.match(markup, /Confirm Match/);
+  assert.match(markup, /Possible Facility Match Detected/);
 });
 
 test('normalization keeps genuinely different facility types distinct', () => {

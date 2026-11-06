@@ -1,3 +1,4 @@
+import {PRODUCTION_BACKEND_URL} from './backend-target.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -167,7 +168,7 @@ test('token refresh retains context while account changes invalidate it', async 
 
 test('selected cycle is sent to backend, changes invalidate cached balances, and other backends keep separate preferences',async()=>{
  const {allocationCycleKey}=await import('./allocation-cycle.js');
- const key=allocationCycleKey('http://localhost:3000');
+ const key=allocationCycleKey(PRODUCTION_BACKEND_URL);
  const localSettings={[key]:'November 2026',[allocationCycleKey('https://another.example')]:'December 2026'};
  const lookups=[];const service=worker({localSettings,onLookup:input=>lookups.push(input)});
  await service.request({type:'FS_SELECTION',selection});assert.equal(lookups[0].allocationCycle,'November 2026');

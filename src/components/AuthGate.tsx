@@ -3,6 +3,7 @@ import { createUserWithEmailAndPassword, onAuthStateChanged, reload, sendEmailVe
 import { ShieldCheck, LogOut } from 'lucide-react';
 import { auth, loginWithGoogle, logoutUser } from '../firebase';
 import { authFetch } from '../utils/authFetch';
+import {loadAccountAccess} from '../utils/loadAccountAccess';
 import type { UserRegistration, UserRoleRecord } from '../types';
 
 function errorMessage(error: any) {
@@ -25,6 +26,7 @@ export default function AuthGate({ children }: { children: (profile: UserRoleRec
   const [profile, setProfile] = useState<UserRoleRecord | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [registration, setRegistration] = useState<UserRegistration | null>(null);
+  const [registrationChecked,setRegistrationChecked]=useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -39,20 +41,13 @@ export default function AuthGate({ children }: { children: (profile: UserRoleRec
   const generation = useRef(0);
   const loadAccount = async (account: User | null) => {
     const current = ++generation.current;
-    setProfile(null); setUser(account); setRegistration(null); setLoading(true);
+    setProfile(null); setUser(account); setRegistration(null); setRegistrationChecked(false); setLoading(true);
     try {
       if (!account) return;
-      const response = await authFetch('/api/auth/registration');
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Could not load your profile.');
+      const access=await loadAccountAccess(account.emailVerified,authFetch);
       if (current !== generation.current) return;
-      setRegistration(data);
-      if (!account.emailVerified) return;
-      const access = await authFetch('/api/auth/me');
-      const assignedProfile = await access.json();
-      if (current !== generation.current) return;
-      if (access.ok) { setProfile(assignedProfile); setError(''); }
-      else if (access.status !== 403) throw new Error(assignedProfile.error || 'Could not verify access.');
+      setRegistration(access.registration);setRegistrationChecked(access.registrationChecked);
+      setProfile(access.profile);setError('');
     } catch (err) { if (current === generation.current) setError(errorMessage(err)); }
     finally { if (current === generation.current) setLoading(false); }
   };
@@ -81,7 +76,10 @@ export default function AuthGate({ children }: { children: (profile: UserRoleRec
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     void action(async () => {
-      if (user) { await saveProfile(user); setNotice('Your profile has been saved for administrator review.'); return; }
+      if (user) {
+        if(!registrationChecked || registration)throw Error('Check your existing profile before submitting registration.');
+        await saveProfile(user); setNotice('Your profile has been saved for administrator review.'); return;
+      }
       if (mode === 'signin') {
         await signInWithEmailAndPassword(auth, email.trim(), password);
         setPassword(''); return;
@@ -110,10 +108,10 @@ export default function AuthGate({ children }: { children: (profile: UserRoleRec
       {notice && <p role="status" className="mt-5 p-3 rounded-xl bg-emerald-50 text-emerald-800 text-sm">{notice}</p>}
       {loading ? <p role="status" className="mt-6 text-slate-600">Checking your session…</p> : user ? <div className="mt-6 space-y-4">
         <p className="text-sm text-slate-600">Signed in as <strong>{user.email}</strong></p>
-        {!registration && <form onSubmit={submit} className="space-y-4"><p className="text-sm text-slate-600">Complete your profile to request access.</p>{profileFields}<button disabled={busy} className="w-full rounded-xl bg-purple-800 text-white p-3 font-semibold disabled:opacity-50">{busy ? 'Saving…' : 'Save profile'}</button></form>}
+        {registrationChecked && !registration && <form onSubmit={submit} className="space-y-4"><p className="text-sm text-slate-600">Complete your profile to request access.</p>{profileFields}<button disabled={busy} className="w-full rounded-xl bg-purple-800 text-white p-3 font-semibold disabled:opacity-50">{busy ? 'Saving…' : 'Save profile'}</button></form>}
         {!user.emailVerified && <div className="space-y-3"><p className="text-sm text-slate-600">Verify your email using the link in your inbox before accessing OrderCheck.</p><button disabled={busy} onClick={() => { void action(async () => { await sendEmailVerification(user); setNotice('Verification email sent. Check your inbox.'); }); }} className="text-purple-800 text-sm underline disabled:opacity-50">Send verification email</button></div>}
-        {registration && <div className="rounded-xl bg-purple-50 p-4 text-sm text-purple-900"><strong>Awaiting administrator approval</strong><p className="mt-2">{registration.name} · {registration.position} · {registration.nest}</p><p className="mt-2">An administrator will assign your access role.</p></div>}
-        <button disabled={busy} onClick={() => { void action(async () => { await reload(user); await user.getIdToken(true); await loadAccount(user); }); }} className="w-full border border-purple-200 rounded-xl p-3 text-purple-800 disabled:opacity-50">{busy ? 'Checking…' : 'Check verification and access'}</button>
+        {registrationChecked && registration && <div className="rounded-xl bg-purple-50 p-4 text-sm text-purple-900"><strong>Awaiting administrator approval</strong><p className="mt-2">{registration.name} · {registration.position} · {registration.nest}</p><p className="mt-2">An administrator will assign your access role.</p></div>}
+        <button disabled={busy} onClick={() => { void action(async () => { await reload(user); await user.getIdToken(true); await loadAccount(user); }); }} className="w-full border border-purple-200 rounded-xl p-3 text-purple-800 disabled:opacity-50">{busy ? 'Checking…' : !registrationChecked ? 'Retry profile lookup' : 'Check verification and access'}</button>
         <button disabled={busy} onClick={() => { void action(async () => { await logoutUser(); setName(''); setPosition(''); setNest(''); }); }} className="w-full flex items-center justify-center gap-2 p-3 text-slate-600"><LogOut size={16} />Sign out</button>
       </div> : <>
         <div className="mt-6 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">

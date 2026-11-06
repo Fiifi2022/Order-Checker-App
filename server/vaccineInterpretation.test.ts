@@ -84,7 +84,8 @@ test('ratios retain the supplied numerator/reference and zero is not changed to 
 });
 
 test('negative, fractional, unreadable and unsupported word quantities cannot silently pass', () => {
-  for (const line of ['BCG - -2','-2 BCG','BCG - 1.5','BCG twenty','BCG [5/-2]','BCG [unreadable]']) {
+  assert.equal(parseVaccineLinesDetailed('BCG twenty').items[0].quantity,20);
+  for (const line of ['BCG - -2','-2 BCG','BCG - 1.5','BCG millions','BCG [5/-2]','BCG [unreadable]']) {
     const parsed = parseVaccineLinesDetailed(line); assert.ok(parsed.errors.length > 0,line);
     assert.equal(runDeterministicAuditFallback(line,line).allMatch,false,line);
   }

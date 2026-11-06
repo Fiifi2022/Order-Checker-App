@@ -237,7 +237,7 @@ test('Blueprint opens the checker-selected sheet instead of the previously activ
     async safeFetchJson(){return {activeDistrictId:'west',districts:[{id:'west',district:'West',rows:[{balance:3}]},{id:'east',district:'East',rows:[{balance:1}],blankColumns:[{id:'east-notes',before:null,headers:[]}],sheetSizing:{columnWidths:{'field:facility':240},rowHeights:{}}}]};},
     setLoading:noOp,setDistricts:noOp,setActiveDistrictId(id:string){selected=id;},setDistrict:noOp,setMonth:noOp,setProducts:noOp,
     setRows(value:any[]){rows=value;},normalizeBlueprintRowsProgress(value:any[]){return value;},setCellMerges:noOp,setHeaderLabels:noOp,setActiveHeaderCell:noOp,
-    emptyBlueprintSizing(){return {columnWidths:{},rowHeights:{}};},updateSheetSizing(value:any){sizing=value;},updateBlankColumns(value:any[]){blankColumns=value;},updateDeletedColumns:noOp,setHiddenRowIds:noOp,setMergeHeaders:noOp,setFreezeRows:noOp,setFreezeColumns:noOp,initializeDefaultRows(){throw new Error('Unexpected default sheet');},console
+    emptyBlueprintSizing(){return {columnWidths:{},rowHeights:{}};},updateHeaderCellColors:noOp,updateSheetSizing(value:any){sizing=value;},updateBlankColumns(value:any[]){blankColumns=value;},updateDeletedColumns:noOp,setHiddenRowIds:noOp,setMergeHeaders:noOp,setFreezeRows:noOp,setFreezeColumns:noOp,initializeDefaultRows(){throw new Error('Unexpected default sheet');},console
   });
   vm.runInContext(ts.transpile(code+'\nglobalThis.load = loadBlueprintFromServer;'),context);
   await context.load();assert.equal(selected,'east');assert.equal(rows[0].balance,1);

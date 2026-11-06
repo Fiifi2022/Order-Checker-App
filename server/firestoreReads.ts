@@ -7,11 +7,14 @@ type Counts = { operations: number; returnedDocuments: number; minimumReadEstima
 const counts = new Map<string, Counts>();
 const context = new AsyncLocalStorage<() => string>();
 const startedAt = new Date().toISOString();
+let activeListeners=0;
+export function trackFirestoreListener(){activeListeners++;let active=true;return ()=>{if(active){active=false;activeListeners--;}};}
 const collections = new Set(['audits', 'activity_logs', 'vaccine_transactions', 'vaccine_districts', 'user_profiles', 'user_roles', 'product_catalog', 'general_facility_directory', 'vaccine_verified_orders', 'vaccine_allocations', 'dhd_inventory', 'vaccine_dhd_inventory']);
 const routes = ['/verify', '/auth/me', '/auth/registration', '/auth/register', '/roles', '/roles/current', '/products', '/products/hints', '/products/suggest-aliases', '/general/facilities', '/kpis', '/audits', '/analytics', '/general-auditor/history', '/general-auditor/diagnostics', '/vaccine/blueprint-districts', '/vaccine/allocations', '/vaccine/validate', '/vaccine/allocations/commit', '/vaccine/companion/context', '/vaccine/companion/facilities', '/vaccine/dashboard', '/activity/log', '/activity/logs', '/activity/usage', '/osu', '/admin/accounts', '/admin/firestore-reads', '/vaccine/transactions', '/vaccine/adjustments', '/vaccine/audit-logs', '/vaccine/dhd-inventory', '/vaccine/aliases', '/gemini-status', '/gemini-status/events', '/speedtest'];
 function routeCategory(path: string) {
   if (routes.includes(path)) return path;
   if (/^\/vaccine\/blueprint-districts\/[^/]+\/current$/.test(path)) return '/vaccine/blueprint-districts/:id/current';
+  if (/^\/vaccine\/blueprint-districts\/[^/]+\/events$/.test(path)) return '/vaccine/blueprint-districts/:id/events';
   return 'other_authenticated_route';
 }
 export const firestoreReadContext: RequestHandler = (req, _res, next) => {
@@ -37,7 +40,7 @@ export async function measureFirestoreRead<T>(collectionName: string, read: () =
   } catch (error) { value.failures++; throw error; }
 }
 export function firestoreReadReport() {
-  return { startedAt, scope: 'This server process since startup; not Firebase billing. Failed requests, index reads and SDK-internal retries may incur additional reads.', listeners: 0,
+  return { startedAt, scope: 'This server process since startup; not Firebase billing. Failed requests, index reads and SDK-internal retries may incur additional reads.', listeners: activeListeners,
     operations: [...counts.entries()].map(([key, value]) => { const [route, collection] = key.split('|'); return { route, collection, ...value }; }).sort((a, b) => b.minimumReadEstimate - a.minimumReadEstimate) };
 }
 

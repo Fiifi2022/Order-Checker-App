@@ -1,4 +1,4 @@
-import { generalDocumentLabel, generalNonProductPhrase, recognizeGeneralDocument, generalStandaloneQuantity } from './generalDocumentStructure';
+import { generalDocumentLabel, generalNonProductPhrase, recognizeGeneralDocument, generalStandaloneQuantity, isGeneralFormIntroduction } from './generalDocumentStructure';
 import { GENERAL_SENTENCE_BREAK, GENERAL_SENTENCE_BREAK_SOURCE } from './generalSentenceBoundaries';
 const nonOrderClauseBoundary = new RegExp(`(;|${GENERAL_SENTENCE_BREAK_SOURCE}|,\\s*(?=(?:please|pls|kindly|we need|i need|patient|client|age|sex|gender|status|symptoms?|bsct|wbct|contact|phone)\\b))`, 'i');
 /** General Auditor only. Unknown text remains unresolved; a date, number or
@@ -18,7 +18,7 @@ const nonOrderLabel = /^(?:(?:patient|client)(?:\s*\/\s*(?:patient|client))?(?:[
 const nonOrderHeading = /^(?:(?:patient|client)(?:\s*\/\s*(?:patient|client))?(?:\s+(?:full\s+)?name|\s+age|\s+sex|\s+gender|\s+details?)?|name of (?:patient|client)|age|sex|gender|clinical(?:\s+(?:condition|history|details|observations?))?|condition|symptoms?|observations?|medical observations?|test results?|status(?: description)?|contact(?: details?| numbers?)?|phone(?: numbers?)?|telephone|tel|mobile(?: numbers?)?)\s*[:;=–—|-]?$/i;
 // Four compulsory parameters only. Optional metadata is retained in the raw
 // source, but cannot become product evidence or a compulsory review.
-const excludedMetadata = /^(?:(?:district|region|sub[- ]?district|dropsite|drop site|delivery\s*\/\s*drop area|delivery drop area|delivery area|drop area|drop location|delivery location|delivery instructions?|delivery date|delivery time|gps(?: coordinates)?|coordinates?|latitude|longitude|tracking(?: link| number)?|order\s*(?:id|number|reference)|reference(?: number)?|date|contact(?: details?| numbers?)?|phone(?: numbers?)?|telephone|tel|mobile(?: numbers?)?|priority(?: reason)?|delivery priority|budget holder|notes?)\s*[:;=–—-]|(?:(?:please|kindly)\s+)?(?:deliver|dispatch)(?:\s+(?:it|them|the order|these items))?\s+(?:to|at|behind|before|after|between|on|tomorrow|today|urgently)\b)/i;
+const excludedMetadata = /^(?:(?:district|region|sub[- ]?district|dropsite|drop site|delivery\s*\/\s*drop area|delivery drop area|delivery area|delivery point|drop area|drop location|delivery location|location|delivery instructions?|delivery date|delivery time|gps(?: coordinates)?|coordinates?|latitude|longitude|tracking(?: link| number)?|order\s*(?:id|number|reference)|reference(?: number)?|date|contact(?: details?| numbers?)?|phone(?: numbers?)?|telephone|tel|mobile(?: numbers?)?|priority(?: reason)?|delivery priority|budget holder|notes?)\s*[:;=–—-]|(?:(?:please|kindly)\s+)?(?:deliver|dispatch)(?:\s+(?:it|them|the order|these items))?\s+(?:to|at|behind|before|after|between|on|tomorrow|today|urgently)\b)/i;
 const patientContactOrInsurance = /^(?:(?:patient|client)(?:['’]s)?\s+(?:contact|phone|telephone|tel|mobile)(?:\s+(?:details?|numbers?))?\s*[:;=–—-]|nhis(?:\s|[-:;=–—]|$)|(?:non[- ]?)?insured\s*$|insurance\s+(?:status|details?)\s*[:;=–—-])/i;
 export function generalCompulsoryText(value: string): string {
   const optionalChange = /^(?:(?:please|kindly)\s+)?(?:use|change|update|correct)\s+(?:the\s+)?(?:(?:new|different|updated)\s+)?(?:district|region|dropsite|drop site|drop area|delivery location|delivery instructions?|date|phone|contact|gps|coordinates?)\b/i;
@@ -39,6 +39,7 @@ export function generalCompulsoryText(value: string): string {
 export function isGeneralNonOrderInformation(value: string): boolean {
   const text = value.trim().replace(/^[•*]\s*/, '').replace(/[.!]+$/, '').trim();
   if (!text || essentialInstruction.test(text)) return false;
+  if (/^(?:(?:name\s+and\s+contact|name|contact)(?:\s+(?:number|details))?\s+of\s+)?(?:the\s+)?(?:referring\s+)?(?:physician|doctor)\s*[:=]/i.test(text)) return true;
   if (patientContactOrInsurance.test(text)) return true;
   if (nonOrderLabel.test(text) || nonOrderHeading.test(text)) return true;
   if (/^(?:(?:patient|client)(?:['’]s)?\s+(?:name|age|sex|gender)|name of (?:patient|client)|status(?: description)?|clinical(?:\s+(?:condition|history|observations?))?|symptoms?|observations?|test results?)\s+.+$/i.test(text)) return true;
@@ -104,7 +105,7 @@ function administrativeClause(value: string): boolean {
   const text = value.trim().replace(/^[•*]\s*/, '').replace(/[.!]+$/, '').trim();
   if (!text) return true;
   if (isGeneralNonOrderInformation(text)) return true;
-  if (/^to accurately process your request,? kindly complete the (?:below|following) form\s*:?$/i.test(text)) return true;
+  if (isGeneralFormIntroduction(text)) return true;
   if (/^(?:we have|we've) received your order\s*\(\s*id\s*:\s*[a-z0-9_-]{1,80}\s*\)$/i.test(text)) return true;
   if (genericStockCommunication(text)) return true;
   if (clinical.test(text)) return false;
@@ -119,9 +120,10 @@ function administrativeClause(value: string): boolean {
   if (/^(?:you (?:will|may) receive (?:your )?(?:(?:flight|delivery|order|tracking|status) )?(?:notifications?|updates?) (?:via|by|through) (?:sms|text messages?)|(?:your )?(?:(?:flight|delivery|order|tracking|status) )?(?:notifications?|updates?) will be sent (?:to you )?(?:via|by|through) (?:sms|text messages?)|you will be notified (?:via|by) (?:sms|text message) when your (?:order|delivery) (?:is dispatched|is on its way|arrives))$/i.test(text)) return true;
   if (/^you (?:will|may) receive (?:your )?(?:(?:flight|delivery|order|tracking|status) )?sms (?:notifications?|updates?)$/i.test(text)) return true;
   if (/^(?:(?:please )?track your (?:order|delivery|shipment) using the (?:tracking )?link (?:in your (?:sms|text message)|provided)|(?:your )?(?:order|delivery|shipment) tracking (?:is available|has been updated)|(?:your )?tracking link will be sent (?:via|by) (?:sms|text message))$/i.test(text)) return true;
-  if (/^(?:zipline|hello|hi|good (?:morning|afternoon|evening)|thank you|thanks|thank you for (?:your order|choosing zipline|your patience)|you are welcome|kind regards|best regards|regards|sincerely)[,! ]*$/i.test(text)) return true;
+  if (/^(?:zipline|hello|hi|good (?:morning|afternoon|evening)|thank you|thanks|many thanks|thank you for (?:your order|choosing zipline|your patience)|you are welcome|kind regards|best regards|regards|sincerely)[,! ]*$/i.test(text)) return true;
+  if (/^(?:please|kindly) let (?:me|us) know (?:the )?(?:estimated (?:delivery )?time|delivery time)(?: so (?:that )?(?:i|we) (?:(?:can|may) )?inform them to be there on time)?$/i.test(text)) return true;
   if (/^(?:(?:we have|we've) received your order|your order (?:has been received|is being processed)|order received|your delivery is on (?:its|the) way|your order (?:has been dispatched|is ready for delivery))$/i.test(text)) return true;
-  if (/^(?:please )?let us know if (?:any changes are required|you have any questions)(?: or (?:contact|call)\s+[+\d ()-]+\s+(?:if you have|if any|for any)?\s*questions)?$/i.test(text)) return true;
+  if (/^(?:please )?let us know if (?:any changes are required(?: or if you have (?:any )?questions)?|you have any questions)(?: or (?:contact|call)\s+[+\d ()-]+\s+(?:if you have|if any|for any)?\s*questions)?$/i.test(text)) return true;
   if (/^(?:customer (?:service|support)|support (?:phone|number|contact)|helpline|help ?desk)(?:\s+(?:phone|number|contact))?\s*[:=]\s*[+\d ()-]+$/i.test(text)) return true;
   if (/^(?:(?:please )?(?:contact|call)\s+[+\d ()-]+\s+(?:for|if you have|if any)\s+(?:any\s+)?(?:questions|queries|assistance|support)|for (?:any )?(?:questions|queries|assistance|support)[,: ]+(?:please )?(?:contact|call)(?: customer (?:service|support))?\s*(?:at|on|:)?\s*[+\d ()-]+)$/i.test(text)) return true;
   if (/^(?:(?:please )?contact customer (?:service|support) for (?:assistance|help|questions)|if you have any questions[ ,]+please contact (?:us|customer (?:service|support))|this (?:message|email) is intended for the (?:named|intended) recipient only|(?:the )?zipline team)$/i.test(text)) return true;
@@ -160,9 +162,9 @@ export function classifyGeneralText(raw: string): GeneralTextClassification {
   if (structure?.field === 'date' && /^(?:\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+\s+\d{4}|[a-z]+\s+\d{1,2}(?:st|nd|rd|th)?[,]?\s+\d{4})$/i.test(structure.value)) return { category: 'administrative', reason: 'Explicit order date.' };
   const labelledDate = text.match(/^date\s*[:;=–—-]?\s*(\d{1,4}[-/]\d{1,2}[-/]\d{2,4})$/i)?.[1];
   if (standaloneOrderDate(text) || labelledDate && standaloneOrderDate(labelledDate)) return { category: 'administrative', reason: 'Standalone order date; excluded from essential order checks.' };
-  if (/^(?:delivery\s*\/\s*drop area|delivery drop area|drop area|delivery area|drop location|drop off area|district(?: name)?)\s*[:=]/i.test(text)) return { category: 'optional_order', reason: 'Explicit optional location information.' };
+  if (/^(?:delivery\s*\/\s*drop area|delivery drop area|drop area|delivery area|delivery point|drop location|drop off area|district(?: name)?)\s*[:=]/i.test(text)) return { category: 'optional_order', reason: 'Explicit optional location information.' };
   if (/^vaccines? requisition(?:\s*\(\s*all in vials\s*\))?\s*[:.!]?$/i.test(text) || /^we will now prepare the following items for delivery\s*[:.!]?$/i.test(text)) return { category: 'mandatory_order', reason: 'Product section heading; individual product quantities remain authoritative.' };
-  if (/^(?:name of orderer|orderer(?: name)?|requested by|requester|recipient|customer name|name of health facility|health facility|facility(?: name| id)?|hospital|clinic|products?(?: and quantities)?|out of stock|available(?: products| items)?|in stock)\s*[:=.!]?$/i.test(text) || /^(?:name of orderer|orderer(?: name)?|requested by|requester|recipient|customer name|name of health facility|health facility|facility(?: name| id)?|hospital|clinic)\s*[:=]/i.test(text)) return { category: 'mandatory_order', reason: 'Explicit identity or order section.' };
+  if (/^(?:name of orderer|orderer(?: name)?|requested by|requester|recipient|receiver|reciever|customer name|name of health facility|health facility|facility(?: name| id)?|hospital|clinic|products?(?: and quantities)?|out of stock|available(?: products| items)?|in stock)\s*[:=.!]?$/i.test(text) || /^(?:name of orderer|orderer(?: name)?|requested by|requester|recipient|receiver|reciever|customer name|name of health facility|health facility|facility(?: name| id)?|hospital|clinic)\s*[:=]/i.test(text)) return { category: 'mandatory_order', reason: 'Explicit identity or order section.' };
   if (/^(?:(?:we are )?(?:currently )?out of stock(?: for (?:the )?following (?:items|products))?|we can prepare the following items we have in stock for delivery|available(?: products| items)?|no fulfilled products)[:.!]?$/i.test(text)) return { category: 'mandatory_order', reason: 'Stock or product section; quantities still require validation.' };
   // Check every sentence; an accepted prefix cannot hide an unrecognized tail.
   const clauses = sentences(text);
@@ -187,5 +189,18 @@ export function classifyGeneralAuditLine(raw: string): GeneralAuditLineKind {
 }
 /** Preserve line positions for quantity provenance; never rewrite source orders. */
 export function generalOrderRelevantText(text: string) {
+  // A sole, explicit location naming a whole facility can identify the requester.
+  // An ordering organisation or Facility field always takes precedence over a delivery address.
+  const lines=text.split(/\r?\n/);
+  if(!lines.some(line=>generalDocumentLabel(line)?.field==='facility'||/^(?:\s*hello[,!]?\s*)?\s*order\s+request\s+from\s+/i.test(line))){
+    text=lines.map(line=>{
+      const location=line.match(/^\s*location\s*[:=]\s*(.+)$/i)?.[1];
+      if(!location)return line;
+      const name=location.split(',')[0].trim();
+      if(/^(?:near|behind|in\s*front|opposite|beside|around|next|at|inside|outside)\b/i.test(name))return line;
+      return /^[\p{L}][\p{L}\p{N} ()'’.-]*\s+(?:health cent(?:re|er)|h[. /]*c[.]?|hsp|hospital|clinic|chps(?: compound)?|polyclinic)(?:\s*\([^()]+\))?$/iu.test(name)?`Facility: ${name}`:line;
+    }).join('\n');
+  }
+
   return recognizeGeneralDocument(stripGeneralNonOrderInformation(text), classifyGeneralText).auditText.split(/\r?\n/).map(line => classifyGeneralText(line).category === 'administrative' ? '' : sentences(line).filter(part => classifyGeneralText(part).category !== 'administrative').join(' ')).join('\n');
 }

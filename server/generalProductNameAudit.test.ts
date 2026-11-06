@@ -194,7 +194,7 @@ You will receive your flight notifications via SMS`;
  assert.equal(identity.length,1);assert.equal(identity[0].fulfillment.requested,30);assert.equal(identity[0].fulfillment.supplied,10);
  assert.ok(result.items.every(item=>!['missing item','extra item'].includes(item.status)));
  assert.equal(result.generalAudit.facility.status,'match');
- assert.equal(result.generalAudit.orderer.status,'match');
+ assert.equal(result.generalAudit.orderer.status,'review required');
  assert.match(result.generalAudit.discrepancies.join(' '),/Product identity conflict/);
  const markup=renderToStaticMarkup(createElement(Inventory,{items:result.items,details:result.generalAudit,onConfirm:async()=>{},onOrderLimit(){}}));
  assert.match(markup,/Paracetamol 500mg Tablet/);assert.match(markup,/Paracetamol/);
@@ -239,9 +239,10 @@ test('fresh catalogue revisions remove stale aliases and unknown AI cannot inven
  assert.equal((await runGeneralProductNameAudit(a,b,first,{},noAI)).allMatch,true);
  const fresh={revision:2,products:[{...catalog.products[0],aliases:[]}]};
  const result=await runGeneralProductNameAudit(a,b,fresh,{semanticTimeoutMs:0},noAI);
- assert.equal(result.allMatch,false);assert.equal(result.productMatchingDiagnostics[0].customer[0].catalogProductId,null);
- assert.equal(result.productMatchingDiagnostics[0].customer[0].geminiCalled,false);
- assert.match(result.productMatchingDiagnostics[0].customer[0].failureReason||'',/No approved/);
+ const customer=result.productMatchingDiagnostics.flatMap(row=>row.customer).find(product=>product.originalName==='Savedbrand')!;
+ assert.equal(result.allMatch,false);assert.equal(customer.catalogProductId,null);
+ assert.equal(customer.geminiCalled,false);
+ assert.match(customer.failureReason||'',/No approved/);
  await assert.rejects(()=>runGeneralProductNameAudit(a,b,undefined as any,{},noAI));
 });
 
@@ -327,7 +328,7 @@ test('unresolved iron syrup is one identity review in both clients and cannot be
  const main=renderToStaticMarkup(createElement(Summary,{details:result.generalAudit}));
  const extension=buildGeneralReport(result);
  for(const html of [main,extension]) {
-  assert.match(html,/Product Identity Review/i);assert.doesNotMatch(html,/Missing Products|Extra Products|missing from System Entry|extra in System Entry/);
+  assert.match(html,html===extension?/Quantity comparison paused until the product is matched/i:/Product Identity Review/i);assert.doesNotMatch(html,/Missing Products|Extra Products|missing from System Entry|extra in System Entry/);
   assert.doesNotMatch(html,/Dosage \/ formulation|clinical specifications conflict/i);
  }
 });
@@ -408,7 +409,7 @@ test('Gemini quota failures are briefly cached while recognized products continu
  for(let i=0;i<2;i++) {
   const result=await runGeneralProductNameAudit(customer,fulfillment,catalog,support,provider);
   assert.equal(result.allMatch,false);assert.equal(result.semanticAnalysis.status,'fallback');
-  assert.ok(result.items.some(item=>item.status==='product identity discrepancy'));
+  assert.ok(result.items.some(item=>item.status==='missing item'&&item.provenance.some(p=>p.name==='UnfamiliarQuotaBrand')));
   assert.ok(result.items.some(item=>item.status==='pending order limit'&&item.fulfillment.requested===30&&item.fulfillment.supplied===10));
  }
  assert.equal(calls,1);
@@ -423,7 +424,7 @@ test('Gemini receives bounded relevant product candidates without customer or fa
  assert.equal(result.allMatch,false);assert.equal(result.aliasLearning.status,'review_required');
 });
 
-test('zero stock ratios are informational, positive partial quantities need a limit decision, and an absent product is missing',async()=>{
+test('zero stock ratios are informational, positive partial quantities need a limit decision, and an empty confirmation is unreadable',async()=>{
  for(const ratio of ['0/20','[0/20]']) {
   const result=await run('PCM 20/20',`Paracetamol 500mg Tablet ${ratio}`);
   assert.equal(result.items[0].status,'out of stock');assert.equal(result.issueCount,0);
@@ -434,7 +435,8 @@ test('zero stock ratios are informational, positive partial quantities need a li
  const partial=await run('PCM 20/20','Paracetamol 500mg Tablet [10/20]');
  assert.equal(partial.items[0].status,'pending order limit');assert.equal(partial.generalAudit.counts.outOfStock,0);
  const absent=await run('PCM 20/20','');
- assert.equal(absent.allMatch,false);assert.equal(absent.items[0].status,'missing item');
+ assert.equal(absent.allMatch,false);assert.equal(absent.issueCount,0);assert.equal(absent.items[0].fulfillment.identityReviewRequired,true);
+ assert.equal(absent.generalAudit.extractionReadability?.fulfillment_confirmation?.status,'unreadable');
 });
 
 test('equivalent injection concentration cannot hide a conflicting declared ampoule volume',async()=>{

@@ -157,7 +157,7 @@
     #catalogForm input:not([type=checkbox]), #catalogForm select { width:100%;box-sizing:border-box;padding:6px;margin-top:3px; }
     #catalogForm textarea { margin-top:3px; }
     #catalogSuggestions label { display:block;font-size:11px;margin:5px 0; }
-    .receiving-reminders { background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px;font-size:11px;white-space:pre-wrap;margin-top:6px; }
+
     .scan-row { font-size:10px;margin:5px 0; } .scan-row input { max-width:100%;font-size:10px; }
     .allocation-balance-zero {
       background: #15803D;
@@ -228,7 +228,7 @@
             <button id="deleteCatalogProduct" type="button" class="btn-small" hidden>Delete product</button>
     </fieldset></form>
     <p id="catalogStatus" role="status" style="font-size:11px;"></p>
-    <p style="font-size:10px;">Keep strengths, formulations, and vaccine companions separate. Receiving reminders do not change quantities.</p>
+    <p style="font-size:10px;">Keep strengths, formulations, and vaccine companions separate.</p>
   </section>
   <label for="auditMode">Audit mode</label>
   <select id="auditMode" style="width:100%;margin:8px 0;padding:7px;">
@@ -246,7 +246,7 @@
   <textarea id="whatsappText" placeholder="Pasted or extracted WhatsApp message goes here..."></textarea>
 
   <div class="scan-row"><label>Customer screenshot <input id="whatsappImage" type="file" accept="image/png,image/jpeg,image/webp" /></label><button id="whatsappScan" type="button" disabled>Scan screenshot</button><p id="whatsappScanStatus" role="status"></p></div>
-  <aside id="whatsappHints" class="receiving-reminders" role="status" hidden></aside>
+
   </section>
   <div class="section-title">
     <span>Fulfilment Confirmation → Customer Scripts</span>
@@ -255,7 +255,7 @@
   <textarea id="fulfillmentText" aria-label="Customer Scripts" placeholder="The customer script appears here when FS Package &amp; Script is available. You can also paste confirmation text."></textarea>
 
   <div class="scan-row"><label>Fulfillment screenshot <input id="fulfillmentImage" type="file" accept="image/png,image/jpeg,image/webp" /></label><button id="fulfillmentScan" type="button" disabled>Scan screenshot</button><p id="fulfillmentScanStatus" role="status"></p></div>
-  <aside id="fulfillmentHints" class="receiving-reminders" role="status" hidden></aside>
+
   <div style="display: flex; gap: 8px;">
     <button id="btnCapture" class="btn-secondary" style="margin-top: 4px; flex: 1;">✨ Grab Active Page</button>
     <button id="btnClear" class="btn-clear" style="margin-top: 4px; flex: 1;">🗑 Clear Inputs</button>
@@ -274,17 +274,17 @@
   <div class="server-status" id="serverInfo" style="margin-top: 12px; border-top: 1px dashed #D6C2EB; padding-top: 8px; text-align: left;">
     <div style="display: flex; gap: 4px; align-items: center; margin-bottom: 4px;">
       <span style="font-size: 9px; font-weight: bold; color: #5C2D91; white-space: nowrap;">Backend:</span>
-      <input type="text" id="backendUrlInput" style="flex: 1; min-width: 0; font-size: 9px; padding: 2px 4px; border: 1px solid #D6C2EB; border-radius: 3px;" placeholder="https://your-service.onrender.com" />
-      <button id="btnSaveBackend" style="font-size: 8px; padding: 2px 4px; background: #5C2D91; color: white; border: none; border-radius: 3px; cursor: pointer; white-space: nowrap;">Save</button>
-      <button id="btnResetBackend" style="font-size: 8px; padding: 2px 4px; background: #E5E7EB; color: #374151; border: 1px solid #D1D5DB; border-radius: 3px; cursor: pointer; white-space: nowrap;">Reset</button>
+      <input type="text" id="backendUrlInput" readonly value="https://ordercheck-production.up.railway.app" style="flex: 1; min-width: 0; font-size: 9px; padding: 2px 4px; border: 1px solid #D6C2EB; border-radius: 3px;"  />
+      <button id="btnSaveBackend" hidden style="font-size: 8px; padding: 2px 4px; background: #5C2D91; color: white; border: none; border-radius: 3px; cursor: pointer; white-space: nowrap;">Save</button>
+      <button id="btnResetBackend" hidden style="font-size: 8px; padding: 2px 4px; background: #E5E7EB; color: #374151; border: 1px solid #D1D5DB; border-radius: 3px; cursor: pointer; white-space: nowrap;">Reset</button>
     </div>
     <div id="backendSaveMsg" style="font-size: 8px; color: #059669; font-weight: 500; display: none; margin-bottom: 4px;">URL updated successfully!</div>
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
       <span id="connectionBadge" style="font-size: 8px; font-weight: bold; color: #991B1B; padding: 1px 4px; border-radius: 3px; background-color: #FEE2E2; display: inline-block;">● Pinging...</span>
-      <span style="font-size: 8px; color: #5C2D91; font-weight: 500;">Click Save to apply</span>
+      <span style="font-size: 8px; color: #5C2D91; font-weight: 500;">Production backend</span>
     </div>
     <div style="font-size: 8.5px; color: #6B7280; text-align: left; line-height: 1.2;">
-      Enter your Render service URL, then Save. A sleeping service can take about a minute to start.
+      OrderCheck connects automatically to the production website.
     </div>
   </div>
 

@@ -91,7 +91,7 @@ test('the reported Diclofenac example keeps Inj. intact, uses the saved alias wi
   assert.match(product.reason!, /saved Product Log alias.*clinical specifications conflict/);
   assert.notEqual(normalizeGeneralProductName(product.requestedProducts[0].name), normalizeGeneralProductName(product.fulfillmentProducts[0].name));
   const html = renderToStaticMarkup(createElement(Inventory, { items: result.items, details: result.generalAudit, onOrderLimit() {} }));
-  assert.match(html, /Review Required/); assert.doesNotMatch(html, /Confirm Product|Product: MATCH/);
+  assert.match(html, /saved Product Log alias.*clinical specifications conflict/); assert.doesNotMatch(html, /Confirm Product|Product: MATCH/);
 });
 test('a matching dotted Diclofenac alias pairs with the full system label without pack metadata duplication or AI', async () => {
   diclofenacLog(); let calls = 0;

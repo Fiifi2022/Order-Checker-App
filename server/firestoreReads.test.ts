@@ -58,11 +58,10 @@ test('read reduction wiring keeps authorization fresh, input hints local and pol
   assert.match(authCode, /user_roles/); assert.doesNotMatch(authCode, /coalesceFreshRead|user_profiles/);
   assert.doesNotMatch(server, /void ensureVaccineHistoryLoaded\(\)/);
   const frontend = readFileSync(new URL('../src/components/VaccineAllocationBlueprint.tsx', import.meta.url), 'utf8');
-  const polling = frontend.slice(frontend.indexOf('const liveSheetRef'), frontend.indexOf('  useEffect(() => () =>', frontend.indexOf('const liveSheetRef')));
-  assert.match(polling, /encodeURIComponent\(activeDistrictId\).*\/current/);
-  assert.match(polling, /controller.abort\(\)/); assert.match(polling, /clearInterval/);
-  assert.match(polling, /document.hidden/); assert.match(polling, /setLiveSheetWarning/);
-  assert.match(polling, /current.hasUnsavedChanges/);
+  const live = frontend.slice(frontend.indexOf('const liveSheetRef'), frontend.indexOf('  useEffect(() => () =>', frontend.indexOf('const liveSheetRef')));
+  assert.match(live, /encodeURIComponent\(activeDistrictId\).*\/current/);
+  assert.match(live, /connectBlueprintLive/);assert.match(live,/\/events/);assert.doesNotMatch(live,/setInterval/);
+  assert.match(live, /setLiveSheetWarning/);assert.match(live, /current.hasUnsavedChanges/);
   const hints = readFileSync(new URL('../src/components/ProductReceivingHints.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(hints, /\}, \[text/);
 });
@@ -79,7 +78,7 @@ test('committed reference edits invalidate in-flight readers without clearing a 
 
 test('raw read-only endpoints skip catalog reads but matching and writes always refresh vocabulary', async () => {
   const { needsProductCatalog } = await import('./catalogReadPolicy');
-  for (const path of ['/vaccine/blueprint-districts/sheet/current', '/vaccine/dhd-inventory', '/vaccine/transactions', '/vaccine/audit-logs', '/vaccine/companion/context']) {
+  for (const path of ['/vaccine/blueprint-districts/sheet/events','/vaccine/blueprint-districts/sheet/current', '/vaccine/dhd-inventory', '/vaccine/transactions', '/vaccine/audit-logs', '/vaccine/companion/context']) {
     assert.equal(needsProductCatalog('GET', path), false, path);
   }
   for (const [method, path] of [['POST', '/verify'], ['POST', '/vaccine/validate'], ['POST', '/vaccine/allocations/commit'], ['POST', '/vaccine/blueprint-districts'], ['GET', '/vaccine/aliases'], ['GET', '/vaccine/allocations']]) {

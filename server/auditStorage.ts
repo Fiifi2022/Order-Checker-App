@@ -1,3 +1,4 @@
+import {generalFourParameterRecord} from '../src/utils/generalAuditor';
 import type {RequestHandler} from 'express';
 import type {AuditStorageState} from '../shared/auditStorage';
 import {assignedRoles} from '../shared/roles';
@@ -19,7 +20,7 @@ export function auditStorageFailure(error:any):AuditStorageState {
 export function confirmedAuditRead(record:any){
  if(!record?.generalAudit)return record;
  const {generalStorageWarning:_warning,...data}=record;
- return {...data,storage:{status:'saved',message:'Saved to Firestore.',retryable:false,...(record.storage?.savedAt?{savedAt:record.storage.savedAt}:{})}};
+ return {...generalFourParameterRecord(data),storage:{status:'saved',message:'Saved to Firestore.',retryable:false,...(record.storage?.savedAt?{savedAt:record.storage.savedAt}:{})}};
 }
 const pending=():AuditStorageState=>({status:'pending',category:'timeout',message:'Firestore save confirmation is pending. This audit is retained locally; retry to check its status.',retryable:true});
 /** Bounded response time, confirmed writes, same-ID retries and ordered updates. */

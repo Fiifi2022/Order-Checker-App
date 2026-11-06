@@ -1,3 +1,5 @@
+import {generalDocumentLabel,recognizeGeneralDocument} from './generalDocumentStructure';
+import {approvedGeneralFacilityAliases} from '../../shared/generalFacilityAliases';
 import type { GeneralFieldResult } from './generalAuditTypes';
 import {generalOrderRelevantText} from './generalTextClassification';
 
@@ -19,7 +21,7 @@ export interface GeneralFacilityContext {
   lookupUnavailable?: boolean;
   /** Explicit aliases supplied by a trusted district reference, never inferred by AI. */
   districtAliases?: readonly { name: string; verifiedAliases: readonly string[] }[];
-  aiSuggestion?: { customer: string; fulfillment: string; confidence: number };
+  aiSuggestion?: { customer: string; fulfillment: string; confidence: number; reason?: string };
 }
 type FacilityReferenceIndex = {names: Map<string, GeneralFacilityRecord[]>; ids: Map<string, GeneralFacilityRecord[]>; signature: string};
 const preparedReferences = new WeakMap<GeneralFacilityContext, FacilityReferenceIndex>();
@@ -59,7 +61,7 @@ export function normalizeGeneralDistrictName(value: string, context: GeneralFaci
   return aliases.length === 1 ? normalize(aliases[0].name) : key;
 }
 export function normalizeGeneralFacilityName(value: string): string {
-  return clean(value).replace(/\bc h p s\b/g, 'chps').replace(/\br h c\b/g, 'rhc')
+  return clean(value).replace(/\bs d a\b/g, 'sda').replace(/\bc h p s\b/g, 'chps').replace(/\br h c\b/g, 'rhc')
     .replace(/\bd h d\b/g, 'dhd').replace(/\bh c\b/g, 'hc').replace(/\bh s p\b/g, 'hsp')
     .replace(/\bd h\b/g, 'dh').replace(/\bp c\b/g, 'pc')
     .replace(/\bcommunity based health planning (?:and )?services\b/g, 'chps')
@@ -69,18 +71,27 @@ export function normalizeGeneralFacilityName(value: string): string {
     .replace(/\bdhd\b/g, 'district health directorate').replace(/\b(?:center|centere|cetre)\b/g, 'centre')
     .replace(/\bheath centre\b/g, 'health centre');
 }
+const facilityWordKey = (name: string) => normalizeGeneralFacilityName(name).split(' ').sort().join(' ');
+function approvedFacilityAliasMatch(left: string, right: string) {
+  const a = facilityWordKey(left), b = facilityWordKey(right);
+  return approvedGeneralFacilityAliases.some(record => {
+    const keys = [record.name, ...record.aliases].map(facilityWordKey);
+    return keys.includes(a) && keys.includes(b);
+  });
+}
 const typePattern = /\b(rural health centre|district health directorate|district hospital|health centre|medical centre|health post|hospital|polyclinic|clinic|chps)$/;
 function parts(value: string) {
   const name = normalizeGeneralFacilityName(value), type = name.match(typePattern)?.[1] || '';
   return { name, type, locality: type ? name.slice(0, -type.length).trim() : name };
 }
-export const hasGeneralFacilityType = (value: string) => !!parts(value).type;
+export const hasGeneralFacilityType = (value: string) => !!parts(value).type || approvedGeneralFacilityAliases.some(record => [record.name, ...record.aliases].some(name => facilityWordKey(name) === facilityWordKey(value)));
 const rawType = '(?:community[- ]based health planning and services|rural health cent(?:re|er)|district health directorate|district hospital|health cent(?:re|er)|medical cent(?:re|er)|health post|c[. ]*h[. ]*p[. ]*s(?: compound)?|r[. ]*h[. ]*c|r[. ]*c[. ]*h|h[. /]*c|hsp|hosp(?:ital)?|dhd|dh|pc|polyclinic|clinic)';
 const typedName = new RegExp(`^([\\p{L}][\\p{L}\\p{N}'’.-]*(?:[ \\t]+[\\p{L}\\p{N}][\\p{L}\\p{N}'’.-]*){0,7}?[ \\t-]+${rawType})(?=$|[^\\p{L}\\p{N}])`, 'iu');
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Independent source extraction; explicit labels are handled by the caller first. */
 export function findGeneralFacilityNames(text: string, records: GeneralFacilityRecord[] = []): string[] {
+  records = [...records, ...approvedGeneralFacilityAliases.flatMap(record => [record.name, ...record.aliases].map(name => ({name, source: record.source})))];
   const found = new Map<string, string>();
 
   for (const line of text.split(/\r?\n/)) {
@@ -159,13 +170,32 @@ function similar(a: string, b: string) {
   if (!a || !b || a.length > 256 || b.length > 256) return false;
   return distance(a, b) <= (Math.max(a.length, b.length) >= 8 ? 2 : 1);
 }
+/** Compare every locality/organisation word once, independent of word order.
+ * Only one bounded spelling difference is allowed; site numbers stay exact. */
+export function generalFacilityNameWordsSimilar(customer: string, fulfillment: string): boolean {
+  const a = parts(customer).locality.split(' ').filter(Boolean), b = parts(fulfillment).locality.split(' ').filter(Boolean);
+  if (!a.length || a.length !== b.length || a.length > 16 || [...a,...b].some(word => word.length > 80)) return false;
+  if ((customer.match(/\d+/g)||[]).sort().join('|') !== (fulfillment.match(/\d+/g)||[]).sort().join('|')) return false;
+  const remaining = [...b], unmatched: string[] = [];
+  for (const word of a) {
+    const index = remaining.indexOf(word);
+    if (index >= 0) remaining.splice(index,1); else unmatched.push(word);
+  }
+  if (!unmatched.length) return true;
+  if (unmatched.length !== 1 || remaining.length !== 1) return false;
+  const left = unmatched[0], right = remaining[0], shortest = Math.min(left.length,right.length);
+  if (shortest < 5 || /\d/.test(left+right)) return false;
+  const difference = distance(left,right);
+  return difference <= (shortest >= 10 ? 2 : 1) && difference / Math.max(left.length,right.length) <= .2;
+}
 /** Conservative typo tolerance for the name only. Distinct reference IDs,
  * geography, facility types and numeric site suffixes remain authoritative. */
 export function generalFacilityNamesMatch(customer: string, fulfillment: string): boolean {
   if (customer === 'N/A' || fulfillment === 'N/A') return false;
   const a = parts(customer), b = parts(fulfillment);
   if (!a.locality || !b.locality || a.type !== b.type) return false;
-  if (a.name === b.name) return true;
+  if (a.name === b.name || a.locality.split(' ').sort().join(' ') === b.locality.split(' ').sort().join(' ')) return true;
+  if (a.type && generalFacilityNameWordsSimilar(customer,fulfillment)) return true;
   if (!a.type || Math.min(a.locality.length, b.locality.length) < 5) return false;
   if ((a.locality.match(/\d+/g) || []).join('|') !== (b.locality.match(/\d+/g) || []).join('|')) return false;
   return distance(a.locality, b.locality) <= (Math.min(a.locality.length, b.locality.length) >= 10 ? 2 : 1);
@@ -173,7 +203,7 @@ export function generalFacilityNamesMatch(customer: string, fulfillment: string)
 
 /** Display names without exposing directory-selection ambiguity. */
 export function generalFacilityDisplayStatus(facility: GeneralFacilityResult): GeneralFieldResult['status'] {
-  return facility.status === 'review required' && generalFacilityNamesMatch(facility.whatsappValue, facility.fulfillmentValue) ? 'match' : facility.status;
+  return verifyGeneralFacilityResult(facility).status;
 }
 
 function metadata(text: string, label: string) {
@@ -187,19 +217,63 @@ function vocabulary(record: GeneralFacilityRecord) {
   const signature = JSON.stringify([record.name, record.verifiedAliases, record.district, record.region]);
   let entry = referenceVocabulary.get(record);
   if (!entry || entry.signature !== signature) {
-    entry = { signature, names: [record.name, ...(record.verifiedAliases || [])].map(normalizeGeneralFacilityName),
+    const aliases=[record.name,...(record.verifiedAliases||[])];
+    // Omitted geography is supported only by this record's own verified district/region.
+    const geographic=(value:string)=>clean(value).replace(/\s+(?:region|district|municipal(?:ity)?)$/,'');
+    const locations=[normalizeGeneralDistrictName(record.district||''),geographic(record.region||'')].filter(value=>value.length>=3&&/[a-z]/.test(value));
+    for(const name of [...aliases]){
+      const shortened=name.replace(/\(([^()]+)\)/g,(whole,inside)=>locations.includes(normalizeGeneralDistrictName(inside))||locations.includes(geographic(inside))?' ':whole).replace(/\s+/g,' ').trim();
+      if(shortened!==name)aliases.push(shortened);
+    }
+    entry = { signature, names: [...new Set(aliases.map(normalizeGeneralFacilityName))],
       district: normalizeGeneralDistrictName(record.district || ''), region: clean(record.region || '') };
     referenceVocabulary.set(record, entry);
   }
   return entry;
 }
 
+/** Canonical verification for engine, cards, summaries and retained audit history. */
+export function verifyGeneralFacilityResult<T extends GeneralFacilityResult>(value:T):T {
+  const decision=value.identityDecision;
+  if(decision&&decision.customer===value.whatsappValue&&decision.fulfillment===value.fulfillmentValue&&decision.action!=='reset')return {...value,status:decision.action==='confirm'?'match':'mismatch',reason:decision.action==='confirm'?'Manually Verified':'Discrepancy Confirmed'};
+  if(['missing from customer request','not available in system entry','informational','optional not provided'].includes(value.status))return value;
+  const hardConflict=Boolean(value.customerFacilityId&&value.fulfillmentFacilityId&&value.customerFacilityId!==value.fulfillmentFacilityId)||/different (?:official )?identifiers|different facility records|different numbered sites|belongs to a different official|Multiple facilities appear/i.test(value.reason||'');
+  if(hardConflict)return value;
+  const sameWords=facilityWordKey(value.whatsappValue)===facilityWordKey(value.fulfillmentValue);
+  const supported=(name:string)=>(value.evidence||[]).filter(record=>vocabulary(record).names.some(alias=>{
+    if(facilityWordKey(alias)===facilityWordKey(name))return true;
+    const requested=parts(name),reference=parts(alias);
+    // Preserve the existing unique-directory rule for an omitted hospital level.
+    return requested.type==='hospital'&&reference.type==='district hospital'&&requested.locality===reference.locality;
+  }));
+  const a=supported(value.whatsappValue),b=supported(value.fulfillmentValue);
+  const identity=(r:GeneralFacilityRecord)=>r.id||r.source;
+  const left=new Set(a.map(identity)),right=new Set(b.map(identity));
+  const verifiedRecords=value.verification==='records'&&left.size===1&&right.size===1&&[...left][0]===[...right][0];
+  const verifiedAlias=verifiedRecords||approvedFacilityAliasMatch(value.whatsappValue,value.fulfillmentValue);
+  if(value.status==='match'&&!sameWords&&!verifiedAlias)return {...value,status:'review required',reason:'Similar facility names need CCA confirmation; a spelling suggestion is not a verified directory alias.'};
+  if(!sameWords&&!verifiedAlias&&value.aiSuggestion?.customer===value.whatsappValue&&value.aiSuggestion.fulfillment===value.fulfillmentValue)return {...value,status:'review required',reason:value.aiSuggestion.reason||'A possible facility match needs CCA confirmation.'};
+  return value;
+}
+
 export function compareGeneralFacilities(customer: string, fulfillment: string, customerText: string, fulfillmentText: string,
   context: GeneralFacilityContext = {}): GeneralFacilityResult {
   const records = context.records || [];
   const namesFor = (name: string, text: string) => {
-    const labelled = /^\s*(?:[-*•]\s*)?(?:name of (?:health )?facility|health facility|facility(?: name)?|hospital|clinic|delivery (?:facility|site)|destination)\s*[:=–—-]/im.test(text);
-    if (labelled && name !== 'N/A') return [name];
+    const declared=[...new Map(recognizeGeneralDocument(generalOrderRelevantText(text)).lines
+      .filter(line=>line.field==='facility' && line.kind==='FIELD_VALUE' && line.auditText.trim() && !/^facility\s+id\s*[:=]/i.test(line.auditText.trim()))
+      .map(line=>{const value=generalDocumentLabel(line.auditText)?.value||line.originalText;return [facilityWordKey(value),value] as const;})).values()];
+    const sameDeclaredFacility=(left:string,right:string)=>{
+      if(facilityWordKey(left)===facilityWordKey(right)||approvedFacilityAliasMatch(left,right))return true;
+      const identities=(value:string)=>new Set(records.filter(record=>vocabulary(record).names.some(alias=>facilityWordKey(alias)===facilityWordKey(value))).map(record=>record.id||record.source));
+      const a=identities(left),b=identities(right);
+      return a.size===1&&b.size===1&&[...a][0]===[...b][0];
+    };
+    if(declared.length>1 && !declared.every(value=>sameDeclaredFacility(value,declared[0])))return declared;
+
+    const labelled = /^\s*(?:[-*•]\s*)?(?:name of (?:the )?(?:health )?facility|health facility(?: name)?|facility(?:['’]?s? name)?|hospital|clinic|delivery (?:facility|site)|destination)\s*[:=–—-]/im.test(text);
+    const orderingOrganisation=/^(?:\s*hello[,!]?\s*)?\s*order\s+request\s+from\s+/im.test(text);
+    if ((labelled || orderingOrganisation) && name !== 'N/A') return [name];
     const mentions = findGeneralFacilityNames(generalOrderRelevantText(text), records);
     if (mentions.length > 1) return mentions;
     if (mentions.length === 1 && records.some(record => [record.name, ...(record.verifiedAliases || [])].some(alias =>
@@ -240,8 +314,21 @@ export function compareGeneralFacilities(customer: string, fulfillment: string, 
     const words = (value: string) => value.split(' ').sort().join(' ');
     return !!a.type && a.type === b.type && a.locality.split(' ').length >= 2 && words(a.locality) === words(b.locality);
   };
-  const byName = (name: string) => names.get(name) || records.filter(record =>
-    vocabulary(record).names.some(alias => generalFacilityNamesMatch(alias, name) || directoryWordOrderMatch(alias, name)));
+  const byName = (name: string) => {
+    const exact = names.get(name) || records.filter(record =>
+      vocabulary(record).names.some(alias => generalFacilityNamesMatch(alias, name) || directoryWordOrderMatch(alias, name) || approvedFacilityAliasMatch(alias, name)));
+    if (exact.length) return exact;
+    // A bare hospital description can omit its district level only when a
+    // single directory identity has that exact locality. Never collapse IDs,
+    // distinct hospital names, or hospital/health-centre types globally.
+    const description = parts(name);
+    if (description.type !== 'hospital' || !description.locality) return [];
+    const qualified = records.filter(record => vocabulary(record).names.some(alias => {
+      const reference = parts(alias);
+      return reference.type === 'district hospital' && reference.locality === description.locality;
+    }));
+    return new Set(qualified.map(record => record.id ? `id:${record.id}` : `source:${record.source}`)).size === 1 ? qualified : [];
+  };
   const candidates = (name: string, text: string, id: string) => {
     const district = normalizeGeneralDistrictName(metadata(text, 'district'), context), region = clean(metadata(text, 'region'));
     const named = byName(name).filter(record => !id || record.id === id);
@@ -307,6 +394,9 @@ export function compareGeneralFacilities(customer: string, fulfillment: string, 
   if (a.type && a.type === b.type && siteNumbers(a.locality) !== siteNumbers(b.locality) && a.locality.replace(/\d+/g, '#') === b.locality.replace(/\d+/g, '#')) {
     return result('mismatch', 'The facility names identify different numbered sites.', { ...extra, evidence });
   }
+  if (approvedFacilityAliasMatch(left, right)) return result('match', 'The facility names match an explicitly confirmed facility alias, including word-order variants.', { ...extra, verification: 'normalized', evidence });
+  if (a.type && a.type === b.type && a.locality && a.locality.split(' ').sort().join(' ') === b.locality.split(' ').sort().join(' ')) return result('match', 'The same complete facility name is written in a different word order.', { ...extra, verification: 'normalized', evidence });
+  if (a.type && a.type === b.type && generalFacilityNameWordsSimilar(left,right)) return result('match', 'All facility name words agree after normalization, word order and a bounded spelling correction.', { ...extra, verification: 'normalized', evidence });
   if (a.type && b.type && a.type !== b.type) return result('mismatch', 'The names specify different facility types; they cannot be assumed to be the same facility.', { ...extra, evidence });
   if (a.name === b.name && !(leftId || rightId)) return result('match', 'The complete facility names match after standard abbreviation and formatting normalization.', { verification: 'normalized' });
   const suggestion = context.aiSuggestion;

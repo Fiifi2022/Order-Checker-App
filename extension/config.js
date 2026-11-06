@@ -1,5 +1,5 @@
 export const extensionConfig = {
-  "backendUrl": "http://localhost:3000",
+  "backendUrl": "https://ordercheck-production.up.railway.app",
   "firebaseApiKey": "AIzaSyC6glIHizLdR9u7KLs2F8YxGN3NWuhLc5g",
   "fsOrigins": [
     "https://fulfillment-gh1-production.platform.flyzipline.com",

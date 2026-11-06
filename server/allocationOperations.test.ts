@@ -100,6 +100,16 @@ test('new top-ups cannot alter a closed cycle',()=>{
  const current=sheet();const result=applyConfirmedDhdTopUp({sheet:{...current,products:['BCG'],cycleState:'closed'} as any,inventory:{district:'North',stocks:{BCG:20},history:[],updatedAt:''},rowId:'row',vaccine:'BCG',quantity:2,distributedAfter:4,requestId:'new',user:'editor'});
  assert.equal(result.success,false);if(!result.success)assert.equal(result.status,409);
 });
+test('confirmed carryover top-ups reconcile an overdrawn draft without changing distributions or original allocation history',()=>{
+ const draft=sheet();draft.cycleState='draft';draft.rows[0].vaccines.BCG={carryOver:0,allocation:2,distributed:5,balance:-3};
+ assert.throws(()=>transitionAllocationCycle(draft,'active','Ready for FS','editor'),{status:409});
+ const corrected=applyAllocationAdjustment(draft,'row','BCG',3,'Confirmed supply was taken from other carryovers');
+ const value=corrected.rows[0].vaccines.BCG;
+ assert.equal(value.distributed,5);assert.equal(value.allocationBase,2);assert.equal(value.allocationAdjustmentTotal,3);assert.equal(value.balance,0);
+ assert.equal(allocationArithmetic(value).difference,0);assert.equal(draft.rows[0].vaccines.BCG.balance,-3);
+ const active=transitionAllocationCycle(corrected,'active','Carryover top-up recorded for previously supplied stock','editor');
+ assert.equal(active.cycleState,'active');assert.doesNotThrow(()=>assertBlueprintActive(active));
+});
 test('lifecycle and history endpoints enforce roles, exact rows, error categorisation and no-cache',async()=>{
  let writes=0,status=200,body:any;
  const handlers=allocationOperationsHandlers({read:async()=>sheet(),history:async()=>({events:[],transactions:[]}),transition:async(_id,state,reason,expected,actor)=>{writes++;return stageAllocationTransition(sheet(),state,reason,expected,actor);}});

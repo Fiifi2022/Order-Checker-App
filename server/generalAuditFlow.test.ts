@@ -44,10 +44,10 @@ test('current raw inputs survive parsing, a legacy API response, and actual fiel
   assert.equal(record.auditSummary.missingRequiredCount, 2);
   assert.deepEqual(record.items.map(item => item.name), ['Multivitamin Syrup', 'Paracetamol 120mg/5mL Syrup, 100mL']);
   const html = renderDetails(record);
-  assert.match(html, /Customer Request: Isaac Awuyem/);
-  assert.match(html, /Customer Request: Gbimsi CHPS/);
-  assert.match(html, /REVIEW REQUIRED/);
-  assert.match(html, /REVIEW REQUIRED/);
+  assert.match(html, /Customer (?:Request|WhatsApp): Isaac Awuyem/);
+  assert.match(html, /Customer (?:Request|WhatsApp): Gbimsi CHPS/);
+  assert.match(html, /(?:Facility Name|Name of Orderer) missing from (?:customer request|fulfilment)/);
+  assert.match(html, /(?:Facility Name|Name of Orderer) missing from (?:customer request|fulfilment)/);
   assert.match(html, /Fulfilment Confirmation: Not found/);
   assert.match(html, /System Entry: Not available/);
   assert.doesNotMatch(JSON.stringify(record) + html, /Orderer Name Missing|Facility Name Missing|Unrelated old product/);
@@ -68,10 +68,10 @@ test('different system names render mismatches rather than missing customer fiel
   const html = renderDetails(record);
   assert.equal(record.issueCount, 2);
   assert.equal(record.allMatch, false);
-  assert.match(html, /ORDERER NAME MISMATCH/);
-  assert.match(html, /FACILITY NAME MISMATCH/);
-  assert.match(html, /Customer Request: Isaac Awuyem/);
-  assert.match(html, /Fulfilment Confirmation: John Mensah/);
+  assert.match(html, /Orderer Name Mismatch/);
+  assert.match(html, /Facility Name Mismatch/);
+  assert.match(html, /Customer (?:Request|WhatsApp): Isaac Awuyem/);
+  assert.match(html, /Fulfilment System: John Mensah/);
   assert.doesNotMatch(html, /MISSING/);
 });
 
@@ -81,8 +81,8 @@ test('missing customer fields use customer-specific states even if system is als
     assert.equal(record.generalAudit.orderer.status, 'missing from customer request');
     assert.equal(record.generalAudit.facility.status, 'missing from customer request');
     const html = renderDetails(record);
-    assert.match(html, /REVIEW REQUIRED/);
-    assert.match(html, /REVIEW REQUIRED/);
+    assert.match(html, /(?:Facility Name|Name of Orderer) missing from (?:customer request|fulfilment)/);
+    assert.match(html, /(?:Facility Name|Name of Orderer) missing from (?:customer request|fulfilment)/);
   }
 });
 
@@ -112,7 +112,7 @@ test('orderer found in fulfillment sentence survives API completion and renders 
   assert.equal(record.generalAudit.orderer.status, 'match');
   const html = renderDetails(record);
   assert.match(html, /Fulfilment Confirmation: Isaac Awuyem/);
-  assert.match(html, /REVIEW REQUIRED/);
+  assert.match(html, /(?:Facility Name|Name of Orderer) missing from (?:customer request|fulfilment)/);
   assert.doesNotMatch(html, /ORDERER NAME MISMATCH|ORDERER NAME MISSING/);
 });
 
@@ -122,8 +122,8 @@ test('different sentence orderer renders the current name and an orderer discrep
   assert.equal(record.auditSummary.missingRequiredCount, 1);
   assert.equal(record.verdict, 'DISCREPANCY DETECTED');
   const html = renderDetails(record);
-  assert.match(html, /Fulfilment Confirmation: John Mensah/);
-  assert.match(html, /ORDERER NAME MISMATCH/);
+  assert.match(html, /Fulfilment System: John Mensah/);
+  assert.match(html, /Orderer Name Mismatch/);
   assert.match(html, /Orderer Name Mismatch/);
 });
 
@@ -139,9 +139,9 @@ test('facility prose produces current comparison and rendered statuses despite a
     assert.equal(record.generalAudit.facility.fulfillmentValue, value);
     assert.equal(record.generalAudit.facility.status, status);
     const html = renderDetails(record);
-    assert.match(html, /Customer Request: Gbimsi CHPS/);
-    assert.ok(html.includes(`System Entry: ${value === 'N/A' ? 'Not available' : value}`));
-    if (status === 'mismatch') assert.match(html, /FACILITY NAME MISMATCH/);
+    assert.match(html, /Customer (?:Request|WhatsApp): Gbimsi CHPS/);
+    assert.ok(html.includes(`${status==='mismatch'?'Fulfilment System':'System Entry'}: ${value === 'N/A' ? 'Not available' : value}`));
+    if (status === 'mismatch') assert.match(html, /Facility Name Mismatch/);
     assert.doesNotMatch(html, /Facility Name Missing|FACILITY NAME MISSING FROM CUSTOMER REQUEST/);
   }
 });

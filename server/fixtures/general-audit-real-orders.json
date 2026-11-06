@@ -1,0 +1,101 @@
+{
+  "provenance": "User-supplied order examples. Tracking identifiers, phone numbers and referral contact details omitted.",
+  "cases": [
+    {
+      "id": "auntie-riek-mixed-vaccines-stockouts-and-order-limit",
+      "category": "slash acronym, required diluent, reordered name, stockouts and explicitly approved order limit",
+      "customer": "Name: Iddrisu Nasara\nFacility: Auntie Riek HC\nDistrict: Sekyere Afram Plains\nOrder\n1. BCG (3)\n2. Y/F (3)\n3. Penta (3)\n4. Tablet paracetamol 500mg (500)\n5. Intravenous infusion sodium chloride (5)",
+      "fulfillment": "Thank you Nasara Iddrisu from Auntie Riek HC for ordering with Zipline.\nWe will now prepare the following items for delivery:\n- Bacille Calmette-Guerin Vaccine Diluent [3/3]\n- Bacille Calmette-Guerin Vaccine [3/3]\n- Paracetamol 500mg Tablet [3/3]\n- Pentavalent (5-in-1) Vaccine [3/3]\nWe are currently out of stock for the following:\n- Sodium Chloride 0.9% Infusion, 500mL [0/1]\n- Yellow Fever Vaccine [0/1]",
+      "approvedOrderLimits": [
+        "Paracetamol 500mg Tablet"
+      ],
+      "expectedMatch": true,
+      "expectedOrderer": "match",
+      "expectedFacility": "match",
+      "requestedQuantities": [
+        3,
+        3,
+        3,
+        500,
+        5,
+        3
+      ],
+      "suppliedQuantities": [
+        3,
+        0,
+        3,
+        3,
+        0,
+        3
+      ]
+    },
+    {
+      "id": "pepease-inline-hydrocortisone",
+      "category": "paragraph confirmation and separate requested quantity",
+      "customer": "Date: 02/11/2026\nName of orderer: owusu Constance\nFacility: pepease health center\nDelivery point: compound\nDistrict: Kwahu East\nProduct: injection hydrocortisone 100mg\nQuantity: 10 pieces",
+      "fulfillment": "Thank you Constance Owusu from Pepease HC for ordering with Zipline. We will now prepare the following items for delivery: - Hydrocortisone 100mg Injection [10/10] Expected delivery: today.",
+      "expectedMatch": true,
+      "requestedQuantities": [
+        10
+      ],
+      "suppliedQuantities": [
+        10
+      ]
+    },
+    {
+      "id": "monkula-unlabelled-orderer-vails",
+      "category": "unlabelled name, vaccine label and unit spelling",
+      "customer": "whatsapp\nDate:02/11/26\nYorta Naazie Madina\nName of facility: Monkula CHPS\nDrop area:karaga hospital\nDistrict:karaga\nProduct and quantity\nR21=10Vails",
+      "fulfillment": "Thank you Yorta Naazie Madina from Monkula CHPS for ordering with Zipline. We will now prepare the following items for delivery: - Malaria Vaccine (R21) [10/10]",
+      "expectedMatch": true,
+      "requestedQuantities": [
+        10
+      ],
+      "suppliedQuantities": [
+        10
+      ]
+    },
+    {
+      "id": "abasua-rdt-stockout",
+      "category": "product acronym, shorter customer name and stockout",
+      "customer": "Orderer: Grace\nFacility: Abasua Health Centre\nRDT 1",
+      "fulfillment": "Thank you Grace Akabati from Abasua HC for ordering with Zipline. We are currently out of stock for the following items: - Malaria Rapid Diagnostic Test Kit [0/1]",
+      "expectedMatch": false,
+      "requestedQuantities": [
+        1
+      ],
+      "suppliedQuantities": [
+        0
+      ],
+      "expectedOrderer": "review required"
+    },
+    {
+      "id": "agona-whole-blood-name-conflict",
+      "category": "split blood fields and confirmed facility alias with genuine person difference",
+      "customer": "Name of Orderer: Evelyn Ofori Adofo\nName of Health Facility: AGONA SWEDRU MUNICIPAL HOSPITAL\nDistrict: AGONA WEST\nBlood Component: WB\nGroup: O positive\nNB: 4 units",
+      "fulfillment": "Thank you Evelyn owusu- adofo from Agona West Municipal HSP (CR) for ordering with Zipline. We are currently out of stock for the following items: - WB O+ adult [0/1]",
+      "expectedMatch": false,
+      "expectedOrderer": "mismatch",
+      "expectedFacility": "match",
+      "requestedQuantities": [
+        4
+      ],
+      "suppliedQuantities": [
+        0
+      ]
+    },
+    {
+      "id": "anyinofi-diclofenac-equivalent-concentration-with-shortfall",
+      "category": "equivalent concentration and genuine quantity shortfall",
+      "customer": "Name of Orderer: Emmanuel\nName of Health Facility: Anyinofi Health Centre\nProducts and Quantities:\ninj. Diclofenac 75mg/3mls 30/30",
+      "fulfillment": "Thank you Emmanuel Adomako from Anyinofi HC for ordering with Zipline. We will now prepare the following items for delivery: - Diclofenac 25mg/mL Injection, 3mL [10/10]",
+      "expectedMatch": false,
+      "requestedQuantities": [
+        30
+      ],
+      "suppliedQuantities": [
+        10
+      ]
+    }
+  ]
+}

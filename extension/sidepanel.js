@@ -1,3 +1,5 @@
+import {PRODUCTION_BACKEND_URL} from './backend-target.js';
+import {createAuditInputClear} from './audit-input-clear.js';
 import { setupGeneralProductReview } from './general-report.js';
 import { restoreGeneralAudit, rememberGeneralAudit } from './general-session.js';
 import { setupFsPanel } from './fs-panel.js';
@@ -12,9 +14,9 @@ import { acknowledgeOrderLimit, applyAuditProductLog } from './order-limits.js';
 import { buildReport } from './report.js';
 import { setupVaccine } from './sidepanel-vaccine.js';
 
-const SERVER_URL = extensionConfig.backendUrl;
+const SERVER_URL = PRODUCTION_BACKEND_URL;
 const EMPTY_RESULT = 'Add both logs, then run the audit.';
-const AUTO_CLEAR_SECONDS = 3;  // keep in sync with the drain animation in sidepanel.css
+const AUTO_CLEAR_SECONDS = 5;
 
 // Used only until the backend returns the account's display name.
 const nameFromEmail = (email) => String(email || '').split('@')[0]
@@ -44,13 +46,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let savedBackendUrl = SERVER_URL;
   let connectionAttempt = 0;
-  let contextRevision = 0, inputRevision = 0, hintRevision = 0, hintTimer;
+  let contextRevision = 0, inputRevision = 0;
   let activeResult = null;
   let lastGeneralAudit = null;
   let declinedLimitItems = [];
   let limitDecisions = {};
   let sessionEmail = '', profileName = '', profileRole = '';
-  let analysisTimer = null, autoClearTimer = null, lastDurationMs = 0;
+  let analysisTimer = null, lastDurationMs = 0;
   let awaitingFix = false, lastAuditedKey = '';
   let productReview;
   const btnConfirm = $('btnConfirm');
@@ -87,53 +89,21 @@ document.addEventListener('DOMContentLoaded', () => {
     return data;
   };
 
-  const clearHints = () => {
-    hintRevision++;
-    clearTimeout(hintTimer);
-    for (const source of ['whatsapp', 'fulfillment']) {
-      const box = $(`${source}Hints`);
-      box.replaceChildren();
-      box.hidden = true;
-    }
-  };
-
-  const refreshHints = async () => {
-    const current = ++hintRevision;
-    for (const [source, text] of [['whatsapp', whatsappText.value], ['fulfillment', fulfillmentText.value]]) {
-      const box = $(`${source}Hints`);
-      if (!text.trim()) { box.hidden = true; box.replaceChildren(); continue; }
-      try {
-        const data = await request('/api/products/hints', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scope: 'general', text }),
-        });
-        if (current !== hintRevision) return;
-        box.replaceChildren();
-        box.hidden = !data.products.length;
-        if (data.products.length) {
-          const heading = document.createElement('strong');
-          heading.textContent = 'Fulfillment System reminders';
-          box.append(heading);
-          for (const product of data.products) {
-            const row = document.createElement('p');
-            row.textContent = [
-              product.name,
-              product.fulfillmentSystemName ? `System name: ${product.fulfillmentSystemName}` : '',
-              product.receivingDetails,
-            ].filter(Boolean).join('\n');
-            box.append(row);
-          }
-        }
-      } catch (error) {
-        if (current === hintRevision) { box.hidden = false; box.textContent = `Receiving reminders unavailable: ${error.message}`; }
-      }
-    }
-  };
-
   // The result sits below the logs, so bring it into view when analysis starts.
   const showResultBox = () => results.parentElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  const cancelAutoClear = () => { clearInterval(autoClearTimer); autoClearTimer = null; };
+  const inputClear = createAuditInputClear({
+    getState: () => ({result: activeResult, context: contextRevision, revision: inputRevision,
+      inputs: [whatsappText.value, fulfillmentText.value], busy: productReview?.isBusy() || false}),
+    clearInputs: () => {
+      whatsappText.value = ''; fulfillmentText.value = '';
+      inputRevision++; activeResult = null; lastGeneralAudit = null; lastAuditedKey = ''; limitDecisions = {}; declinedLimitItems = [];
+      productReview?.reset(); screenshots.reset();
+      setAwaitingFix(false);
+      setMessage(EMPTY_RESULT);
+      chrome.storage.local.set({whatsappText: '', fulfillmentText: ''});
+    },
+  });
+  const cancelAutoClear = () => inputClear.cancel();
   const stopAnalysisTimer = () => { clearInterval(analysisTimer); analysisTimer = null; };
 
   // Shows a live seconds counter in the result box and on the button.
@@ -164,23 +134,11 @@ document.addEventListener('DOMContentLoaded', () => {
     fulfillmentText.value = '';
     invalidate();
     screenshots.reset();
-    clearHints();
+
     chrome.storage.local.set({ whatsappText: '', fulfillmentText: '' }, () => {
       setMessage(message, tone);
       whatsappText.focus();
     });
-  };
-
-  // A clean order leaves the screen after a few seconds so the next one starts fresh.
-  const scheduleAutoClear = () => {
-    cancelAutoClear();
-    let left = AUTO_CLEAR_SECONDS;
-    autoClearTimer = setInterval(() => {
-      left -= 1;
-      const count = $('clearCount');
-      if (count) count.textContent = left;
-      if (left <= 0) clearAll(EMPTY_RESULT);
-    }, 1000);
   };
 
   const invalidate = () => {
@@ -192,8 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const hasInput = whatsappText.value.trim() || fulfillmentText.value.trim();
     setMessage(hasInput ? 'Logs changed. Run the audit again to check this order.' : EMPTY_RESULT);
     screenshots.invalidate();
-    clearHints();
-    hintTimer = setTimeout(refreshHints, 400);
+
   };
 
   const catalogUI = setupCatalog({ request, onUpdated: invalidate });
@@ -251,7 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
     limitDecisions = {};
     catalogUI.reset();
     screenshots.reset();
-    clearHints();
+
   };
 
   /* ---------- Sign-in gate and greeting ---------- */
@@ -292,7 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
     profileName = profile.name || '';
     profileRole = profileRoles(profile);
     renderIdentity();
-    void refreshHints();
+
   };
 
   signInForm.addEventListener('submit', async (event) => {
@@ -378,54 +335,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const saveBackend = async (value) => {
-    try {
-      const normalized = normalizeBackendUrl(value);
-      if (savedBackendUrl !== normalized) {
-        await signOut();
-        await updateAuth();
-        activeResult = null;
-        setSignInMessage('Backend changed. Sign in to this service to continue.', 'muted');
-      }
-      savedBackendUrl = normalized;
-      backendUrlInput.value = normalized;
-      await chrome.storage.local.set({ customBackendUrl: normalized });
-      backendSaveMsg.textContent = 'Backend URL saved.';
-      backendSaveMsg.hidden = false;
-      checkConnection();
-    } catch (error) { showError(error); }
-  };
-
-  $('btnSaveBackend').addEventListener('click', () => saveBackend(backendUrlInput.value));
-  $('btnResetBackend').addEventListener('click', async () => {
-    if (SERVER_URL) return saveBackend(SERVER_URL);
-    savedBackendUrl = '';
-    backendUrlInput.value = '';
+  const useProductionBackend = async () => {
+    savedBackendUrl = SERVER_URL;
+    backendUrlInput.value = SERVER_URL;
     await chrome.storage.local.remove('customBackendUrl');
-    await signOut();
-    await updateAuth();
     checkConnection();
-  });
+  };
+  document.getElementById('btnSaveBackend').addEventListener('click', useProductionBackend);
+  document.getElementById('btnResetBackend').addEventListener('click', useProductionBackend);
 
   /* ---------- Audit report ---------- */
 
   const renderResults = ({ holdClear = false } = {}) => {
     if (!activeResult) return;
-    const { html: legacyHtml, autoClear } = buildReport(activeResult, {
+    const { html: legacyHtml } = buildReport(activeResult, {
       durationMs: lastDurationMs, declinedLimitItems, holdClear, autoClearSeconds: AUTO_CLEAR_SECONDS,
     });
     results.dataset.state = 'report';
     delete results.dataset.tone;
     results.innerHTML = activeResult.generalAudit ? productReview.render(activeResult) : legacyHtml;
     setAwaitingFix(!activeResult.allMatch);
-    if (autoClear && !activeResult.generalAudit) scheduleAutoClear(); else cancelAutoClear();
+    inputClear.schedule({hold: holdClear});
     void rememberGeneralAudit(activeResult, savedBackendUrl);
   };
 
   productReview = setupGeneralProductReview({ root: results, request, getResult: () => activeResult,
     getSources: () => ({ whatsappMessage: whatsappText.value, fulfillmentConfirmation: fulfillmentText.value }),
     contextKey: () => `${contextRevision}:${inputRevision}:${savedBackendUrl}`,
-    onSaved: updated => { activeResult = updated; lastGeneralAudit = updated; }, rerender: () => renderResults({ holdClear: true }),
+    onSaved: updated => { activeResult = updated; lastGeneralAudit = updated; }, rerender: () => renderResults(),
     onBusy: busy => { btnVerify.disabled = busy; btnConfirm.disabled = busy; cancelAutoClear(); },
   });
 
@@ -484,9 +421,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setTab(saved.activeTab, { save: false });
     if (saved.whatsappText != null) whatsappText.value = saved.whatsappText;
     if (!fulfillmentSync.observed && saved.fulfillmentText != null) fulfillmentText.value = saved.fulfillmentText;
-    // Migrate the obsolete development default; keep any explicitly configured service.
-    const oldDefault = 'https://ais-dev-ksv3oiifrmnhdib3nb7awh-944779874869.europe-west2.run.app';
-    savedBackendUrl = saved.customBackendUrl && saved.customBackendUrl !== oldDefault ? saved.customBackendUrl : SERVER_URL;
+    savedBackendUrl = SERVER_URL;
+    await chrome.storage.local.remove('customBackendUrl');
     backendUrlInput.value = savedBackendUrl;
     $('rememberEmail').checked = saved.rememberEmail !== false;
     $('keepSignedIn').checked = saved.keepSignedInPref === true;
@@ -509,6 +445,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  for (const source of ['whatsapp', 'fulfillment']) {
+    document.getElementById(`${source}Image`).addEventListener('change', () => inputClear.cancel());
+    document.getElementById(`${source}Scan`).addEventListener('click', () => inputClear.cancel());
+    document.getElementById(`${source}Text`).addEventListener('paste', () => inputClear.cancel());
+  }
   whatsappText.addEventListener('input', () => { chrome.storage.local.set({ whatsappText: whatsappText.value }); invalidate(); });
   fulfillmentText.addEventListener('input', () => { chrome.storage.local.set({ fulfillmentText: fulfillmentText.value }); invalidate(); });
 
@@ -627,10 +568,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const startedAt = startAnalysisTimer();
 
     try {
-      const activeUrl = normalizeBackendUrl(savedBackendUrl);
-      if (normalizeBackendUrl(backendUrlInput.value) !== activeUrl) {
-        throw new Error('Click Save to apply your changed backend URL before auditing.');
-      }
       const data = await request('/api/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -643,15 +580,14 @@ document.addEventListener('DOMContentLoaded', () => {
       requireCatalogAuditResponse(data);
       applyAuditProductLog(data.productCatalog);
       delete data.productCatalog;
-      void refreshHints();
+
       lastDurationMs = Date.now() - startedAt;
       activeResult = data;
       lastGeneralAudit = data.generalAudit ? data : null;
       renderResults();
       if (confirm) {
-        if (autoClearTimer !== null) {
-          // Clean on re-check: the fix is confirmed, so clear straight away.
-          clearAll('Resolved. Everything cleared, ready for the next order.', 'success');
+        if (activeResult.allMatch) {
+          addNotice('Resolved. Both text boxes will clear in 5 seconds.');
         } else {
           addNotice(`Not resolved yet. ${data.issueCount ?? 'Some'} discrepanc${data.issueCount === 1 ? 'y remains' : 'ies remain'}.`);
         }

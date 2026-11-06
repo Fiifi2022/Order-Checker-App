@@ -1,15 +1,22 @@
 import { CLINICAL_PAIRINGS, vaccinePairingFailure } from '../../shared/vaccinePairing';
 import type { GeneralComparisonItem } from './generalAuditor';
+import {generalAccessoryIdentity,type GeneralAccessoryCatalog} from '../../shared/generalAccessoryCatalog';
 
 /** Fulfilment pairing is independent of what the customer called the companion. */
-export function applyGeneralVaccinePairing(items: GeneralComparisonItem[], normalize: (name: string) => string): GeneralComparisonItem[] {
+export function applyGeneralVaccinePairing(items: GeneralComparisonItem[], normalize: (name: string) => string,context?:GeneralAccessoryCatalog): GeneralComparisonItem[] {
   const result = [...items];
   const identities = new Map(Object.entries(CLINICAL_PAIRINGS).flatMap(([primary, pairing]) =>
     [primary, pairing.accessoryCanonical].map(name => [normalize(name), name] as const)));
   // Older audits key products by normalized name; catalogue audits key them by
   // product ID. Bind verified names to the same existing pairing configuration.
-  const canonical = (item: GeneralComparisonItem) => item.status === 'product identity discrepancy' ? undefined :
-    identities.get(item.fulfillment.key) || identities.get(normalize(item.name));
+  const canonical = (item: GeneralComparisonItem) => {
+    if(context){
+      const fs=item.provenance.filter(p=>p.source==='fulfillment_confirmation');
+      const matches=fs.map(p=>p.canonicalId?generalAccessoryIdentity(context,p.name,p.canonicalId):undefined);
+      return matches.length&&matches[0]&&matches.every(m=>m?.canonical===matches[0]?.canonical)?matches[0].canonical:undefined;
+    }
+    return item.status === 'product identity discrepancy' ? undefined : identities.get(item.fulfillment.key) || identities.get(normalize(item.name));
+  };
   for (const [primaryName, pairing] of Object.entries(CLINICAL_PAIRINGS)) {
     const primaryIndex = result.findIndex(item => canonical(item) === primaryName);
     const companionIndex = result.findIndex(item => canonical(item) === pairing.accessoryCanonical);
@@ -19,6 +26,10 @@ export function applyGeneralVaccinePairing(items: GeneralComparisonItem[], norma
     const supplied = primary?.fulfillment.supplied || 0;
     const primaryQuantity = primary?.fulfillment.suppliedUnit === 'dose' ? supplied / pairing.dosesPerVial : supplied;
     const companionQuantity = companion?.fulfillment.supplied || 0;
+    if(context&&primaryQuantity>0&&companionIndex<0&&result.some(item=>item.provenance.some(p=>{
+      const hint=p.source==='fulfillment_confirmation'&&generalAccessoryIdentity(context,p.name);
+      return hint&&hint.role==='accessory'&&hint.family===primaryName&&!canonical(item);
+    })))continue; // Present but unresolved accessory identity needs review, not a missing warning.
     if (primaryQuantity > 0 && companion && !companion.provenance.some(product => product.source === 'customer_request')) {
       // The Vaccine Checker permits a required companion without an explicit
       // customer request. Its actual quantity is still checked below.

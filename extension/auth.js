@@ -1,3 +1,4 @@
+import {PRODUCTION_BACKEND_URL} from './backend-target.js';
 import { extensionConfig } from './config.js';
 import { fetchJson } from './backend.js';
 
@@ -79,7 +80,7 @@ export async function backendRequest(baseUrl, endpoint, options = {}, timeoutMs)
       tokenTimer = setTimeout(() => reject(new Error('The audit could not be completed within the available processing time. Please retry.')), limit);
     })]) : await getToken();
     clearTimeout(tokenTimer);
-    return await fetchJson(`${baseUrl}${endpoint}`, {
+    return await fetchJson(`${PRODUCTION_BACKEND_URL}${endpoint}`, {
       ...options,
       headers: { ...options.headers, Authorization: `Bearer ${token}` },
     }, audit ? Math.max(1, limit - (Date.now() - started)) : limit);

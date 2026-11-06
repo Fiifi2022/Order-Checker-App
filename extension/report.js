@@ -62,7 +62,7 @@ export function buildReport(r, {
   }
 
   if (autoClear) {
-    html += `<p class="clear-note">No discrepancies. Clearing in <b id="clearCount">${autoClearSeconds}</b>s for the next order.</p>`;
+    html += `<p class="clear-note">No discrepancies. Results and text boxes clear in <b id="clearCount">${autoClearSeconds}</b>s for the next order.</p>`;
     html += '<div class="clear-bar" aria-hidden="true"><span></span></div>';
   }
 

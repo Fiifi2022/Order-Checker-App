@@ -449,11 +449,14 @@ export default function SystemAuditLogView({
                 {/* Contributor Leaderboard */}
                 <div className="lg:col-span-2 space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-slate-700 px-1">
-                    <span>Team Members & Recorded Edits</span>
+                    <span>Contributors & Recorded Actions</span>
                     <span className="text-slate-400 font-normal">Actions / Breakdown</span>
                   </div>
 
                   <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {usage.byActor.length === 0 && (
+                      <p className="p-3 text-xs text-slate-500">No signed-in contributors with recorded actions yet.</p>
+                    )}
                     {usage.byActor.map((u, idx) => (
                       <div
                         key={u.email || idx}

@@ -1,28 +1,16 @@
+import {PRODUCTION_BACKEND_URL} from '../extension/backend-target.js';
 import AdmZip from 'adm-zip';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-/** Prefer usable deployment settings, then the host serving the download. */
-export function resolveExtensionBackendUrl({ appUrl, renderUrl, host }: { appUrl?: string; renderUrl?: string; host?: string }) {
-  for (const candidate of [appUrl, renderUrl, host]) {
-    const raw = candidate?.trim();
-    if (!raw) continue;
-    try {
-      const local = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?\/?$/.test(raw);
-      const url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `${local ? 'http' : 'https'}://${raw}`);
-      const localHostname = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-      if (url.protocol !== 'https:' && !(localHostname && url.protocol === 'http:')) continue;
-      if (url.username || url.password || url.search || url.hash || !/^\/*$/.test(url.pathname)) continue;
-      // Template values such as MY_APP_URL are not public hostnames.
-      if (!localHostname && (!url.hostname.includes('.') || !/^[a-z\d.-]+$/i.test(url.hostname) || url.hostname.split('.').some(label => !label || label.startsWith('-') || label.endsWith('-')))) continue;
-      return url.origin;
-    } catch { /* An unset or placeholder setting must not break downloads. */ }
-  }
-  throw new Error('Extension download needs a valid app address. Set APP_URL to your app’s HTTPS base URL, or download from localhost.');
+/** Always ship the production service, including downloads from a local or old host. */
+export function resolveExtensionBackendUrl(_settings: {appUrl?: string; railwayDomain?: string; renderUrl?: string; host?: string} = {}) {
+  return PRODUCTION_BACKEND_URL;
 }
 
-export const extensionAssets = ['manifest.json', 'icon-48.png', 'icon-128.png', 'popup.html', 'sidepanel.html', 'logo-white.png', 'general-report.css', 'icon-32.png', 'general-session.js', 'logo-mark.png', 'sidepanel-vaccine.js', 'allocation-cycle.js', 'fs-origins.js', 'sidepanel.css', 'vaccine.js', 'vaccine-display.js', 'icon.png', 'vaccine-api.js', 'general-auditor.js', 'icon-16.png', 'explain.js', 'backend.js', 'fs-connection.js', 'fs-panel.js', 'fs-script.js', 'fs-state.js', 'fs-messaging.js', 'auth.js', 'report.js', 'audit-contract.js', 'capture.js', 'screenshots.js', 'sidepanel-vaccine-api.js', 'content.js', 'general-report.js', 'catalog.js', 'alias-management.js', 'popup.js', 'background.js', 'fs-content.js', 'audit.js', 'sidepanel.js', 'order-limits.js'];
+export const extensionAssets = ['backend-target.js', 'audit-input-clear.js', 'manifest.json', 'icon-48.png', 'icon-128.png', 'popup.html', 'sidepanel.html', 'logo-white.png', 'general-report.css', 'icon-32.png', 'general-session.js', 'logo-mark.png', 'sidepanel-vaccine.js', 'allocation-cycle.js', 'fs-origins.js', 'sidepanel.css', 'vaccine.js', 'vaccine-display.js', 'icon.png', 'vaccine-api.js', 'general-auditor.js', 'icon-16.png', 'explain.js', 'backend.js', 'fs-connection.js', 'fs-panel.js', 'fs-script.js', 'fs-state.js', 'fs-messaging.js', 'auth.js', 'report.js', 'audit-contract.js', 'capture.js', 'screenshots.js', 'sidepanel-vaccine-api.js', 'content.js', 'general-report.js', 'catalog.js', 'alias-management.js', 'popup.js', 'background.js', 'fs-content.js', 'audit.js', 'sidepanel.js', 'order-limits.js'];
 export async function buildExtensionPackage(backendUrl: string, firebaseApiKey: string, directory = path.join(process.cwd(), 'extension')) {
+  backendUrl = PRODUCTION_BACKEND_URL;
   const zip = new AdmZip();
   for (const file of extensionAssets) {
     const data = await readFile(path.join(directory, file));

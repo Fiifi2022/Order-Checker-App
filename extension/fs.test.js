@@ -36,7 +36,8 @@ test('permissions restrict FS injection and secrets stay out of content scripts'
  const fs = manifest.content_scripts.find(s => s.js.includes('fs-content.js'));
  assert.deepEqual(fs.matches, ["https://fulfillment-gh1-production.platform.flyzipline.com/*", "https://fulfillment-gh2-production.platform.flyzipline.com/*", "https://fulfillment-gh3-production.platform.flyzipline.com/*"]);
  assert.ok(!manifest.host_permissions.some(host => host === 'https://*/*' || host === 'http://*/*'));
- assert.ok(manifest.host_permissions.includes('http://localhost:3000/*'));
+ assert.ok(manifest.host_permissions.includes('https://ordercheck-production.up.railway.app/*'));
+ assert.ok(!manifest.host_permissions.includes('http://localhost:3000/*'));
  const content = await readFile(new URL('./fs-content.js', import.meta.url), 'utf8');
  assert.ok(!/getToken|authSession|\/commit|signInWithPassword/.test(content));
 });

@@ -8,7 +8,16 @@ export interface GeneralNameEvidence {
   confidence: number;
   reason: string;
 }
+export interface GeneralOrdererExtraction {
+  status:'detected'|'needs confirmation'|'not detected'|'extraction error';
+  value:string|null;candidates:string[];
+  method:'normal parser'|'FS-assisted source search'|'local source header'|'source search';
+  reason:string;
+}
 export interface GeneralFieldResult {
+  identityDecision?: import('./generalIdentityDecision').IdentityDecision;
+  identityHistory?: import('./generalIdentityDecision').IdentityDecision[];
+  previousIdentitySuggestion?: {actor:string;at:string;decision:'confirm'|'reject'|'reset'};
   reason?: string;
   nameMatchMethod?: 'deterministic' | 'fuzzy' | 'gemini';
   nameEvidence?: GeneralNameEvidence;
@@ -71,6 +80,17 @@ export interface GeneralExtractedMessage {
   unresolvedFields: string[];
 }
 export interface GeneralAuditDetails {
+  generalAccessoryContext?:import('../../shared/generalAccessoryCatalog').GeneralAccessoryCatalog;
+  structuredExtraction?:{preview:import('../../shared/generalStructuredExtraction').GeneralStructuredPreview;changes:import('../../shared/generalStructuredExtraction').GeneralExtractionChange[];confirmedFields:string[];actor:{id:string;name:string};at:string};
+  ordererExtraction?:GeneralOrdererExtraction;
+  reviewConfirmations?: (import('../../shared/generalReviewConfirmation').ReviewConfirmation & {source:GeneralSemanticReview['source'];originalText:string;confirmedBy:{id:string;name:string};confirmedAt:string;inputFingerprint:string})[];
+  sourceProductConfirmations?:{alias:string;sourceName:string;confirmedBy:{id:string;name:string};confirmedAt:string;inputFingerprint:string}[];
+  identityResearch?:Partial<Record<'facility'|'orderer',{revision?:number;status:'deferred'|'analysed'|'rate_limited'|'timed_out'|'unavailable';suggestion?:{reason:string;possibleMatch:boolean;source:'gemini'}}>>;
+  identityReviewEvidence?: Partial<Record<'orderer'|'facility',GeneralSemanticReview[]>>;
+  outcome?: 'No Discrepancy Detected'|'Needs Review'|'Discrepancy Detected';
+  catalogueConfirmations?: {alias:string;productId:string;confirmedBy:{id:string;name:string};confirmedAt:string;inputFingerprint:string}[];
+  catalogueSuggestions?: import('../../shared/productResearch').ProductResearchSuggestion[];
+  extractionReadability?: Partial<Record<'customer_request'|'fulfillment_confirmation',{status:'complete'|'unreadable';unreadProductText:string[];unreadQuantityText?:string[]}>>;
   decision?: 'match' | 'discrepancy' | 'review';
   extraction?: GeneralOrderExtractionSnapshot;
   productComparisonMode?: 'names_only' | 'names_and_quantities';

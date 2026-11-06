@@ -46,19 +46,22 @@ test('sequential optional stages consume one allowance instead of renewing it',a
 
 const catalog:ProductCatalog={revision:1600,products:[{id:'asv',name:'Snake Venom Antiserum',scope:'general',aliases:['ASV'],contextualAliases:[],category:'medicine',note:''}]};
 const header='Orderer: Test Operator\nFacility: Example HC\n';
-test('the real extraction and catalogue AI stages share a deadline and keep unresolved evidence',async()=>{
+test('the real extraction and catalogue AI stages share a deadline and keep unresolved evidence',async(t)=>{
   applyCatalog(catalog);
+  // Control budget time so a busy build worker cannot spend the entire 240ms
+  // allowance parsing before the second stage starts. Real abort timers still run.
+  let budgetNow=performance.now();t.mock.method(performance,'now',()=>budgetNow);
   const timeouts:number[]=[],signals:AbortSignal[]=[];
   const empty=()=>({facilityName:null,ordererName:null,products:[],deliveryArea:null,district:null,unresolvedFields:['products'],extractionConfidence:0});
-  const result=await runGeneralProductNameAudit(header+'Please send enigmatic venom compound 2',header+'Snake Venom Antiserum [2/2]',catalog,
+  const result=await runGeneralProductNameAudit(header.replace('Orderer: Test Operator','Signed: Test Operator')+'Enigmatic venom compound 2',header+'Snake Venom Antiserum [2/2]',catalog,
     {semanticTimeoutMs:240,semanticCacheScope:'speed-shared-ai'},()=>({models:{generateContent:async(options:any)=>{
       timeouts.push(options.config.httpOptions.timeout);signals.push(options.config.abortSignal);
       const input=JSON.parse(options.contents);
-      if(input.customer || input.fulfillment) {await sleep(100);return {text:JSON.stringify({customer:empty(),fulfillment:empty()})};}
+      if(input.customer || input.fulfillment) {await sleep(100);budgetNow+=100;return {text:JSON.stringify({customer:empty(),fulfillment:empty()})};}
       return new Promise<never>(()=>{});
     }}}));
   assert.equal(timeouts.length,2);
-  assert.ok(timeouts[1]<timeouts[0]-60,JSON.stringify(timeouts));
+  assert.deepEqual(timeouts,[10000,10000]); // Provider deadline stays valid; the shared local abort budget remains short.
   await sleep(10); // The shared SDK owner has the same deadline as this caller.
   assert.equal(signals[1].aborted,true);
   assert.equal(result.allMatch,false);

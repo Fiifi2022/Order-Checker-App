@@ -54,7 +54,7 @@ export default function ExtensionSetup() {
           <li>Download the ZIP and extract it to a folder you can keep on your computer.</li>
           <li>Open <code className="rounded bg-white px-1 py-0.5">chrome://extensions</code> in Chrome and enable <strong>Developer mode</strong>.</li>
           <li>Click <strong>Load unpacked</strong> and select the extracted folder containing <code>manifest.json</code>.</li>
-          <li>Open the OrderCheck extension and sign in with your approved portal email and password. The download includes this app’s backend address.</li>
+          <li>Open the OrderCheck extension and sign in with your approved portal email and password. The extension always connects to the production OrderCheck website automatically.</li>
         </ol>
         <p className="mt-4 text-sm text-slate-600">Updating an existing installation? Replace its files with the newly extracted download, click <strong>Reload</strong> in Chrome’s Extensions page, and refresh any tabs used for capture.</p>
       </div>

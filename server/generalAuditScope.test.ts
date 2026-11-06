@@ -84,7 +84,7 @@ test('General Auditor medical aliases preserve strength, form, and identity dist
 test('orderer matching allows first/surname and titles without erasing different identities', () => {
   for (const name of ['Nurse MARY  MENSAH', 'Dr. Mary Abena Mensah', 'Mary, Mensah']) {
     const result = runGeneralAuditor(headers + 'ORS - 5', `Facility: Vea Health Centre\nOrderer: ${name}\nORS [5/5]`);
-    assert.equal(result.generalAudit.orderer.status, 'match', name);
+    assert.equal(result.generalAudit.orderer.status, name.includes('Abena')?'review required':'match', name);
   }
   const different = runGeneralAuditor('Orderer: Mary Abena Mensah\nORS - 5', 'Orderer: Mary Akua Mensah\nORS - 5');
   assert.equal(different.generalAudit.orderer.status, 'mismatch');
@@ -106,6 +106,6 @@ test('General Auditor verdicts show operational statuses and missing-name warnin
   assert.ok(absentNames.generalAudit.warnings?.includes('Orderer: Confirm the name of the person placing the order.'));
   assert.ok(absentNames.generalAudit.warnings?.includes('Facility: Confirm the requesting health facility.'));
   const fields = renderToStaticMarkup(createElement(Details, { details: absentNames.generalAudit }));
-  assert.match(fields, /REVIEW REQUIRED/);
-  assert.match(fields, /REVIEW REQUIRED/);
+  assert.match(fields, /missing from customer request/);
+  assert.match(fields, /missing from customer request/);
 });

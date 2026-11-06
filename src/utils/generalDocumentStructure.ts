@@ -1,3 +1,5 @@
+import {hasGeneralFacilityType} from './generalFacility';
+import {GENERAL_COUNT_UNIT_PATTERN} from '../../shared/generalQuantityUnits';
 /** General-only structural parsing. No product identities or quantities are inferred here. */
 export type GeneralDocumentKind = 'HEADING' | 'FIELD_LABEL' | 'FIELD_VALUE' | 'PRODUCT_ENTRY' | 'CUSTOMER_NOTE' | 'INTRODUCTORY_TEXT' | 'ADMINISTRATIVE_HEADING' | 'FULFILMENT_NOTIFICATION' | 'ADMINISTRATIVE_TEXT' | 'AMBIGUOUS_CONTENT';
 export type GeneralDocumentField = 'orderer' | 'facility' | 'delivery' | 'district' | 'date' | 'products' | 'quantity';
@@ -33,22 +35,34 @@ function labelKey(value: string) {
 }
 function labelField(value: string): GeneralDocumentField | undefined {
   const key = labelKey(value);
-  if (/^(?:name of (?:the )?orderer|orderer(?: name)?|ordered by|requested by|requester|recipient|customer name)$/.test(key)) return 'orderer';
-  if (/^(?:name of (?:the )?(?:health )?facility|(?:health )?facility(?: name| id)?|hospital|clinic)$/.test(key)) return 'facility';
-  if (/^(?:delivery(?: and)? drop(?: off)? area|delivery(?: area| location)?|drop(?: off)? (?:area|location|site))$/.test(key)) return 'delivery';
+  if (/^(?:name of (?:the )?(?:orderer|customer)|customer(?: s)? name|orderer(?: name)?|ordered by|requested by|requester|recipient|receiver|reciever|customer)$/.test(key)) return 'orderer';
+  if (/^(?:name of (?:the )?(?:health )?facility|(?:health )?facility(?:(?: s)? name| id)?|hospital|clinic)$/.test(key)) return 'facility';
+  if (/^(?:delivery(?: and)? drop(?: off)? area|delivery(?: area| location| point)?|drop(?: off)? (?:area|location|site))$/.test(key)) return 'delivery';
   if (/^district(?: name)?$/.test(key)) return 'district';
   if (/^(?:order )?date$/.test(key)) return 'date';
   if (/^(?:quantity|quantities|qty|amount)(?: (?:needed|required|requested|ordered))?$/.test(key)) return 'quantity';
   if (/^(?:(?:requested|ordered|requisitioned) )?(?:products?|medicines?|items?|drugs?|vaccines?|supplies)(?: (?:and )?(?:quantit(?:y|ies)|qty|requested|ordered|requisition|details|list|needed|for delivery)){0,3}$/.test(key) || /^(?:order|requisition|request) (?:details|items|list)$/.test(key)) return 'products';
 }
 const productSignal = /\b(?:\d+(?:\.\d+)?\s*(?:mg|mcg|ml|miu|iu|g|vials?|vails?|bottles?|packs?|tablets?|doses?)|injection|infusion|tablets?|capsules?|syrup|suspension|vaccine|syringes?|needles?|cream|ointment|diluent|dropper)\b/i;
-export const generalStandaloneQuantity = /^\d+(?:,\d{3})*(?:\.\d+)?\s*(?:vials?|boxes?|packs?|blisters?|strips?|doses?|units?|bottles?|tablets?|capsules?|sachets?|tests?|pieces?)\s*[.!]?$/i;
+export const generalStandaloneQuantity = new RegExp(String.raw`^\d+(?:,\d{3})*(?:\.\d+)?\s*${GENERAL_COUNT_UNIT_PATTERN}\s*[.!]?$`, 'i');
 function productLike(value: string) { return /[a-z]/i.test(value) && (/\d/.test(value) || productSignal.test(value) || /\s(?:[-–—:=]\s*)?(?:(?:currently )?out of stock|(?:not )?(?:currently )?in stock|(?:currently )?unavailable|oos)[.!]?$/i.test(value)); }
 const stockHeading = /^(?:(?:we are )?(?:currently )?(?:out of stock|not currently in stock|not in stock|currently unavailable|unavailable|oos)(?: for (?:the )?following (?:items|products))?|we (?:will now|can) prepare the following items(?: we have in stock)? for delivery|available(?: products| items)?|in stock|(?:items|products) (?:in stock|available))\s*[:.!]?$/i;
 const note = /^(?:(?:please|pls|kindly)\s+)?(?:deliver(?: it| the order| these items)?|make (?:it|the order) available)\s+(?:on time|(?:by|on|at|before|after)\s+)?(?:tomorrow|today|tonight|(?:this |next )?(?:morning|afternoon|evening)|as soon as possible)(?:\s+(?:morning|afternoon|evening))?(?:[, ]+(?:please|thanks|thank you))?[.!]?$/i;
+const formAction='(?:(?:please|pls|kindly)\\s+)?(?:specify|provide|enter|complete|fill(?:\\s+(?:in|out))?)\\s+(?:the\\s+)?';
+const formObject='(?:(?:following|below)\\s+(?:information|details|form)|(?:information|details|form)\\s+(?:below|that follows))';
+const formGoal='(?:(?:so(?:\\s+that)?\\s+(?:we|i)\\s+(?:can|may)|(?:in\\s+order\\s+)?to)\\s+(?:(?:accurately|properly)\\s+)?(?:process|handle|complete)\\s+(?:your|the)\\s+(?:request|order))';
+const formIntroPattern=new RegExp(`^${formAction}${formObject}(?:\\s+${formGoal})?\\s*[:.!]?$`,'i');
+const formGoalIntroPattern=new RegExp(`^(?:to|in\\s+order\\s+to)\\s+(?:(?:accurately|properly)\\s+)?(?:process|handle)\\s+(?:your|the)\\s+(?:request|order)[,;]?\\s+${formAction}${formObject}\\s*[:.!]?$`,'i');
+/** Whole form instructions only; a named product or amendment cannot match. */
+export function isGeneralFormIntroduction(value:string):boolean {
+  return formIntroPattern.test(value.trim())||formGoalIntroPattern.test(value.trim());
+}
 /** Closed grammatical phrases, never keyword-based medicine suppression. */
 export function generalNonProductPhrase(raw: string): { kind: GeneralDocumentKind; boundary?: boolean; value?: string } | undefined {
   const text = raw.trim().replace(/^[*#_`•\s]+|[*_`\s]+$/g, '');
+  if(isGeneralFormIntroduction(text))return {kind:'ADMINISTRATIVE_TEXT'};
+  if (/^whats\s?app\s*[:.!]?$/i.test(text)) return {kind:'ADMINISTRATIVE_HEADING'};
+  if (/^(?:[↪↩➦]\s*)?forwarded(?: many times)?$/i.test(text)) return {kind: 'ADMINISTRATIVE_TEXT'};
   if (/^https:\/\/orders\.zipline\.com\/t\/\d+\/[a-z0-9_-]+\s+we (?:will now|can) prepare the following items(?: we have in stock)? for delivery\s*[:.!]?$/i.test(text)) return { kind: 'FULFILMENT_NOTIFICATION', boundary: true };
   const intro = /^(?:(?:please|pls|kindly)\s+)?(?:(?:we|i)\s+)?(?:(?:urgently|kindly|please)\s+)*(?:need|want|request|require)(?:\s+(?:the\s+following|the|these|following))?(?:\s+(?:items|products|medicines|supplies))?(?:\s+(?:urgently|please))?\s*[:.!]?$/i;
   if (intro.test(text)) return { kind: 'INTRODUCTORY_TEXT' };
@@ -118,6 +132,8 @@ export function recognizeGeneralDocument(text: string, classify?: (line: string)
     if (generalStandaloneQuantity.test(value)) {
       finish(); line.kind = 'FIELD_VALUE'; line.field = 'quantity'; line.auditText = `Qty: ${value}`; continue;
     }
+    // An unlabelled facility starts its own identity, never a continuation of a person's name.
+    if(pending?.field==='orderer' && !label && hasGeneralFacilityType(value))finish();
     if (pending && !productSignal.test(value) && !/[:;=：]|[-–—]\s*\d|\d\s*\/\s*\d/.test(value) && !stockHeading.test(value) && !note.test(value) && classified?.category !== 'administrative' && (!label || pending.field === 'delivery' && /^facility$/i.test(value))) {
       line.kind = 'FIELD_VALUE'; line.field = pending.field; line.labelLine = pending.labelLine;
       pending.values.push(line); continue;

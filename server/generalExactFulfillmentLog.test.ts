@@ -1,3 +1,4 @@
+import {applyIdentityDecision} from './generalIdentityDecision';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
@@ -12,9 +13,11 @@ const fulfillment = 'Thank you Adam Fauzia from Bagurugu CHPS for ordering with 
 const offline = () => { throw Error('AI should not be needed'); };
 const render = (details: Parameters<typeof Details>[0]['details']) => renderToStaticMarkup(createElement('div', null, createElement(Details, { details }), createElement(Summary, { details })));
 
-test('the exact supplied log accepts a minor orderer spelling difference without product warnings', async () => {
+test('the exact supplied log requires CCA confirmation for the minor name difference without product warnings', async () => {
   let calls = 0;
-  const result = await audit(customer, fulfillment, {}, {}, () => { calls++; return offline(); });
+  const pending = await audit(customer, fulfillment, {}, {}, () => { calls++; return offline(); });
+  assert.equal(pending.generalAudit.orderer.status,'review required');assert.equal(pending.allMatch,false);
+  const result=applyIdentityDecision({...pending,whatsappMessage:customer,fulfillmentConfirmation:fulfillment},'orderer','confirm',{id:'test-cca',name:'CCA'});
   assert.equal(calls, 0);
   assert.equal(result.allMatch, true);
   assert.equal(result.issueCount, 0);

@@ -1,5 +1,12 @@
 import { catalogKey, catalogProductNames, type CatalogProduct } from './productCatalog';
 
+/** Approved fulfilment display labels, stored on the existing catalogue identity. */
+export const APPROVED_VACCINE_CATALOGUE_LABELS:Readonly<Record<string,readonly string[]>>={
+  R21:['R21 vaccine','Malaria Vaccine (R21)','R21 Malaria Vaccine','Malaria vaccine','Malaria R21'],
+  'Yellow Fever':['Y/F'],
+  'Yellow Fever Vaccine':['Y/F'],
+};
+
 let version = 0;
 let configuration = '';
 
@@ -65,3 +72,10 @@ export function setGeneralVaccineCatalog(products: CatalogProduct[]) {
 
 export const resolveCatalogVaccineName = (name: string) => identities.get(catalogKey(name));
 export const isConflictingVaccineAlias = (name: string) => conflicts.has(catalogKey(name));
+
+/** Product identity guard; the local generic alias never merges different vaccine codes. */
+export function malariaVaccineIdentityConflict(a:string,b:string):boolean {
+ const codes=(value:string)=>[...(/\br\s*-?\s*21\b/i.test(value)?['R21']:[]),...(/\brts\s*[,/.-]?\s*s\b|\bmosquirix\b/i.test(value)?['RTS,S']:[])];
+ const left=codes(a),right=codes(b);
+ return left.length>1||right.length>1||left.length===1&&right.length===1&&left[0]!==right[0];
+}

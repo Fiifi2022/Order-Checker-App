@@ -33,7 +33,7 @@ export default function CatalogAliasManagement({onUpdated}:{onUpdated:()=>void})
   `${record.text} ${names.get(record.productId)||''}`.toLowerCase().includes(query.toLowerCase())) || [];
  return <section aria-label="Alias Management" className="mt-4 border rounded-xl p-4 space-y-3">
   <h3 className="font-bold text-purple-900">Alias Management</h3>
-  <p className="text-sm text-slate-600">Suggestions require verified approval. Approved aliases are shared by the app and extension.</p>
+  <p className="text-sm text-slate-600">Unique catalogue-verified names are learned automatically. New AI suggestions need identity confirmation. Approved aliases are shared by the app and extension.</p>
   <div className="flex flex-wrap gap-2">
    <input aria-label="Search aliases by product name" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Search alias or product" className="border rounded p-2 flex-1 min-w-40"/>
    <select aria-label="Alias status" value={filter} onChange={event=>setFilter(event.target.value)} className="border rounded p-2">{['pending','approved','rejected','inactive','all'].map(value=><option key={value}>{value}</option>)}</select>

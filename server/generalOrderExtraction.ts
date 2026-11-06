@@ -1,9 +1,14 @@
+import {cleanOrderRequest,normalizeOrderCountText,normalizeCatalogueCountText} from '../shared/orderText';
+import {normalizeGeneralOrdererName} from '../src/utils/generalOrdererName';
+import {projectGeneralFulfillmentSections} from '../src/utils/generalFulfillmentText';
+import {projectGeneralBloodFields} from '../src/utils/generalBloodProducts';
+import {GENERAL_COUNT_UNIT_PATTERN} from '../shared/generalQuantityUnits';
 import { recognizeGeneralDocument, generalDocumentLabel, generalStandaloneQuantity } from '../src/utils/generalDocumentStructure';
 import { GENERAL_SENTENCE_BREAK } from '../src/utils/generalSentenceBoundaries';
 import { isGeneralKnownProductDescription } from '../src/utils/generalProductMatching';
 import { CLINICAL_PAIRINGS } from '../shared/vaccinePairing';
 import { getCatalogRevision } from '../shared/productCatalog';
-import { isGeneralProductLogMatch, getGeneralProductLog, resolveGeneralCatalogIdentity } from '../src/utils/generalProductLog';
+import { isGeneralProductLogMatch, getGeneralProductLog, resolveGeneralCatalogIdentity, createGeneralCatalogResolver } from '../src/utils/generalProductLog';
 import { getGeneralVaccineCatalogVersion } from '../shared/generalVaccineCatalog';
 import { Type } from '@google/genai';
 import { extractGeneralInput, parseGeneralProducts, normalizeGeneralProductName, stripGeneralListPrefix, isMetadataLabel, type GeneralProductSource } from './generalAuditor';
@@ -12,7 +17,7 @@ import { classifyGeneralText, stripGeneralNonOrderInformation } from '../src/uti
 import { medicalProductAcronyms } from '../src/utils/medicalProductAcronyms';
 import { getGeneralTerminologyAliases, generalApprovedProductIdentities, resolveGeneralApprovedIdentity, getGeneralMedicalAmbiguity, stripGeneralLeadingSpecification } from '../src/utils/generalMedicalTerminology';
 import packaging from '../src/utils/generalPackagingCatalogue.json';
-import { projectGeneralOrderSentences } from '../src/utils/generalSentenceExtraction';
+import { projectNaturalOrderText } from '../src/utils/generalSentenceExtraction';
 
 export interface StructuredGeneralOrder {
   facilityName: string | null;
@@ -33,12 +38,12 @@ export interface DeterministicGeneralOrder {
   quantityReviews?: {originalText: string; reason: string}[];
   identityReviews?: {originalText: string; reason: string}[];
 }
-const numberWords: Record<string, number> = Object.fromEntries('zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty'.split(' ').map((word, n) => [word, n]));
-const unit = '(?:vials?|box(?:es)?|packs?|blisters?|strips?|doses?|units?|bottles?|tablets?|capsules?|sachets?|tests?|pieces?)';
+
+const unit = GENERAL_COUNT_UNIT_PATTERN;
 const quantityOnly = new RegExp(`^(?:(?:quantity|qty|amount)\\s*[:=]?\\s*)?(\\d+(?:,\\d{3})*(?:\\.\\d+)?)\\s*(${unit})?\\s*[.!]?$`, 'i');
 const clinical = /^(?:patient(?:\s+(?:name|age|sex|gender))?\s*[:;=]|(?:age|sex|gender|diagnosis|clinical\s+(?:condition|history)|condition|bsct|wbct|hb|bp|pulse|temperature)\b|(?:a\s+)?\d+\s*[- ]?(?:years?\s*[- ]?old|y\/?o)\b)/i;
 const request = /\b(?:need|request|send|supply|order|quantity|qty|vials?|vails?|packs?|boxes?|doses?)\b/i;
-const label = '(?:name of orderer|orderer name|ordered by|requested by|orderer|name of health facility|health facility|facility name|name of facility|facility|hospital|delivery\\s*\\/\\s*drop area|delivery drop area|delivery area|drop area|district(?: name)?|product|item|vaccine|medicine|drug|quantity|qty|amount)';
+const label = '(?:name of (?:the )?customer|customer name|customer|name of orderer|orderer name|ordered by|requested by|orderer|name of (?:the )?(?:health )?facility|health facility(?: name)?|facility(?: name)?|hospital|delivery\\s*\\/\\s*drop area|delivery drop area|delivery area|drop area|district(?: name)?|product|item|vaccine|medicine|drug|quantity|qty|amount)';
 const labelBoundary = new RegExp(`(^|[;\\n]|[.!?]\\s+|\\s+(?=${label}\\s*[:;=]))(${label})\\s*[:;=]\\s*`, 'gi');
 const lexicon = () => [...new Set([
   ...Object.entries(CLINICAL_PAIRINGS).flatMap(([name, pairing]) => [name, pairing.accessoryCanonical]),
@@ -55,24 +60,9 @@ function currentVocabulary() {
   }
   return cachedVocabulary;
 }
-function cleanRequest(line: string) {
-  return line.replace(/^[,;.!\s]+/, '').replace(/^and\s+(?=(?:we|i|please|pls|send|supply)\b)/i, '').replace(/^(?:(?:hi|hello)(?:\s+zipline)?[,.! ]*\s*)/i, '')
-    .replace(/^(?:can|could|would)\s+you\s+(?:(?:please|kindly)\s+)?(?:help\s+(?:us|me)\s+with\s+|(?=send|supply|give))/i, '')
-    .replace(/^(?:(?:please|pls|kindly)[, ]*\s*)?(?:(?:we|i)\s+(?:also\s+)?(?:urgently\s+)?(?:need|want|require|request|are requesting|would like(?:\s+to\s+(?:order|request))?)|(?:send|give|supply)(?:\s+(?:us|me))?)\s+/i, '')
-    .replace(/^(?:products?|items?|vaccines?|medicines?|drugs?)\s*[:=]\s*/i, '')
-    .replace(/\s+(?:for\s+(?:continuous\s+)?(?:case\s+management|a\s+patient|the\s+patient)|because\b).*$/i, '')
-    .replace(/\s+(?:please|thanks|thank you)[.!]?$/i, '').replace(/[.!?]+$/, '').trim();
-}
-/** Deliberately bounded spelling corrections: medicine identities are never fuzzy substituted. */
-export function normalizeGeneralQuantityText(text: string) {
-  return text.replace(/\b(?:vails?|vialls?|vilas?)\b/gi, 'vials')
-    .replace(/\b(?:boxs|boxe|boex|bxs)\b/gi, 'boxes')
-    .replace(/\b(?:paks?|pakcs|pacsk)\b/gi, 'packs')
-    .replace(/\b(?:dozes|dosses|dosess)\b/gi, 'doses')
-    .replace(/(\d)(?=(?:vails?|vialls?|vilas?|boxs|boxe|boex|bxs|paks?|pakcs|pacsk|dozes|dosses|dosess)\b)/gi, '$1 ')
-    .replace(new RegExp(`\\b(${Object.keys(numberWords).join('|')})\\s+(?=${unit}\\b)`, 'gi'), word => `${numberWords[word.trim().toLowerCase()]} `)
-    .replace(new RegExp(`\\b(quantity|qty|amount)\\s*[:=]?\\s*(${Object.keys(numberWords).join('|')})\\b`, 'gi'), (_, field, word) => `${field}: ${numberWords[word.toLowerCase()]}`);
-}
+const cleanRequest=cleanOrderRequest;
+/** Count spelling normalization is shared with confirmation/vaccine modes. */
+export function normalizeGeneralQuantityText(text:string){return normalizeOrderCountText(text,unit);}
 /** Clinical data is discarded before either extraction or optional model use. */
 export function redactGeneralClinicalText(text: string) {
   return text.split(/\r?\n/).map(line => {
@@ -83,20 +73,29 @@ export function redactGeneralClinicalText(text: string) {
   }).join('\n');
 }
 
-export function extractGeneralOrderDeterministically(raw: string, source: GeneralProductSource, context: GeneralFacilityContext = {}, reference?: StructuredGeneralOrder, explicitProductNames: string[] = []): DeterministicGeneralOrder {
+export function extractGeneralOrderDeterministically(raw: string, source: GeneralProductSource, context: GeneralFacilityContext = {}, reference?: StructuredGeneralOrder, explicitProductNames: string[] = [], options: { requestLanguage?: boolean } = {}): DeterministicGeneralOrder {
+  if(source==='fulfillment_confirmation')raw=projectGeneralFulfillmentSections(raw);
+  raw=projectGeneralBloodFields(raw).text;
   const { entries, normalized: vocabulary } = currentVocabulary();
   const plain = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   const explicitNames = new Set(explicitProductNames.map(normalizeGeneralProductName));
   // Specifications can precede the catalogue label as well as follow it.
   // Remove them only for recognition; the original specification reaches comparison.
-  const knownName = (name: string) => isGeneralProductLogMatch(name, normalizeGeneralProductName) || isGeneralKnownProductDescription(name, normalizeGeneralProductName) || explicitNames.has(normalizeGeneralProductName(name)) || vocabulary.has(normalizeGeneralProductName(name)) ||
+  const resolveKnownProduct=createGeneralCatalogResolver(getGeneralProductLog() || []);
+  const knownName = (name: string) => !!resolveKnownProduct(name).product || isGeneralProductLogMatch(name, normalizeGeneralProductName) || isGeneralKnownProductDescription(name, normalizeGeneralProductName) || explicitNames.has(normalizeGeneralProductName(name)) || vocabulary.has(normalizeGeneralProductName(name)) ||
     vocabulary.has(normalizeGeneralProductName(stripGeneralLeadingSpecification(name))) || entries.some(entry => {
     const candidate = plain(name), base = plain(entry);
     if (!candidate.startsWith(base + ' ')) return false;
     const suffix = candidate.slice(base.length).replace(/(?<![a-z])(?:mcg|mg|g|ml|l|miu|iu|units?|adult|paediatric|pediatric|oral|iv|im|sc|syrup|suspension|tablets?|capsules?|injection|infusion|solution|cream|ointment|gel|powder|bottles?)(?![a-z])/gi, '');
     return /^[\d\s]*$/.test(suffix);
   });
-  const projected = projectGeneralOrderSentences(stripGeneralNonOrderInformation(raw), context, line => {
+  const isNamedIdentity=(value:string)=>{const match=resolveKnownProduct(value);return !!match.product&&['Exact','Alias'].includes(match.source||'');};
+  const isProductClause=(value:string)=>{
+    const candidate=normalizeGeneralQuantityText(cleanRequest(value)).replace(/\s*[x×]\s*(\d+(?:\.\d+)?)$/i,' - $1');
+    const parsed=parseGeneralProducts(candidate,source);
+    return parsed.length===1 && knownName(parsed[0].name) && !parsed[0].quantityReview;
+  };
+  const projected = projectNaturalOrderText(stripGeneralNonOrderInformation(raw),context,value=>isProductClause(value)||isProductClause(normalizeCatalogueCountText(value,isProductClause,isNamedIdentity)),line=>{
     const classification = classifyGeneralText(line);
     return classification.category === 'administrative' || !!classification.orderChange;
   });
@@ -147,12 +146,23 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
       quantities.push({ index: output.length, value: `${amount[1]}${amount[2] ? ` ${amount[2]}` : ''}`, originalText: originalQuantities[quantities.length] || rawLine });
       output.push(line); continue;
     }
-    const requested = cleanRequest(line);
+    const requestedText = cleanRequest(line);
+    // Website General Auditor only: a complete known product may precede the
+    // request verb ("Please ASV needed"). Do not strip unknown/negated clauses,
+    // clinical specifications or multi-product sentences into assumed identities.
+    const postfixRequest = options.requestLanguage && source === 'customer_request'
+      ? requestedText.replace(/^(?:please|pls|kindly)\s+/i, '')
+        .replace(/\s+(?:(?:is|are)\s+)?(?:urgently\s+)?(?:needed|required|requested)(?:\s+urgently)?[.!?]*$/i, '').trim()
+      : requestedText;
+    const safePostfixRequest = postfixRequest !== requestedText &&
+      (knownName(postfixRequest) || isProductClause(postfixRequest));
+    const requested = normalizeCatalogueCountText(safePostfixRequest ? postfixRequest : requestedText,isProductClause,isNamedIdentity);
     const course = /^(?:(?:a|the)\s+)?full\s+course\s+of\s+/i.test(requested);
     const clean = requested.replace(/^(?:(?:a|the)\s+)?full\s+course\s+of\s+/i, '')
       .replace(/\s+(?:qty|quantity)\s*[:=]?\s*(\d+(?:\.\d+)?)$/i, ' - $1')
       .replace(/\s*[x×]\s*(\d+(?:\.\d+)?)$/i, ' - $1');
-    if (course) quantityReviews.push({originalText: rawLine, reason: 'A full course was requested. Confirm what the stated quantity represents and its unit; no course-to-vial conversion has been assumed.'});
+    const courseQuantity=parseGeneralProducts(clean,source);
+    if (course && (courseQuantity.length!==1 || courseQuantity[0].quantityReview)) quantityReviews.push({originalText:rawLine,reason:'A full course was requested without a clear explicit count. Confirm the quantity; no course-to-vial conversion has been assumed.'});
     // Split an inline list only when every segment independently names a known product.
     const parts = clean.split(/\s*,\s*|\s+and\s+/i);
     if (parts.length > 1 && !(parseGeneralProducts(clean, source).length === 1 && knownName(parseGeneralProducts(clean, source)[0].name)) && parts.every(part => {
@@ -212,7 +222,7 @@ export function extractGeneralOrderDeterministically(raw: string, source: Genera
   });
   const conflictingFields: string[] = [];
   for (const [field, pattern, normalize] of [
-    ['ordererName', /^(?:name of orderer|orderer name|ordered by|requested by|orderer)\s*:\s*(.+)$/gim, (value: string) => value.toLowerCase().replace(/^(?:dr|mr|mrs|ms)\.?\s+/, '').replace(/[^a-z]+/g, ' ').trim()],
+    ['ordererName', /^(?:name of (?:the )?(?:orderer|customer)|customer(?:['’]?s)? name|customer|name|orderer name|ordered by|requested by|orderer)\s*:\s*(.+)$/gim, (value: string) => normalizeGeneralOrdererName(value).sort().join(' ')],
     ['facilityName', /^(?:name of health facility|health facility|facility name|name of facility|facility|hospital)\s*:\s*(.+)$/gim, normalizeGeneralFacilityName],
   ] as const) {
     const matches = [...text.matchAll(pattern)];

@@ -111,10 +111,10 @@ test('approved ASV alias pairs once without Gemini and retains catalogue decisio
   assert.match(buildGeneralReport(result),/Product decision evidence/);
 });
 
-test('genuine unknown requests remain visible review candidates instead of being dropped',async()=>{
+test('identical unknown requests remain visible and pass without catalogue registration',async()=>{
   const result=await audit(header+'Mysterious remedy 2',header+'Mysterious remedy [2/2]');
-  assert.equal(result.allMatch,false);
-  assert.equal(result.generalAudit.finalStatus,'REVIEW REQUIRED');
+  assert.equal(result.allMatch,true);
+  assert.equal(result.generalAudit.finalStatus,'NO DISCREPANCY');
   assert.equal(result.items.length,1);
   assert.match(result.items[0].provenance.map(row=>row.originalText).join('\n'),/Mysterious remedy/);
 });
@@ -136,7 +136,7 @@ test('missing required evidence does not hide a simultaneous confirmed discrepan
   assert.equal(result.generalAudit.finalStatus,'DISCREPANCY DETECTED');
   assert.ok(result.generalAudit.auditSummary.reviewRequiredCount!>0);
   assert.ok(result.issueCount>0);
-  assert.match(renderToStaticMarkup(createElement(Details,{details:result.generalAudit})),/REVIEW REQUIRED/);
+  assert.match(renderToStaticMarkup(createElement(Details,{details:result.generalAudit})),/Name of Orderer missing from customer request/);
 });
 
 for(const [name,ratio,suffix] of [['full stockout','[0/2]',''],['zero/N stockout','[0/1]',''],['partial stockout','[1/2]',' — partially out of stock']] as const)

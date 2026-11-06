@@ -1,12 +1,15 @@
+import {recognizeGeneralDocument,generalDocumentLabel} from '../src/utils/generalDocumentStructure';
 import {findGeneralFacilityNames, normalizeGeneralFacilityName, type GeneralFacilityContext} from '../src/utils/generalFacility';
 import {projectGeneralOrderSentences} from '../src/utils/generalSentenceExtraction';
 
 /** Source-backed detection shared by vaccine verification and allocation confirmation. */
 export function vaccineFacilityMentions(text: string, context: GeneralFacilityContext = {}): string[] {
-  const projected = projectGeneralOrderSentences(text, context);
-  const labels = [...projected.matchAll(/^\s*(?:name of (?:health )?facility|health facility|facility(?: name)?|ordering facility|hospital|clinic|health\s*cent(?:er|re)|hc|dhd|chps|polyclinic|dispensary|delivered\s*to|destination|location|site|to)\s*[:=–—]\s*([^\n\r]+)/gim)]
+  const projected = recognizeGeneralDocument(projectGeneralOrderSentences(text, context)).auditText;
+  const structural=recognizeGeneralDocument(projected).lines.filter(line=>line.field==='facility'&&line.kind==='FIELD_VALUE'&&line.auditText.trim()&&!/^(?:health\s+)?facility\s+id\s*[:=]/i.test(line.auditText.trim())).map(line=>generalDocumentLabel(line.auditText)?.value||line.originalText);
+  const legacyLabels = [...projected.matchAll(/^\s*(?:name of (?:health )?facility|health facility|facility(?: name)?|ordering facility|hospital|clinic|health\s*cent(?:er|re)|hc|dhd|chps|polyclinic|dispensary|delivered\s*to|destination|location|site|to)\s*[:=–—]\s*([^\n\r]+)/gim)]
     .map(match => match[1].trim().replace(/^['"]|['"]$/g, '').replace(/[-–—.,]+$/, '').trim())
     .filter(value => value.length > 2 && !/^(?:n\/?a|none|unknown|not provided)$/i.test(value));
+  const labels=[...structural,...legacyLabels];
   const names = labels.length ? labels : findGeneralFacilityNames(projected, context.records);
   return [...new Map(names.map(name => [normalizeGeneralFacilityName(name), name])).values()];
 }

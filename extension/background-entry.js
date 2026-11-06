@@ -1,3 +1,4 @@
+import {PRODUCTION_BACKEND_URL} from './backend-target.js';
 import { fsOrigins } from './fs-origins.js';
 import { extensionConfig } from './config.js';
 import { backendRequest } from './auth.js';
@@ -33,8 +34,7 @@ async function update(tabId, selection, manualFacilityId, refresh = false) {
   if (versions.get(tabId) !== version) return { stale: true };
   if (manualFacilityId === undefined) manualFacilityId = JSON.stringify(prior?.selection?.facility) === JSON.stringify(selection.facility) ? prior?.manualFacilityId || '' : '';
   const identity = s => JSON.stringify([s.facility, selectionProducts(s).map(p => [p.name, p.id])]);
-  const { customBackendUrl } = await chrome.storage.local.get('customBackendUrl');
-  const base = customBackendUrl || extensionConfig.backendUrl;
+  const base = PRODUCTION_BACKEND_URL;
   const cycleKey = allocationCycleKey(base), cycleSetting = await chrome.storage.local.get(cycleKey);
   const allocationCycle = typeof cycleSetting[cycleKey] === 'string' ? cycleSetting[cycleKey] : '';
   if (versions.get(tabId) !== version) return { stale: true };

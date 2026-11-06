@@ -2,13 +2,13 @@ import React from 'react';
 /** Insert independent cells between existing cells without changing allocation
  * field identities. Split spanning headers at insertions rather than expanding
  * a vaccine group to include unrelated columns. */
-export default function BlueprintLayoutRow({ children, baseColumns, columns, renderCell, plainRow, decorateCell, ...props }: React.HTMLAttributes<HTMLTableRowElement> & {
-  baseColumns: number[]; columns: number[]; renderCell: (index: number) => React.ReactNode; plainRow?: boolean; decorateCell?: (cell: React.ReactElement<any>, columns: number[], first: boolean) => React.ReactNode;
+export default function BlueprintLayoutRow({ children, baseColumns, columns, renderCell, plainRow, decorateCell, leadingCell, ...props }: React.HTMLAttributes<HTMLTableRowElement> & {
+  leadingCell?: React.ReactNode; baseColumns: number[]; columns: number[]; renderCell: (index: number) => React.ReactNode; plainRow?: boolean; decorateCell?: (cell: React.ReactElement<any>, columns: number[], first: boolean) => React.ReactNode;
 }) {
   let visibleCells = 0;
   const decorate = (cell: React.ReactNode, covered: number[], first: boolean) => decorateCell && React.isValidElement(cell) ? decorateCell(cell, covered, visibleCells++ === 0) : cell;
-  if (plainRow) return <tr {...props}>{columns.map((col, index) => decorate(renderCell(col), [col], index === 0))}</tr>;
-  if (!decorateCell && columns.length === baseColumns.length && columns.every((col, index) => col === baseColumns[index])) return <tr {...props}>{children}</tr>;
+  if (plainRow) return <tr {...props}>{leadingCell}{columns.map((col, index) => decorate(renderCell(col), [col], index === 0))}</tr>;
+  if (!decorateCell && columns.length === baseColumns.length && columns.every((col, index) => col === baseColumns[index])) return <tr {...props}>{leadingCell}{children}</tr>;
   const cells: React.ReactElement<any>[] = [];
   const flatten = (nodes: React.ReactNode) => React.Children.forEach(nodes, node => {
     if (!React.isValidElement(node)) return;
@@ -48,5 +48,5 @@ export default function BlueprintLayoutRow({ children, baseColumns, columns, ren
     flush(); offset += span;
   }
   columns.forEach(index => { if (!baseColumns.includes(index) && !emitted.has(index)) { result.push(decorate(renderCell(index), [index], result.length === 0)); emitted.add(index); } });
-  return <tr {...props}>{result}</tr>;
+  return <tr {...props}>{leadingCell}{result}</tr>;
 }

@@ -9,8 +9,13 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test server/*.test.ts extension/*.test.js",
-    "test:firestore": "node scripts/test-firestore.mjs"
+    "test": "node --import tsx --test --test-concurrency=4 server/*.test.ts extension/*.test.js",
+    "verify:release": "npm run build && npm run lint && npm test",
+    "test:firestore": "node scripts/test-firestore.mjs",
+    "test:blueprint-browser": "node scripts/test-blueprint-clipboard-browser.mjs",
+    "test:blueprint-live-browser": "node scripts/test-blueprint-live-browser.mjs",
+    "test:general": "node scripts/test-general-auditor.mjs",
+    "test:general:browser": "node --import tsx scripts/test-general-auditor-browser.mts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -37,6 +42,7 @@
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
     "linkedom": "^0.18.13",
+    "playwright": "^1.64.1",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",

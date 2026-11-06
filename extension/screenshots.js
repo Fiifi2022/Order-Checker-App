@@ -28,7 +28,7 @@ export function setupScreenshots({ request, inputs, onText }) {
           if (current === version && currentRevision !== revision) status.textContent = 'Inputs changed during scanning. Scan again to use this image.';
           return;
         }
-        if (!data.text?.trim()) throw new Error('Screenshot returned no text.');
+        if (!data.text?.trim()) throw new Error(data.message || 'Screenshot scanning is unavailable. Paste or type the message text to continue.');
         onText(source, data.text); status.textContent = 'Text extracted. Review it and the product reminders before auditing.';
       } catch (error) { if (current === version && currentRevision === revision) status.textContent = error.message; }
       finally { busy = false; button.disabled = !image; }

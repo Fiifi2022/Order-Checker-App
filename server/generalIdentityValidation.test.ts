@@ -66,9 +66,9 @@ test('semantic first/surname rewriting cannot erase different complete orderer n
 test('existing approved formatting aliases still match without false discrepancies', () => {
   const result = runGeneralAuditor(customer, 'Facility: Alpha Health Centre\nOrderer: Nurse Mary Mensah\nPCM [10/10]');
   assert.equal(result.generalAudit.facility.status, 'match');
-  assert.equal(result.generalAudit.orderer.status, 'match');
+  assert.equal(result.generalAudit.orderer.status, 'review required');
   assert.equal(result.issueCount, 0);
-  assert.equal(result.allMatch, true);
+  assert.equal(result.allMatch, false);
 });
 
 const requiredRequest = 'Name of Orderer: Isaac Awuyem\nName of Health Facility: Gbimsi CHPS\nParacetamol - 5';
@@ -120,7 +120,7 @@ test('missing requested identity fields require review and cannot be waived by a
     assert.equal(confirmed.allMatch, false);
     assert.equal(confirmed.generalAudit.finalStatus, 'REVIEW REQUIRED');
     const html = renderToStaticMarkup(createElement(GeneralAuditDetails, { details: confirmed.generalAudit }));
-    assert.match(html, /REVIEW REQUIRED/);
+    assert.match(html, /(?:Facility Name|Name of Orderer) missing from fulfilment/);
     assert.match(html, /Facility: Confirm the requesting health facility|Orderer: Confirm the name of the person placing the order/);
     assert.match(html, /text-amber-800/);
   }

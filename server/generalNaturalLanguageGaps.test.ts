@@ -12,17 +12,18 @@ const catalog = (): ProductCatalog => ({revision: 890, products: defaultProducts
 const local = (text: string) => {applyCatalog(catalog()); return extract(text, 'customer_request', directory);};
 const noAI = () => {throw Error('Locally recognised orders must not acquire Gemini');};
 
-test('A: titled natural-language order retains ambiguous product, quantity and course review', async () => {
+test('A: titled natural-language order retains ambiguous product but respects its explicit count', async () => {
   const message = 'Mr Timothy Ndebugre from Zebilla Hospital I need full course of ARV venom -4';
   const result = local(message);
   assert.equal(result.order.ordererName, 'Timothy Ndebugre');
   assert.equal(result.order.facilityName, 'Zebilla Hospital');
   assert.deepEqual(result.order.products, [{name: 'ARV venom', quantity: 4, unit: null}]);
-  for (const field of ['products', 'quantity', 'unit']) assert.ok(result.order.unresolvedFields.includes(field));
-  assert.ok(result.quantityReviews?.[0].originalText.includes('full course'));
+  assert.ok(result.order.unresolvedFields.includes('products'));
+  assert.ok(!result.order.unresolvedFields.includes('quantity'));
+  assert.equal(result.quantityReviews?.length,0);
   const audited = await runGeneralProductNameAudit(message, 'Orderer: Timothy Ndebugre\nFacility: Zebilla Hospital\nASV [4/4]', catalog(), {facilityContext: directory, semanticTimeoutMs: 0}, noAI);
   assert.equal(audited.allMatch, false);
-  assert.ok(audited.generalAudit.semanticReviews?.some(review => /full course/i.test(review.reason)));
+  assert.ok(!audited.generalAudit.semanticReviews?.some(review => review.field==='quantity'));
   assert.equal(audited.generalAudit.extraction?.customer.products[0].quantity, 4);
 });
 
@@ -89,7 +90,7 @@ test('questions, units, ratios, strengths and numbered lists retain their separa
   assert.equal(local('1. ASV -4\nAge: 19\nDate: 30/10/2026\nPhone: 0241234567').order.products[0]?.quantity, 4);
 });
 
-test('G: Gemini quota failure preserves recognised fields and the original course review', async () => {
+test('G: Gemini quota failure preserves recognised fields and ambiguous product identity', async () => {
   const customer = local('Mr Timothy Ndebugre from Zebilla Hospital I need full course of ARV venom -4');
   const fulfillment = extract('Facility: Zebilla Hospital\nOrderer: Timothy Ndebugre\nASV 4', 'fulfillment_confirmation', directory);
   let calls = 0;
@@ -99,15 +100,16 @@ test('G: Gemini quota failure preserves recognised fields and the original cours
   assert.equal(calls, 1);
   assert.equal(result.semanticAnalysis.status, 'fallback');
   assert.deepEqual(result.customer.order, customer.order);
-  assert.ok(result.customer.quantityReviews?.length);
+  assert.ok(result.customer.identityReviews?.length);
+  assert.equal(result.customer.quantityReviews?.length,0);
 });
 
-test('a recognised product cannot clear a full-course unit review or an unclear acronym', async () => {
+test('an explicit course count clears while unclear acronyms remain unresolved', async () => {
   const saved = catalog(); applyCatalog(saved);
   for (const wording of ['full course of ASV -4', '4 ARV']) {
     const result = await runGeneralProductNameAudit(`Mr Timothy Ndebugre from Zebilla Hospital I need ${wording}`, 'Orderer: Timothy Ndebugre\nFacility: Zebilla Hospital\nASV [4/4]', saved, {facilityContext: directory, semanticTimeoutMs: 0}, noAI);
-    assert.equal(result.allMatch, false);
-    assert.ok(result.generalAudit.semanticReviews?.some(review => review.requiresConfirmation));
+    assert.equal(result.allMatch,wording==='full course of ASV -4');
+    if(wording==='4 ARV')assert.ok(result.generalAudit.semanticReviews?.some(review => review.requiresConfirmation));
     assert.equal(result.generalAudit.extraction?.customer.products[0].quantity, 4);
   }
 });

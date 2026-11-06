@@ -110,7 +110,7 @@ test('unknown product Gemini suggestions remain pending and quota failures retai
   assert.equal(accepted.generalAudit.decision, 'review');
   const report = buildGeneralReport(accepted);
   assert.match(report, /audit-highlight verdict-pending/);
-  assert.match(report, /verdict-badge">REVIEW REQUIRED/);
+  assert.match(report, /verdict-badge">Needs Review<\/span>.*Paracetamol 500mg Tablet: Quantity comparison paused until the product is matched/);
   const quota = await audit(source.replace('Fevercare', 'Unknowncare'), fs, {}, async () => {throw Object.assign(Error('quota'), {status: 429});});
   assert.equal(quota.calls, 1); assert.equal(quota.result.allMatch, false);
   assert.ok(quota.result.items.some(item => item.catalogProductId === 'rdt' && item.status === 'match'));

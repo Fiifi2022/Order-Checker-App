@@ -1,3 +1,5 @@
+import {unsafeSyringeAlias} from './syringeIdentity';
+import type {SyringeSpecifications} from './syringeIdentity';
 export interface CatalogProduct {
   id: string;
   scope: 'general' | 'vaccine';
@@ -10,6 +12,7 @@ export interface CatalogProduct {
   contextualAliases: string[];
   note: string;
   linkedProductId?: string;
+  deviceSpecifications?: SyringeSpecifications;
   // Preserve existing interpretation metadata when editing aliases.
   terminology?: Record<string, any>;
   acronym?: { category: 'medicine' | 'blood' | 'diagnostic'; contextual?: boolean; aliases?: string[] };
@@ -39,6 +42,7 @@ export function validateCatalogProduct(input: any, existing?: CatalogProduct): C
   if (typeof receivingDetails !== 'string' || receivingDetails.length > 2000) throw new Error('Receiving details must be at most 2,000 characters.');
   const labels = displayName.trim() !== input.name.trim() ? [displayName.trim()] : [];
   const aliases = list(Array.isArray(input.aliases) ? [...input.aliases, ...labels, ...(fulfillmentSystemName.trim() ? [fulfillmentSystemName.trim()] : [])] : input.aliases);
+  if(aliases.some(alias=>unsafeSyringeAlias(alias,{...existing,name:input.name.trim(),scope:input.scope,aliases,contextualAliases:[],category:input.category||'',note:'',id:existing?.id||''})))throw Error('Syringe aliases must preserve capacity and configuration and must not contain order quantities.');
   const contextualAliases = list(input.contextualAliases ?? []);
   if (contextualAliases.some(alias => !aliases.some(value => catalogKey(value) === catalogKey(alias)))) throw new Error('Every context-required alias must also appear in the aliases list.');
   if (typeof input.category !== 'string' || !input.category.trim() || input.category.length > 60 || typeof input.note !== 'string' || input.note.length > 2000) throw new Error('Enter a category and a note of at most 2,000 characters.');

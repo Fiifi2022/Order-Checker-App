@@ -79,7 +79,8 @@ test('uncertain names require review without adding a discrepancy or granting cl
   assert.ok(result.confidence < 100);
   assert.equal(enforceGeneralIdentityMatches({ ...result, allMatch: true }, request('John Mensah'), confirmation('J Mensah')).allMatch, false);
   const html = renderToStaticMarkup(createElement(GeneralAuditDetails, { details: result.generalAudit }));
-  assert.match(html, /REVIEW REQUIRED/);
+  assert.ok(html.includes(result.generalAudit.orderer.reason!));
+  assert.doesNotMatch(html, /REVIEW REQUIRED/);
   assert.match(html, /Reason:/);
 });
 
@@ -133,10 +134,10 @@ test('high-confidence Gemini can resolve multiple small spelling differences wit
   const ai = client({ decision: 'match', confidence: 0.99, reason: 'The two differing components have minor transcription errors; all components align.' });
   const result = await runGeneralSemanticAudit(request(a), confirmation(b), {}, { semanticCacheScope: 'multi-typo' }, () => ai);
   assert.equal(ai.calls, 1);
-  assert.equal(result.generalAudit.orderer.status, 'match');
+  assert.equal(result.generalAudit.orderer.status, 'review required');
   assert.equal(result.generalAudit.orderer.nameMatchMethod, 'gemini');
-  assert.equal(result.allMatch, true);
-  assert.equal(enforceGeneralIdentityMatches(result, request(a), confirmation(b)).allMatch, true);
+  assert.equal(result.allMatch, false);
+  assert.equal(enforceGeneralIdentityMatches(result, request(a), confirmation(b)).allMatch, false);
   assert.equal(enforceGeneralIdentityMatches(result, request(a), confirmation('John Kwame Boateng')).generalAudit.orderer.status, 'mismatch');
 });
 

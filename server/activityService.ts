@@ -8,306 +8,19 @@ import { ActivityLogEntry, ActivityModule, ActivityActionType, AppUsageMetrics }
 // In-memory activity store with fast indexing
 const activityStore: ActivityLogEntry[] = [];
 
-// Seed realistic historic records so the audit trail immediately shows past activities
-function initializeSeedActivities() {
-  if (activityStore.length > 0) return;
-
-  const now = new Date();
-  const minsAgo = (m: number) => new Date(now.getTime() - m * 60 * 1000).toISOString();
-  const hoursAgo = (h: number) => new Date(now.getTime() - h * 3600 * 1000).toISOString();
-  const daysAgo = (d: number, h: number = 0) => new Date(now.getTime() - (d * 86400 + h * 3600) * 1000).toISOString();
-
-  const seed: ActivityLogEntry[] = [
-    {
-      id: 'ACT-SYS-001',
-      timestamp: minsAgo(8),
-      module: 'vaccine_blueprint',
-      actionType: 'blueprint_cell_edit',
-      title: 'Blueprint Cell Edit: Konkoma SDA Clinic - BCG',
-      summary: 'Mary Alhassan (ADMIN) updated Konkoma SDA Clinic BCG Distributed from 5 to 15 vials (+10 vials). Remaining balance: 15.',
-      actor: {
-        id: 'ohenedarko2014_gmail_com',
-        name: 'Mary Alhassan',
-        email: 'ohenedarko2014@gmail.com',
-        role: 'admin',
-        district: 'All Districts'
-      },
-      facility: 'Konkoma SDA Clinic',
-      district: 'West Mamprusi',
-      cycle: 'September 2026',
-      badgeType: 'purple',
-      details: {
-        product: 'BCG',
-        field: 'distributed',
-        oldValue: 5,
-        newValue: 15,
-        diff: '+10',
-        metadata: { carryOver: 5, allocation: 25, distributed: 15, balance: 15 }
-      }
-    },
-    {
-      id: 'ACT-SYS-002',
-      timestamp: minsAgo(18),
-      module: 'vaccine_checker',
-      actionType: 'checker_order_confirmed',
-      title: 'Order Deduction Confirmed: Konkoma SDA Clinic',
-      summary: 'Kwame Mensah (CCA) confirmed delivery order for Konkoma SDA Clinic: BCG (-10 vials), OPV (-20 vials), Penta (-15 vials). Balances deducted in live ledger.',
-      actor: {
-        id: 'kwame_mensah',
-        name: 'Kwame Mensah',
-        email: 'kwame.mensah@flyzipline.com',
-        role: 'cca',
-        district: 'West Mamprusi'
-      },
-      facility: 'Konkoma SDA Clinic',
-      district: 'West Mamprusi',
-      cycle: 'September 2026',
-      badgeType: 'success',
-      details: {
-        transactionId: 'TX-VAC-CONF-0923-01',
-        orderSource: 'whatsapp',
-        items: [
-          { vaccine: 'BCG', currentOrder: 10, previousTaken: 5, remainingAfter: 15, dosesPerVial: 20 },
-          { vaccine: 'OPV', currentOrder: 20, previousTaken: 10, remainingAfter: 20, dosesPerVial: 20 },
-          { vaccine: 'Penta', currentOrder: 15, previousTaken: 10, remainingAfter: 13, dosesPerVial: 10 }
-        ]
-      }
-    },
-    {
-      id: 'ACT-SYS-003',
-      timestamp: minsAgo(24),
-      module: 'vaccine_checker',
-      actionType: 'checker_order_verified',
-      title: 'Order Audit Verified: Konkoma SDA Clinic',
-      summary: 'Kwame Mensah (CCA) verified order against DCO monthly quota: 🟢 GREEN LIGHT. All 3 requested products within allocation remaining limits.',
-      actor: {
-        id: 'kwame_mensah',
-        name: 'Kwame Mensah',
-        email: 'kwame.mensah@flyzipline.com',
-        role: 'cca',
-        district: 'West Mamprusi'
-      },
-      facility: 'Konkoma SDA Clinic',
-      district: 'West Mamprusi',
-      cycle: 'September 2026',
-      badgeType: 'success',
-      details: {
-        verdict: 'GREEN_LIGHT',
-        orderSource: 'whatsapp',
-        items: [
-          { vaccine: 'BCG', requestedQty: 10, availableRemaining: 25, status: 'valid' },
-          { vaccine: 'OPV', requestedQty: 20, availableRemaining: 40, status: 'valid' },
-          { vaccine: 'Penta', requestedQty: 15, availableRemaining: 28, status: 'valid' }
-        ]
-      }
-    },
-    {
-      id: 'ACT-SYS-004',
-      timestamp: minsAgo(42),
-      module: 'vaccine_blueprint',
-      actionType: 'blueprint_status_change',
-      title: 'Facility Status Updated: Sakogu H/C',
-      summary: 'Audrey Mensah (DCO) marked Sakogu H/C processing as Completed (all quota distributed). Highlighted green.',
-      actor: {
-        id: 'audrey_mensah',
-        name: 'Audrey Mensah',
-        email: 'audrey.mensah@flyzipline.com',
-        role: 'dco',
-        district: 'West Mamprusi'
-      },
-      facility: 'Sakogu H/C',
-      district: 'West Mamprusi',
-      cycle: 'September 2026',
-      badgeType: 'success',
-      details: {
-        field: 'completed',
-        newValue: '2026-09-23'
-      }
-    },
-    {
-      id: 'ACT-SYS-005',
-      timestamp: hoursAgo(1),
-      module: 'vaccine_checker',
-      actionType: 'checker_order_verified',
-      title: 'Order Audit Blocked: Buzulungu CHPS',
-      summary: 'Kwame Mensah (CCA) verified order: 🔴 DO NOT PROCESS. Exceeds remaining allocation for OPV (Requested: 15 vials, Remaining: 3 vials).',
-      actor: {
-        id: 'kwame_mensah',
-        name: 'Kwame Mensah',
-        email: 'kwame.mensah@flyzipline.com',
-        role: 'cca',
-        district: 'West Mamprusi'
-      },
-      facility: 'Buzulungu CHPS',
-      district: 'West Mamprusi',
-      cycle: 'September 2026',
-      badgeType: 'error',
-      details: {
-        verdict: 'DO_NOT_PROCESS',
-        orderSource: 'whatsapp',
-        errorsDetected: [
-          '🔴 EXCEEDS ALLOCATION: OPV requested: 15 vials (300 doses), Available Remaining: 3 vials (60 doses). Over-allocation by 12 vials.'
-        ]
-      }
-    },
-    {
-      id: 'ACT-SYS-006',
-      timestamp: hoursAgo(2),
-      module: 'vaccine_blueprint',
-      actionType: 'blueprint_cell_edit',
-      title: 'Blueprint Cell Edit: Presbyterian Clinic, Langbinsi - OPV',
-      summary: 'Mary Alhassan (ADMIN) updated Presbyterian Clinic, Langbinsi OPV Allocation from 30 to 45 vials (+15 top-up).',
-      actor: {
-        id: 'ohenedarko2014_gmail_com',
-        name: 'Mary Alhassan',
-        email: 'ohenedarko2014@gmail.com',
-        role: 'admin',
-        district: 'All Districts'
-      },
-      facility: 'Presbyterian Clinic, Langbinsi',
-      district: 'West Mamprusi',
-      cycle: 'September 2026',
-      badgeType: 'purple',
-      details: {
-        product: 'OPV',
-        field: 'allocation',
-        oldValue: 30,
-        newValue: 45,
-        diff: '+15'
-      }
-    },
-    {
-      id: 'ACT-SYS-007',
-      timestamp: hoursAgo(3),
-      module: 'vaccine_checker',
-      actionType: 'checker_quota_adjusted',
-      title: 'Quota Authorization Adjusted: Wundua CHPS',
-      summary: 'Audrey Mensah (DCO) authorized emergency quota top-up of +10 vials for Penta at Wundua CHPS (Reason: Community child health outreach).',
-      actor: {
-        id: 'audrey_mensah',
-        name: 'Audrey Mensah',
-        email: 'audrey.mensah@flyzipline.com',
-        role: 'dco',
-        district: 'East Mamprusi'
-      },
-      facility: 'Wundua CHPS',
-      district: 'East Mamprusi',
-      cycle: 'September 2026',
-      badgeType: 'warning',
-      details: {
-        product: 'Penta',
-        oldValue: 15,
-        newValue: 25,
-        diff: '+10',
-        metadata: { reason: 'Community child health outreach campaign authorization' }
-      }
-    },
-    {
-      id: 'ACT-SYS-008',
-      timestamp: hoursAgo(4),
-      module: 'vaccine_blueprint',
-      actionType: 'blueprint_status_change',
-      title: 'Facility Status Updated: BMC PH',
-      summary: 'Kwame Mensah (CCA) recorded BMC PH dispatch process started for September distribution cycle.',
-      actor: {
-        id: 'kwame_mensah',
-        name: 'Kwame Mensah',
-        email: 'kwame.mensah@flyzipline.com',
-        role: 'cca',
-        district: 'West Mamprusi'
-      },
-      facility: 'BMC PH',
-      district: 'West Mamprusi',
-      cycle: 'September 2026',
-      badgeType: 'info',
-      details: {
-        field: 'processing',
-        newValue: '2026-09-23'
-      }
-    },
-    {
-      id: 'ACT-SYS-009',
-      timestamp: hoursAgo(5),
-      module: 'vaccine_blueprint',
-      actionType: 'blueprint_cycle_created',
-      title: 'New Allocation Cycle Created: October 2026',
-      summary: 'Mary Alhassan (ADMIN) created new multi-district allocation sheet "October 2026" with auto stock rollover from September.',
-      actor: {
-        id: 'ohenedarko2014_gmail_com',
-        name: 'Mary Alhassan',
-        email: 'ohenedarko2014@gmail.com',
-        role: 'admin',
-        district: 'All Districts'
-      },
-      district: 'West Mamprusi',
-      cycle: 'October 2026',
-      badgeType: 'purple',
-      details: {
-        metadata: { newMonth: 'October 2026', sourceMonth: 'September 2026', facilitiesRolledOver: 21 }
-      }
-    },
-    {
-      id: 'ACT-SYS-010',
-      timestamp: daysAgo(1, 2),
-      module: 'general_auditor',
-      actionType: 'checker_order_verified',
-      title: 'Cross-Discrepancy Audit: Walewale Health Center',
-      summary: 'Dr. Samuel Osei (AUDITOR) verified WhatsApp order against warehouse fulfillment: 🟢 100% Match on all anti-malarials and vaccine supplies.',
-      actor: {
-        id: 'samuel_osei',
-        name: 'Dr. Samuel Osei',
-        email: 'samuel.osei@flyzipline.com',
-        role: 'auditor',
-        district: 'All Districts'
-      },
-      facility: 'Walewale Health Center',
-      district: 'West Mamprusi',
-      badgeType: 'success',
-      details: {
-        verdict: 'GREEN_LIGHT',
-        orderSource: 'whatsapp'
-      }
-    },
-    {
-      id: 'ACT-SYS-011',
-      timestamp: daysAgo(1, 4),
-      module: 'app_system',
-      actionType: 'page_view',
-      title: 'App Usage: Vaccine Allocation Blueprint',
-      summary: 'Mary Alhassan (ADMIN) opened Vaccine Allocation Blueprint (West Mamprusi - 21 health facilities).',
-      actor: {
-        id: 'ohenedarko2014_gmail_com',
-        name: 'Mary Alhassan',
-        email: 'ohenedarko2014@gmail.com',
-        role: 'admin',
-        district: 'All Districts'
-      },
-      district: 'West Mamprusi',
-      badgeType: 'info'
-    },
-    {
-      id: 'ACT-SYS-012',
-      timestamp: daysAgo(1, 6),
-      module: 'app_system',
-      actionType: 'page_view',
-      title: 'App Usage: Vaccine Allocation Checker',
-      summary: 'Kwame Mensah (CCA) accessed Vaccine Allocation Checker workspace.',
-      actor: {
-        id: 'kwame_mensah',
-        name: 'Kwame Mensah',
-        email: 'kwame.mensah@flyzipline.com',
-        role: 'cca',
-        district: 'West Mamprusi'
-      },
-      badgeType: 'info'
-    }
-  ];
-
-  activityStore.push(...seed);
+// Demo provenance, rather than names/emails, keeps genuine users' history intact.
+export function isDemoActivity(record: any): boolean {
+  return /^ACT-SYS-/i.test(record?.id || '') || [record, record?.details, record?.details?.metadata]
+    .some(value => value?.isDemo === true || value?.demo === true || value?.recordType === 'demo');
 }
 
-// Call seed once on load
-initializeSeedActivities();
+function isContributor(record: ActivityLogEntry): boolean {
+  const actor = record.actor;
+  return Boolean(actor?.id?.trim() && actor?.email?.trim() &&
+    !['system', 'anonymous', 'guest'].includes(actor.id.trim().toLowerCase()) &&
+    !['system', 'anonymous', 'guest'].includes(actor.role?.toLowerCase()) &&
+    !['page_view', 'role_switched'].includes(record.actionType));
+}
 
 /**
  * Log a new activity event
@@ -322,7 +35,10 @@ export function logActivity(entry: Omit<ActivityLogEntry, 'id' | 'timestamp'> & 
     timestamp
   };
 
-  // Add to front of store
+  // Ignore old persisted demos too, so a restart cannot reintroduce them.
+  if (isDemoActivity(record)) return record;
+  const existing = activityStore.findIndex(item => item.id === id);
+  if (existing >= 0) activityStore.splice(existing, 1);
   activityStore.unshift(record);
 
   // Bound in-memory store to latest 2,000 entries
@@ -497,8 +213,9 @@ export function getAppUsageMetrics(): AppUsageMetrics {
       statusChangesCount++;
     }
 
-    // Accumulate by Actor
-    const actorKey = (item.actor.email || item.actor.name || 'Anonymous').toLowerCase();
+    // Navigation alone is not a contribution; system events remain in the timeline.
+    if (!isContributor(item)) continue;
+    const actorKey = item.actor.email.trim().toLowerCase();
     if (!actorMap.has(actorKey)) {
       actorMap.set(actorKey, {
         id: item.actor.id,
@@ -551,6 +268,4 @@ export function getAppUsageMetrics(): AppUsageMetrics {
  */
 export function clearActivityLogs(): void {
   activityStore.length = 0;
-  // Re-seed default baseline
-  initializeSeedActivities();
 }

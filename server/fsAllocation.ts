@@ -9,9 +9,15 @@ for (const record of servedFacilityRecords) {
   directoryByName.set(key, [...(directoryByName.get(key) || []), record]);
 }
 const reportingWords = new Set('jan january feb february mar march apr april may jun june jul july aug august sep sept september oct october nov november dec december allocation allocations vaccine vaccines blueprint sheet cycle'.split(' '));
-// Existing Blueprint district abbreviation, corroborated by the facility
-// directory and the MMD allocation import. Do not infer arbitrary initials.
-const districtAliases = new Map([['mmd', 'Mamprugu Moagduri']]);
+// Explicit district labels used in Blueprint/FS, rather than inferred initials.
+// Municipality suffixes here describe the same district, not a nearby district.
+const districtAliases = new Map([
+  ['mmd', 'Mamprugu Moagduri'],
+  ['wm', 'West Mamprusi'],
+  ['west mamprusi municipal', 'West Mamprusi'],
+  ['west mamprusi municipality', 'West Mamprusi'],
+  ['west mamprusi district', 'West Mamprusi'],
+]);
 function normalizeFsDistrict(value: unknown) {
   const normalized = normalizeFacilityName(value);
   return normalizeFacilityName(districtAliases.get(normalized) || value);
@@ -87,7 +93,7 @@ function cycleNumber(value: string): number | null {
  * Unknown cycle labels and same-cycle duplicates remain conflicts. */
 function currentCycleCandidates(candidates: ReturnType<typeof activeFsFacilities>, now: Date) {
   if (!candidates.length) return candidates;
-  const identities = new Set(candidates.map(row => JSON.stringify([row.facilityName,row.district,row.region].map(normalizeFacilityName))));
+  const identities = new Set(candidates.map(row => JSON.stringify([normalizeFacilityName(row.facilityName),normalizeFsDistrict(row.district),normalizeFacilityName(row.region)])));
   if (identities.size !== 1) return candidates;
   const months = candidates.map(row => cycleNumber(row.cycle));
   if (months.some(month => month === null)) return candidates;
@@ -107,11 +113,14 @@ export function lookupFsAllocation(sheets: any[], input: any, options: { automat
     return { name: text(product.name), canonical: match.canonical, balance: null, isVaccine: match.confidence === 'high' && !Object.values(CLINICAL_PAIRINGS).some(pair => pair.accessoryCanonical === match.canonical) };
   });
   if (!name && !id) return { status: 'no_facility', message: 'Select a facility in FS.', products: identifiedProducts };
-  let candidates = id ? all.filter(f => f.fsFacilityId === id) : [];
-  // Unknown FS IDs are distinct from Blueprint IDs; name matching remains exact.
-  if (!candidates.length) candidates = all.filter(f => name && [f.facilityName, f.row.subDistrict ? `${f.facilityName}, ${f.row.subDistrict}` : ''].some(alias => alias && normalizeFacilityName(alias) === normalizeFacilityName(name)));
-  candidates = candidates.filter(f => (!text(fs.district) || !f.district || normalizeFsDistrict(f.district) === normalizeFsDistrict(fs.district)) &&
-    (!text(fs.region) || !f.region || normalizeFacilityName(f.region) === normalizeFacilityName(fs.region)));
+  const matchingFacility = (facilities: typeof all) => {
+    let matches = id ? facilities.filter(f => f.fsFacilityId === id) : [];
+    // Unknown FS IDs are distinct from Blueprint IDs; name matching remains exact.
+    if (!matches.length) matches = facilities.filter(f => name && [f.facilityName, f.row.subDistrict ? `${f.facilityName}, ${f.row.subDistrict}` : ''].some(alias => alias && normalizeFacilityName(alias) === normalizeFacilityName(name)));
+    return matches.filter(f => (!text(fs.district) || !f.district || normalizeFsDistrict(f.district) === normalizeFsDistrict(fs.district)) &&
+      (!text(fs.region) || !f.region || normalizeFacilityName(f.region) === normalizeFacilityName(fs.region)));
+  };
+  let candidates = matchingFacility(all);
   for (const field of ['district', 'region'] as const) {
     const norm = field === 'district' ? normalizeFsDistrict : normalizeFacilityName;
     const exact = candidates.filter(f => text(fs[field]) && norm(f[field]) === norm(fs[field]));
@@ -126,7 +135,15 @@ export function lookupFsAllocation(sheets: any[], input: any, options: { automat
     candidates = currentCycleCandidates(candidates, options.now || new Date());
     if (!candidates.length) return { status: 'cycle_not_started', message: 'This facility has only future allocation cycles. No allocation is available yet.', products: identifiedProducts };
   } else if (manual) candidates = candidates.filter(f => f.id === manual);
-  if (!candidates.length) return { status: 'not_found', message: selectedCycle ? `Facility not found in the ${selectedCycle} Allocation Blueprint.` : 'Facility not found in the current Allocation Blueprint.', products: identifiedProducts };
+  if (!candidates.length) {
+    // Diagnose a saved draft without advertising its quantities as usable or
+    // bypassing the activation validation/confirmation guards.
+    const drafts = matchingFacility(activeFsFacilities(sheets.filter(sheet => sheet.cycleState === 'draft').map(sheet => ({ ...sheet, cycleState: 'active' })))).filter(candidate =>
+      (!selectedCycle || normalizeFacilityName(candidate.cycle) === normalizeFacilityName(selectedCycle) || cycleNumber(selectedCycle) !== null && cycleNumber(candidate.cycle) === cycleNumber(selectedCycle)) &&
+      (!manual || options.automaticCycle || candidate.id === manual));
+    if (drafts.length) return { status: 'allocation_inactive', message: 'This facility is in a draft Allocation Blueprint. Correct any sheet validation errors and activate the cycle in Vaccine Dashboard before using its allocations in FS.', products: identifiedProducts };
+    return { status: 'not_found', message: selectedCycle ? `Facility not found in the ${selectedCycle} Allocation Blueprint.` : 'Facility not found in the current Allocation Blueprint.', products: identifiedProducts };
+  }
   if (candidates.length !== 1) return { status: 'ambiguous', message: options.automaticCycle
     ? 'Conflicting facility records remain in the allocation data. Check duplicate rows, facility geography, or cycle labels.'
     : 'Multiple matching facilities. Select the facility and allocation cycle manually.', candidates: candidates.map(publicFacility), products: identifiedProducts };

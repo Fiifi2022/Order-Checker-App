@@ -18,7 +18,7 @@ test('general report leads with the verdict and separates visible findings, prod
   assert.equal(main.firstElementChild.querySelector('.highlight-types').textContent, 'Facility name mismatch');
   assert.equal(main.firstElementChild.querySelector('.verdict-text'), null);
   assert.deepEqual([...main.children].map(node => node.getAttribute('aria-label')), [
-    'Audit summary', 'Discrepancies', 'Inventory Cross Examination', 'Identity and order checks',
+    'Audit summary', 'Discrepancies', 'Review Suggestions', 'Inventory Cross Examination', 'Identity and order checks',
   ]);
   assert.equal(document.querySelector('.audit-findings li').textContent, 'Facility <mismatch>');
   assert.equal(document.querySelector('.audit-findings').closest('details'), null);

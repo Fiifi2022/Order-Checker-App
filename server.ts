@@ -1,14 +1,33 @@
+import {generalExtractionPreviewHandler} from './server/generalExtractionPreview';
+import {extractGeneralStructuredPreview,applyGeneralExtractionSubmission,projectGeneralStructuredSource,finishGeneralStructuredAudit} from './server/generalStructuredExtraction';
+import {canApplyIdentityResearch} from './shared/generalIdentityResearch';
+import {confirmGeneralProductForAudit} from './server/generalProductChoice';
+import {generalReviewConfirmationHandler} from './server/generalReviewConfirmation';
+import {productResearchActions} from './server/productResearchActions';
+import {generalAuditorAiContext} from './server/generalAuditorInstructions';
+import {GEMINI_MODEL,geminiModelConfig} from './server/geminiModel';
+import {generalCatalogAttributeConflict} from './src/utils/generalProductLog';
+import {applyCatalogueConfirmation} from './server/generalCatalogueConfirmation';
+import {restoreGeneralIdentityDecisions} from './src/utils/generalIdentityPersistence';
+import {applyIdentityDecision,identityDecisionHandler} from './server/generalIdentityDecision';
+import {identityVariationId} from './server/generalIdentityLearning';
+import {approveConfirmedFacilityAlias} from './server/generalFacilityAliasApproval';
+import {generalCatalogueConfirmationHandler} from './server/generalCatalogueConfirmation';
+import {geminiProviderTimeout} from './server/geminiTransport';
+import {learnPairedCatalogueProducts} from './server/generalPairedCatalogueLearning';
 import {allocationOperationsHandlers,stageAllocationTransition,validateAllocationUpdate} from './server/allocationOperations';
 import {allocationSheetChanges,assertAllocationEditable,planAllocationCycle,applyAllocationAdjustment,type AllocationSheet} from './shared/allocationOperations';
 import { generalInputFingerprint } from './shared/generalAuditFingerprint';
 import {canAccessAuditRecord,assertUnchangedAuditOwner} from './server/auditRecordAccess';
 import {generalAuditMutations} from './server/generalAuditMutation';
 import {auditResolutionHandler} from './server/auditResolution';
+import {accountAvailabilityError} from './server/accountAvailability';
 import { restoreGeneralProductConfirmations } from './src/utils/generalProductConfirmationPersistence';
 import { generalProductConfirmationHandler } from './server/generalProductConfirmation';
 import { needsProductCatalog } from './server/catalogReadPolicy';
 import { currentBlueprintHandler, facilityQuantitiesHandler } from './server/currentBlueprint';
-import { coalesceFreshRead, readSnapshot, firestoreReadContext, firestoreReadReport } from './server/firestoreReads';
+import {createBlueprintLiveHub,blueprintLiveHandler} from './server/blueprintLive';
+import { coalesceFreshRead, readSnapshot, firestoreReadContext, firestoreReadReport,trackFirestoreListener,measureFirestoreRead } from './server/firestoreReads';
 import { auditReadBudget, auditRemainingMs, startAuditBudget, optionalAuditAi, auditSignal, auditTiming } from './server/auditBudget';
 import { AUDIT_AI_FALLBACK_MS, AUDIT_BACKGROUND_WAIT_MS, auditTimeoutSetting } from './shared/auditPerformance';
 import { startGeneralAuditReferenceReads } from './server/generalAuditReferenceReads';
@@ -18,10 +37,13 @@ import { blueprintFacilityChoices } from './server/fsAllocation';
 import { fsContextHandlers, fsReadBudget, startFsReadBudget } from './server/fsContext';
 import { orderLimitAcknowledgementHandler } from './server/orderLimitAcknowledgement';
 import { catalogAliasAssistant } from './server/catalogAliasAssistant';
-import { defaultProducts, applyCatalog, saveCatalogProduct, productCatalogHandlers } from './server/productCatalog';
-import { canManageCatalog, type ProductCatalog } from './shared/productCatalog';
+import { defaultProducts, ensureApprovedVaccineCatalogueLabels, applyCatalog, saveCatalogProduct, productCatalogHandlers } from './server/productCatalog';
+import { catalogAliasKey,canManageCatalog, type ProductCatalog } from './shared/productCatalog';
 import { runGeneralProductNameAudit } from './server/generalProductNameAudit';
-import { changeCatalogueAlias, trackCatalogueAliasEdits, catalogueAliasHandlers, learnVerifiedCatalogueAliases } from './server/catalogAliasLearning';
+import {researchPendingIdentities} from './server/generalIdentityResearch';
+import {applySourceProductConfirmation} from './server/generalSourceProductConfirmation';
+import {generalFourParameterRecord} from './src/utils/generalAuditor';
+import { catalogueAliasRecords,changeCatalogueAlias, trackCatalogueAliasEdits, catalogueAliasHandlers, learnVerifiedCatalogueAliases } from './server/catalogAliasLearning';
 import { assignedRoles, hasRole, roleAssignment, type AppRole } from './shared/roles';
 import { accountSummary, adminAccountHandlers } from './server/adminAccounts';
 import { registrationHandlers } from './server/registration';
@@ -42,7 +64,7 @@ import fsSync from 'fs';
 import { buildExtensionPackage, resolveExtensionBackendUrl } from './server/extensionPackage';
 import { createAuditStorage, auditStorageRetryHandler, confirmedAuditRead } from './server/auditStorage';
 import { adminAuth, adminDb, collection, getDocs, doc, setDoc, getDoc, deleteDoc, query, orderBy, limit, writeBatch, runTransaction, runAdminTransaction } from './server/firebaseAdmin';
-import { actorContext, createAuthentication } from './server/auth';
+import { actorContext, createAuthentication, canAccess } from './server/auth';
 import * as vaccineService from './server/vaccineService';
 import { resolveBlueprintFacility, normalizeFacilityName, assertBlueprintActive, FACILITY_NOT_FOUND, FACILITY_AMBIGUOUS } from './server/blueprintFacility';
 import { persistBlueprintConfirmation, blueprintSaveError } from './server/blueprintConfirmation';
@@ -112,7 +134,9 @@ const auditStorage = createAuditStorage(async (id, record) => {
       if(index>=0)audits.splice(index,1);
       throw error;
     }
-    transaction.set(reference,cleanFirestorePayload(record));
+    const restored=restoreGeneralIdentityDecisions(record,current.exists?current.data():null);
+    Object.assign(record,restored);
+    transaction.set(reference,cleanFirestorePayload(restored));
   });
 });
 
@@ -120,7 +144,7 @@ const auditStorage = createAuditStorage(async (id, record) => {
  * Safely persists an activity log entry to Firestore without crashing or warning on undefined values
  */
 async function persistActivityLogToFirestore(record: any) {
-  if (!record || !record.id) return;
+  if (!record || !record.id || activityService.isDemoActivity(record)) return;
   try {
     const db = getFirestoreDb();
     const cleaned = cleanFirestorePayload(record);
@@ -186,7 +210,17 @@ const catalogSeed: ProductCatalog = { revision: 1, products: defaultProducts() }
 const readProductCatalog = coalesceFreshRead(async (): Promise<ProductCatalog> => {
   return runAdminTransaction(async transaction => {
     const snapshot = await transaction.get(catalogReference);
-    if (snapshot.exists) return snapshot.data() as ProductCatalog;
+    if (snapshot.exists) {
+      const current=snapshot.data() as ProductCatalog;
+      const upgraded=ensureApprovedVaccineCatalogueLabels(current);
+      if(upgraded!==current){
+        const tracked=trackCatalogueAliasEdits(current,upgraded,'catalogue-approved-vaccine-labels');
+        transaction.set(catalogReference,tracked.catalog);
+        for(const event of tracked.events)transaction.set(catalogReference.collection('alias_history').doc(event.id),event);
+        return tracked.catalog;
+      }
+      return current;
+    }
     transaction.set(catalogReference, catalogSeed);
     return catalogSeed;
   });
@@ -313,7 +347,7 @@ app.get('/api/auth/me', async (_req, res) => {
     const registration = await readSnapshot(adminDb.collection('user_profiles').where('email', '==', profile.email).limit(1), 'user_profiles');
     const details = registration.docs[0]?.data();
     res.json({ ...profile, position: details?.position || profile.position || '', nest: details?.nest || profile.nest || '' });
-  } catch { res.status(503).json({ error: 'Could not load your profile. Please retry.' }); }
+  } catch(error) { res.status(503).json(accountAvailabilityError(error)); }
 });
 app.get('/api/admin/firestore-reads', (_req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json(firestoreReadReport()); });
 
@@ -914,15 +948,13 @@ ADDITIONAL AUDIT CONSTRAINTS:
 // One attempt per user-triggered request. Errors return to the existing fallback.
 async function generateAuditContent(ai: any, options: any, timeoutMs = 10_000): Promise<any> {
   const { generalAuditorFast, ...requestOptions } = options;
-  const model = generalAuditorFast ? 'gemini-2.5-flash-lite'
-    : ['gemini-3.5-flash', 'gemini-3.1-flash-lite'].includes(options.model) ? 'gemini-2.5-flash' : options.model;
-  const config = { ...requestOptions.config, httpOptions: { ...requestOptions.config?.httpOptions, timeout: Math.max(1, timeoutMs), retryOptions: { attempts: 1 } } };
-  if (model !== 'gemini-3.5-flash') delete config.thinkingConfig;
+  const model = GEMINI_MODEL;
+  const config = geminiModelConfig({ ...requestOptions.config, httpOptions: { ...requestOptions.config?.httpOptions, timeout: geminiProviderTimeout(timeoutMs), retryOptions: { attempts: 1 } } });
   return geminiUsage.run(() => optionalAuditAi(async signal => {
     const response = await ai.models.generateContent({ ...requestOptions, model, config: { ...config, abortSignal: signal } });
     if (!response.text?.trim()) throw new Error('Gemini returned an empty response');
     return response;
-  }, timeoutMs));
+  }, timeoutMs),ai);
 }
 
 // Health-check endpoint for client/extension pings
@@ -935,8 +967,13 @@ app.get('/api/gemini-status', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json(geminiUsage.getStatus());
 });
+app.get('/api/gemini-usage',(_req,res)=>{
+ if(!assignedRoles(res.locals.authUser).includes('admin'))return res.status(403).json({error:'Administrator access required.'});
+ res.setHeader('Cache-Control','no-store');
+ res.json({scope:'current server process',...geminiUsage.getUsage()});
+});
 
-// Push state changes from real usage; no polling, heartbeat or model generation.
+// Push real usage state. Local keepalives prevent idle proxy disconnects without Gemini calls.
 app.get('/api/gemini-status/events', (_req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-store');
@@ -945,7 +982,9 @@ app.get('/api/gemini-status/events', (_req, res) => {
   const send = () => res.write(`data: ${JSON.stringify(geminiUsage.getStatus())}\n\n`);
   const unsubscribe = geminiUsage.subscribe(send);
   send();
-  res.on('close', unsubscribe);
+  const keepalive = setInterval(() => res.write(': keepalive\n\n'), 25000);
+  keepalive.unref?.();
+  res.on('close', () => {clearInterval(keepalive); unsubscribe();});
 });
 
 // Measure backend responsiveness without generating a Gemini response.
@@ -955,6 +994,8 @@ app.get('/api/speedtest', (_req, res) => {
 });
 
 // Helper endpoint for Order Verification
+app.post('/api/general/extract',generalExtractionPreviewHandler({catalog:readProductCatalog,apply:applyCatalog,context:async()=>{const directory=await readManagedGeneralDirectory();return {records:activeGeneralFacilities(directory)};}}));
+
 app.post('/api/verify', async (req, res) => {
   console.log('[API POST /api/verify] Request received.');
   
@@ -1055,16 +1096,17 @@ app.post('/api/verify', async (req, res) => {
     await previousCheck;
     if (checkId) {
       existingGeneralAudit = audits.find(record=>record.id===checkId);
-      if (!existingGeneralAudit) {
+      {
         try {
           const saved = await auditReadBudget(req,()=>getDoc(doc(getFirestoreDb(),'audits',checkId)));
-          existingGeneralAudit = saved.exists() ? saved.data() : null;
+          existingGeneralAudit = saved.exists() ? saved.data() : existingGeneralAudit;
         } catch {return res.status(503).json({error:'Audit ownership could not be verified. Your inputs remain available; retry before saving.'});}
       }
       if (existingGeneralAudit && !canAccessAuditRecord(existingGeneralAudit,res.locals.authUser)) {
         return res.status(403).json({error:'Only the audit owner or an administrator may reuse this audit ID.'});
       }
     }
+    let structuredExtraction:ReturnType<typeof applyGeneralExtractionSubmission>|undefined;
     let selectedCompanionFacility: vaccineService.FacilityAllocationRecord | undefined;
     if (isGeneralAuditor && companionMode) {
       try { await auditReadBudget(req, loadDistrictsFromFirestore); }
@@ -1098,8 +1140,41 @@ app.post('/api/verify', async (req, res) => {
           .then(context => ({...context, revision: managedDirectory.revision}));
       };
       const facilityContext = await (auditTiming(req)?.measureAsync('facilityRecords', () => auditReadBudget(req, readFacilityContext)) ?? auditReadBudget(req, readFacilityContext));
-      response = { text: JSON.stringify(await auditReadBudget(req, () => runGeneralProductNameAudit(whatsappMessage, fulfillmentConfirmation, res.locals.auditCatalog, {
+      const generalAi = generalAuditorAiContext(body, getGeminiClient, res.locals.authUser?.id);
+      let comparisonCustomer=whatsappMessage,comparisonFulfillment=fulfillmentConfirmation;
+      if(body.structuredExtraction!==undefined){
+        if(!generalAi.requestLanguage)throw Object.assign(Error('Structured preview is available only in the website General Auditor.'),{status:400});
+        const preview=extractGeneralStructuredPreview(whatsappMessage,fulfillmentConfirmation,res.locals.auditCatalog,facilityContext);
+        structuredExtraction=applyGeneralExtractionSubmission(preview,body.structuredExtraction,{id:res.locals.authUser.id,name:res.locals.authUser.name});
+        comparisonCustomer=projectGeneralStructuredSource(structuredExtraction.preview.customer,'customer');comparisonFulfillment=projectGeneralStructuredSource(structuredExtraction.preview.fulfillment,'fulfillment');
+        whatsappMessage=preview.customer.sourceText;fulfillmentConfirmation=preview.fulfillment.sourceText;
+      }
+      response = { text: JSON.stringify(await auditReadBudget(req, () => runGeneralProductNameAudit(comparisonCustomer, comparisonFulfillment, res.locals.auditCatalog, {
+        readIdentityVariation: async (field,value,facility)=>{
+          const snapshot=await auditReadBudget(req,()=>getDoc(doc(getFirestoreDb(),'identity_variations',identityVariationId(field,value,facility))));
+          if(!snapshot.exists())return undefined;
+          const previous=snapshot.data();
+          if(previous.action==='reset')return undefined;
+          return {actor:previous.actor.name,at:previous.at,decision:previous.action};
+        },
         generalOrderLimitDecisions: body.generalOrderLimitDecisions || {},
+        requestLanguage: generalAi.requestLanguage,
+          generalOnlySmartMatching: generalAi.requestLanguage,
+        deferProductResearch:body.deferProductResearch===true,
+        learnCatalogueProducts: async pairs => {
+          const saved=await runAdminTransaction(async transaction=>{
+            const snapshot=await transaction.get(catalogReference);
+            const current=snapshot.exists ? snapshot.data() as ProductCatalog : catalogSeed;
+            const learned=learnPairedCatalogueProducts(current,pairs,`source-pair-verifier:${res.locals.authUser?.id || 'audit'}`);
+            if(learned.added){
+              transaction.set(catalogReference,learned.catalog);
+              for(const event of learned.events)transaction.set(catalogReference.collection('alias_history').doc(event.id),event);
+            }
+            return learned.catalog;
+          });
+          readProductCatalog.invalidate();res.locals.auditCatalog=saved;applyCatalog(saved);
+          return saved;
+        },
         learnCatalogueAliases: async aliases => {
           let count=0;
           const saved=await runAdminTransaction(async transaction=>{
@@ -1120,15 +1195,15 @@ app.post('/api/verify', async (req, res) => {
           res.locals.auditCatalog=await queueCatalogueAliasSuggestions(suggestions,res.locals.authUser?.email || res.locals.authUser?.id || 'audit');
         },
         osuItems, facilityContext, semanticTimeoutMs: Math.max(0, Math.min(AUDIT_AI_FALLBACK_MS, auditTimeoutSetting(process.env.AUDIT_AI_TIMEOUT_MS, AUDIT_AI_FALLBACK_MS, 100, 15_000), auditRemainingMs(req) - 250)),
-        signal: auditSignal(req), timing: auditTiming(req), semanticCacheScope: res.locals.authUser?.id,
-      }, getGeminiClient))) };
+        signal: auditSignal(req), timing: auditTiming(req), semanticCacheScope: generalAi.cacheScope,
+      }, generalAi.getClient))) };
     } else {
       const deterministic = runDeterministicAuditFallback(whatsappMessage, fulfillmentConfirmation);
       if (deterministic.items.length) response = { text: JSON.stringify(deterministic) };
       else {
       const ai = getGeminiClient();
       response = await generateAuditContent(ai, {
-      model: 'gemini-3.1-flash-lite',
+      model: GEMINI_MODEL,
       contents: `Please parse, cross-examine, and verify these two inputs (they could be Zipline Ghana medical logistics orders, or general operational/text logs, custom chat messages, or hello worlds requested vs fulfilled/acted):
           
           === WHATSAPP SOURCE MESSAGE ===
@@ -1308,7 +1383,8 @@ app.post('/api/verify', async (req, res) => {
       throw new Error('Empty API response received from Gemini.');
     }
 
-    const payload = JSON.parse(response.text.trim());
+    let payload = JSON.parse(response.text.trim());
+    if(structuredExtraction)payload=finishGeneralStructuredAudit(payload,structuredExtraction);
 
     if (!isGeneralAuditor) {
       // Post-process payload to handle Diluent & Dropper Extra Item Exemption:
@@ -2198,6 +2274,8 @@ app.post('/api/verify', async (req, res) => {
       auditRecord = restoreGeneralProductConfirmations(auditRecord as any, previous as any);
     }
 
+    if(isGeneralAuditor) auditRecord=restoreGeneralIdentityDecisions(auditRecord,existingGeneralAudit);
+
     if (isGeneralAuditor && companionMode) Object.assign(auditRecord, { auditId: auditRecord.id, auditMode: companionMode,
       isValid: auditRecord.allMatch, discrepancies: auditRecord.generalAudit.discrepancies,
       facilityId: selectedCompanionFacility!.id, facilityName: selectedCompanionFacility!.facilityName,
@@ -2296,7 +2374,7 @@ app.post('/api/scan-screenshot', async (req, res) => {
     const ai = getGeminiClient();
 
     const response = await generateAuditContent(ai, {
-      model: 'gemini-3.5-flash',
+      model: GEMINI_MODEL,
       contents: [
         {
           inlineData: {
@@ -2323,16 +2401,17 @@ Return ONLY the plain text transcription. Do not include any intro/outro, conver
     const extractedText = response.text || '';
     return res.json({ text: extractedText.trim() });
   } catch (error: any) {
-    console.error('Screenshot transcription error:', error);
+    // SDK errors may contain input data or credentials; expose only a category.
+    console.warn('[Screenshot transcription] AI unavailable', {code:Number(error?.status || error?.code) || 'unknown'});
     const errMsg = String(error?.message || error || '').toLowerCase();
     if (errMsg.includes('exhausted') || errMsg.includes('rate limit') || errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('503') || errMsg.includes('demand')) {
       return res.status(200).json({
         text: '',
         quotaAlert: true,
-        message: 'The AI vision scanner quota is currently exhausted. Please paste or type your order text directly into the text box below to audit immediately without waiting.'
+        message: 'AI screenshot scanning is temporarily unavailable. Paste or type the message text to continue auditing with the catalogue.'
       });
     }
-    return res.status(500).json({ error: error.message || 'An error occurred during screenshot transcription.' });
+    return res.status(503).json({ error: 'AI screenshot scanning is unavailable. Paste or type the message text to continue auditing with the catalogue.' });
   }
 });
 
@@ -2406,6 +2485,43 @@ app.post('/api/audits/:id/storage-retry', auditStorageRetryHandler({
   persist: record=>auditStorage.persist(record,3000),
 }));
 
+app.post('/api/audits/:id/identity-decision',identityDecisionHandler({
+ read:async id=>{const snapshot=await getDoc(doc(getFirestoreDb(),'audits',id));return snapshot.exists()?confirmedAuditRead(snapshot.data()):audits.find(record=>record.id===id);},
+ save:async(record,field)=>{
+  const decision=record.generalAudit[field].identityDecision;
+  const saved=await runAdminTransaction(async transaction=>{
+   const reference=adminDb.doc(`audits/${record.id}`),snapshot=await transaction.get(reference),current=snapshot.exists?snapshot.data():null;
+   assertUnchangedAuditOwner(current,record);
+   let updated=record;
+   if(current){
+    if(generalInputFingerprint(current as any)!==decision.inputFingerprint)throw Error('Audit sources changed.');
+    const previous=current.generalAudit?.[field]?.identityDecision;
+    if((previous?.revision||0)!==decision.revision-1)throw Error('Identity decision changed. Refresh the audit.');
+    if(current.generalAudit[field].whatsappValue!==decision.customer||current.generalAudit[field].fulfillmentValue!==decision.fulfillment)throw Error('Identity values changed.');
+    updated=applyIdentityDecision(current,field,decision.action,decision.actor,decision.at);
+   }
+   const storage={status:'saved',message:'Saved to Firestore.',retryable:false,savedAt:new Date().toISOString()};
+   const data=cleanFirestorePayload({...updated,storage});
+   delete data.generalStorageWarning;
+   transaction.set(reference,data);return data;
+  });
+  Object.assign(record,saved);
+  const index=audits.findIndex(existing=>existing.id===record.id);if(index>=0)audits[index]=record;else audits.unshift(record);
+ },
+ learn:async(record,field)=>{
+  const value=record.generalAudit[field],decision=value.identityDecision;
+  const reference=adminDb.doc(`identity_variations/${identityVariationId(field,value,record.generalAudit.facility)}`);
+  await runAdminTransaction(async transaction=>{
+   const snapshot=await transaction.get(reference);
+   const directory=field==='facility'?await transaction.get(generalDirectoryReference):null;
+   if(!snapshot.exists||(snapshot.data()?.at||'')<=decision.at){
+    transaction.set(reference,{...decision,field,auditId:record.id});
+    if(directory){const state=directory.exists?directory.data() as GeneralFacilityDirectoryState:emptyGeneralFacilityDirectory(),next=approveConfirmedFacilityAlias(state,record);if(next!==state)transaction.set(generalDirectoryReference,cleanFirestorePayload(next));}
+   }
+  });if(field==='facility')readManagedGeneralDirectory.invalidate();
+ },
+}));
+
 app.post('/api/audits/:id/order-limit', orderLimitAcknowledgementHandler({
   read: async id => {
     const cached = audits.find(record => record.id === id);
@@ -2430,6 +2546,107 @@ app.get('/api/audits/:id', async (req, res) => {
     return res.json(record);
   } catch { return res.status(503).json({ error: 'Saved audit could not be loaded.' }); }
 });
+
+app.post('/api/audits/:id/product-research',productResearchActions({
+ read:async id=>{const snapshot=await getDoc(doc(getFirestoreDb(),'audits',id));return snapshot.exists()?confirmedAuditRead(snapshot.data()):audits.find(r=>r.id===id);},
+ catalog:readProductCatalog,getClient:getGeminiClient,
+ researchContext:(record,scope)=>generalAuditorAiContext(record,getGeminiClient,scope),
+ researchIdentities:record=>{
+  const context=generalAuditorAiContext(record,getGeminiClient,record.createdByUserId);
+  return researchPendingIdentities(record,context.getClient,context.cacheScope);
+ },
+ saveIdentityResearch:async(record,original)=>{
+  const saved=await runAdminTransaction(async transaction=>{
+   const reference=adminDb.doc(`audits/${record.id}`),snapshot=await transaction.get(reference),current=snapshot.exists?snapshot.data():original;
+   assertUnchangedAuditOwner(current,original);
+   if(generalInputFingerprint(current)!==generalInputFingerprint(original))throw Object.assign(Error('Audit inputs changed.'),{status:409});
+   const states={...current.generalAudit.identityResearch};
+   for(const field of ['facility','orderer'] as const){
+    const value=current.generalAudit[field],before=original.generalAudit[field];
+    if((states[field]?.status==='deferred'||record.identityResearchRequestedFields?.includes(field))&&value.status!=='match'&&canApplyIdentityResearch(value,before)&&record.generalAudit.identityResearch?.[field])states[field]={...record.generalAudit.identityResearch[field],revision:(states[field]?.revision||0)+1};
+   }
+   const updated={...current,generalAudit:{...current.generalAudit,identityResearch:states},storage:{status:'saved',message:'Saved to Firestore.',retryable:false,savedAt:new Date().toISOString()}};
+   transaction.set(reference,cleanFirestorePayload(updated));return updated;
+  });const index=audits.findIndex(r=>r.id===record.id);if(index>=0)audits[index]=saved;else audits.unshift(saved);return saved;
+ },
+ save:async(record,alias)=>{
+  const aliases=Array.isArray(alias)?alias:[alias];
+  const incoming=record.generalAudit.catalogueSuggestions.filter((s:any)=>aliases.includes(s.alias));
+  const saved=await runAdminTransaction(async transaction=>{
+   const reference=adminDb.doc(`audits/${record.id}`),snapshot=await transaction.get(reference),current=snapshot.exists?snapshot.data():record;
+   assertUnchangedAuditOwner(current,record);
+   if(generalInputFingerprint(current as any)!==generalInputFingerprint(record))throw Object.assign(Error('Audit inputs changed. Open the current audit before deciding.'),{status:409});
+   for(const next of incoming){
+    const group=current.generalAudit.catalogueSuggestions?.find((s:any)=>s.alias===next.alias);
+    if(snapshot.exists&&(!group||(group.researchRevision||0)!==(next.researchRevision||0)-1))throw Object.assign(Error('Product suggestions changed. Open the current audit before deciding.'),{status:409});
+   }
+   const updated=generalFourParameterRecord({...current,generalAudit:{...current.generalAudit,catalogueSuggestions:current.generalAudit.catalogueSuggestions.map((s:any)=>incoming.find((next:any)=>next.alias===s.alias)||s)},storage:{status:'saved',message:'Saved to Firestore.',retryable:false,savedAt:new Date().toISOString()}});
+   transaction.set(reference,cleanFirestorePayload(updated));return updated;
+  });Object.assign(record,saved);
+  const index=audits.findIndex(r=>r.id===record.id);if(index>=0)audits[index]=record;else audits.unshift(record);
+ },
+ confirm:async(record,alias,productId,actor,saveAlias)=>{
+  const updated=await runAdminTransaction(async transaction=>{
+   const reference=adminDb.doc(`audits/${record.id}`);
+   const [auditSnapshot,snapshot]=await Promise.all([transaction.get(reference),transaction.get(catalogReference)]);
+   const current=auditSnapshot.exists?confirmedAuditRead(auditSnapshot.data()):record;
+   if(!canAccessAuditRecord(current,actor)||generalInputFingerprint(current)!==generalInputFingerprint(record))throw Object.assign(Error('Audit ownership or sources changed. Open the current audit before deciding.'),{status:409});
+   const group=current.generalAudit.catalogueSuggestions?.find((s:any)=>s.alias===alias);
+   if((group?.researchRevision||0)!==(record.generalAudit.catalogueSuggestions.find((s:any)=>s.alias===alias)?.researchRevision||0)||!group?.options.some((o:any)=>o.productId===productId)||group.rejectedProductIds?.includes(productId))throw Object.assign(Error('This catalogue suggestion is no longer available. Search again using the current audit.'),{status:409});
+   let catalog=snapshot.exists?snapshot.data() as ProductCatalog:catalogSeed;
+   if(current.generalAudit.ordererExtraction&&saveAlias===false){
+    const result=confirmGeneralProductForAudit(current,alias,productId,catalog,actor);
+    result.storage={status:'saved',message:'Saved to Firestore.',retryable:false,savedAt:new Date().toISOString()};delete result.generalStorageWarning;
+    transaction.set(reference,cleanFirestorePayload(result));return {result,catalog:null};
+   }
+   const sourceOption=group.options.find((o:any)=>o.productId===productId&&o.kind==='source');
+   if(sourceOption){
+    const result=applySourceProductConfirmation(current,alias,sourceOption.sourceName,catalog,actor);
+    result.storage={status:'saved',message:'Saved to Firestore.',retryable:false,savedAt:new Date().toISOString()};delete result.generalStorageWarning;
+    transaction.set(reference,cleanFirestorePayload(result));return {result,catalog:null};
+   }
+   const product=catalog.products.find(p=>p.id===productId);
+   if(!product||generalCatalogAttributeConflict(alias,product.name))throw Object.assign(Error('The selected product conflicts with the stated clinical attributes. Check the ingredient, strength, formulation and size.'),{status:409});
+   const records=catalogueAliasRecords(catalog).filter(r=>r.normalizedText===catalogAliasKey(alias));
+   if(records.some(r=>r.status==='rejected'||r.status==='approved'&&!r.active))throw Object.assign(Error('A catalogue editor must review this previously rejected or deactivated alias.'),{status:409});
+   const existing=records.find(r=>r.status==='approved'&&r.active);
+   if(existing&&existing.productId!==productId)throw Object.assign(Error('This alias is approved for a different product. Ask a catalogue editor to review the existing mapping.'),{status:409});
+   const events:any[]=[];
+   if(!existing){
+    let pending=records.find(r=>r.status==='pending'&&r.productId===productId);
+    if(!pending){const proposed=changeCatalogueAlias(catalog,{revision:catalog.revision,action:'propose',text:alias,productId,reason:'CCA verified the original request and product attributes.'},actor.id);catalog=proposed.catalog;events.push(...proposed.events);pending=catalogueAliasRecords(catalog).find(r=>r.normalizedText===catalogAliasKey(alias)&&r.productId===productId&&r.status==='pending');}
+    const approved=changeCatalogueAlias(catalog,{revision:catalog.revision,action:'approve',id:pending!.id,identityConfirmed:true},actor.id);catalog=approved.catalog;events.push(...approved.events);
+   }
+   const result=applyCatalogueConfirmation(current,alias,productId,catalog,actor);
+   result.storage={status:'saved',message:'Saved to Firestore.',retryable:false,savedAt:new Date().toISOString()};delete result.generalStorageWarning;
+   transaction.set(catalogReference,cleanFirestorePayload(catalog));
+   for(const event of events)transaction.set(catalogReference.collection('alias_history').doc(event.id),cleanFirestorePayload({...event,auditId:record.id,originalProductText:alias}));
+   transaction.set(reference,cleanFirestorePayload(result));return {result,catalog};
+  });
+  if(updated.catalog){readProductCatalog.invalidate();applyCatalog(updated.catalog);}const index=audits.findIndex(r=>r.id===record.id);if(index>=0)audits[index]=updated.result;else audits.unshift(updated.result);return updated.result;
+ },
+}));
+
+app.post('/api/audits/:id/catalogue-confirmation', generalCatalogueConfirmationHandler({
+ read:async id=>{const cached=audits.find(record=>record.id===id);if(cached)return cached;const snapshot=await getDoc(doc(getFirestoreDb(),'audits',id));return snapshot.exists()?confirmedAuditRead(snapshot.data()):null;},
+ catalog:async()=>{const catalog=await readProductCatalog();applyCatalog(catalog);return catalog;},
+ save:async record=>{
+  await auditStorage.persist(record,3000);
+  if(record.storage?.status!=='saved')throw Error('Audit write not confirmed.');
+  const index=audits.findIndex(existing=>existing.id===record.id);if(index>=0)audits[index]=record;else audits.unshift(record);
+ },
+}));
+
+// Source interpretation confirmation retains original inputs and rechecks all quantities.
+app.post('/api/audits/:id/review-confirmation', generalReviewConfirmationHandler({
+ read:async id=>{const cached=audits.find(record=>record.id===id);if(cached)return cached;const snapshot=await getDoc(doc(getFirestoreDb(),'audits',id));return snapshot.exists()?confirmedAuditRead(snapshot.data()):null;},
+ catalog:async()=>{const catalog=await readProductCatalog();applyCatalog(catalog);return catalog;},
+ save:async record=>{
+  await auditStorage.persist(record,3000);
+  if(record.storage?.status!=='saved')throw Error('Audit write not confirmed.');
+  const index=audits.findIndex(existing=>existing.id===record.id);if(index>=0)audits[index]=record;else audits.unshift(record);
+ },
+}));
 
 // Customer-contact confirmation is a saved audit action, separate from quantity limits.
 app.post('/api/audits/:id/product-confirmation', generalProductConfirmationHandler({
@@ -3077,6 +3294,24 @@ const companionVaccine = companionVaccineHandlers({
 });
 app.post('/api/vaccine/allocations/commit', companionVaccine.commit);
 app.get('/api/vaccine/allocations/commit/:orderId', companionVaccine.status);
+const blueprintLive=createBlueprintLiveHub((id,next,error)=>{
+  const release=trackFirestoreListener();
+  try{
+    const stop=adminDb.collection('vaccine_districts').doc(id).onSnapshot(snapshot=>{
+      void measureFirestoreRead('vaccine_districts',async()=>snapshot);next(snapshot.exists?snapshot.data():null);
+    },error);
+    return ()=>{stop();release();};
+  }catch(error){release();throw error;}
+});
+app.get('/api/vaccine/blueprint-districts/:id/events',blueprintLiveHandler(blueprintLive,async req=>{
+  const token=/^Bearer (\S+)$/i.exec(req.headers.authorization||'')?.[1];
+  if(!token)return false;
+  const identity=await adminAuth.verifyIdToken(token,true);
+  if(!identity.email||identity.email_verified!==true||identity.firebase?.sign_in_provider==='anonymous')return false;
+  const records=await readSnapshot(adminDb.collection('user_roles').where('email','==',identity.email.toLowerCase()).limit(1),'user_roles');
+  if(!records.empty)return canAccess(assignedRoles(records.docs[0].data()),'GET','/vaccine/blueprint-districts/'+req.params.id+'/current');
+  return identity.email.toLowerCase()===process.env.AUTH_BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+}));
 // These advisory reads bypass catalog seeding and unrelated history/service syncs.
 const fsContext = fsContextHandlers({
   readSheets: readCurrentBlueprintSheets,
@@ -4371,7 +4606,7 @@ app.post('/api/activity/log', async (req, res) => {
 app.post('/api/activity/logs/clear', (req, res) => {
   try {
     activityService.clearActivityLogs();
-    return res.json({ success: true, message: 'Activity audit logs reset to baseline.' });
+    return res.json({ success: true, message: 'Activity audit logs cleared.' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -4381,7 +4616,7 @@ app.post('/api/activity/logs/clear', (req, res) => {
 // Compile companion Chrome extension into packaged ZIP on the fly
 app.get('/api/download-extension', async (req, res) => {
   try {
-    const backendUrl = resolveExtensionBackendUrl({ appUrl: process.env.APP_URL, renderUrl: process.env.RENDER_EXTERNAL_URL, host: req.get('host') });
+    const backendUrl = resolveExtensionBackendUrl({ appUrl: process.env.APP_URL, railwayDomain: process.env.RAILWAY_PUBLIC_DOMAIN, renderUrl: process.env.RENDER_EXTERNAL_URL, host: req.get('host') });
     const zipBuffer = await buildExtensionPackage(backendUrl, firebaseConfig.firebaseConfig.apiKey);
     res.setHeader("Content-Disposition", "attachment; filename=ordercheck-compliance-companion.zip");
     res.setHeader("Content-Type", "application/zip");

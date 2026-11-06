@@ -1,3 +1,6 @@
+import {generalAuditFindingLabel} from './general-auditor.js';
+import {PRODUCTION_BACKEND_URL} from './backend-target.js';
+import {createAuditInputClear} from './audit-input-clear.js';
 import { setupGeneralProductReview } from './general-report.js';
 import { restoreGeneralAudit, rememberGeneralAudit } from './general-session.js';
 import { setupFsPanel } from './fs-panel.js';
@@ -11,7 +14,7 @@ import { normalizeBackendUrl, fetchJson } from './backend.js';
 import { signIn, signOut, backendRequest } from './auth.js';
 import { setupVaccines } from './vaccine.js';
 
-const SERVER_URL = extensionConfig.backendUrl;
+const SERVER_URL = PRODUCTION_BACKEND_URL;
 
 document.addEventListener('DOMContentLoaded', () => {
   const btnVerify = document.getElementById('btnVerify');
@@ -30,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let savedBackendUrl = SERVER_URL;
   let connectionAttempt = 0;
   let auditController;
-  let contextRevision = 0, inputRevision = 0, hintRevision = 0, hintTimer;
+  let contextRevision = 0, inputRevision = 0;
   const inputKey = () => JSON.stringify([whatsappText.value, fulfillmentText.value, document.getElementById('auditMode').value, document.getElementById('vaccineFacility').value]);
   const request = async (endpoint, options = {}) => {
     const context = contextRevision;
@@ -38,41 +41,27 @@ document.addEventListener('DOMContentLoaded', () => {
     if (context !== contextRevision) throw new Error('Account or backend changed. Retry on the current service.');
     return data;
   };
-  const clearHints = () => {
-    hintRevision++; clearTimeout(hintTimer);
-    for (const source of ['whatsapp', 'fulfillment']) { const box = document.getElementById(`${source}Hints`); box.replaceChildren(); box.hidden = true; }
-  };
-  const refreshHints = async () => {
-    const current = ++hintRevision;
-    const entries = [['whatsapp', whatsappText.value], ['fulfillment', fulfillmentText.value]];
-    const active = entries.filter(([, text]) => text.trim());
-    for (const [source, text] of entries) { if (!text.trim()) { const box = document.getElementById(`${source}Hints`); box.hidden = true; box.replaceChildren(); } }
-    if (!active.length) return;
-    try {
-      // Both fields share one authenticated catalogue read per debounced edit.
-      const data = await request('/api/products/hints', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope: 'general', texts: active.map(([, text]) => text) }) });
-      if (current !== hintRevision) return;
-      for (const [index, [source]] of active.entries()) {
-        const products = data.groups[index];
-        const box = document.getElementById(`${source}Hints`);
-        box.replaceChildren(); box.hidden = !products.length;
-        if (products.length) {
-          const heading = document.createElement('strong'); heading.textContent = 'Fulfillment System reminders'; box.append(heading);
-          for (const product of products) { const row = document.createElement('p'); row.textContent = [product.name, product.fulfillmentSystemName ? `System name: ${product.fulfillmentSystemName}` : '', product.receivingDetails].filter(Boolean).join('\n'); box.append(row); }
-        }
-      }
-    } catch (error) {
-      if (current !== hintRevision) return;
-      for (const [source] of active) { const box = document.getElementById(`${source}Hints`); box.hidden = false; box.textContent = `Receiving reminders unavailable: ${error.message}`; }
-    }
-  };
+  const inputClear = createAuditInputClear({
+    getState: () => ({result: activeResult, context: `${contextRevision}:${inputKey()}`, revision: inputRevision,
+      inputs: [whatsappText.value, fulfillmentText.value], busy: productReview.isBusy()}),
+    clearInputs: () => {
+      whatsappText.value = ''; fulfillmentText.value = '';
+      inputRevision++; activeResult = null; lastGeneralAudit = null; limitDecisions = {}; declinedLimitItems = [];
+      productReview.reset(); screenshots.reset();
+      results.replaceChildren();
+      document.getElementById('auditStatus').textContent = 'Ready for audit';
+      document.getElementById('allocationStatus').textContent = 'Not applicable';
+      chrome.storage.local.set({whatsappText: '', fulfillmentText: ''});
+    },
+  });
   const invalidate = () => {
+    inputClear.cancel();
     auditController?.abort();
     inputRevision++; activeResult = null; limitDecisions = {}; declinedLimitItems = [];
     vaccines.invalidate();
     results.textContent = 'Inputs changed. Run Analyze to verify the current order.';
-    screenshots.invalidate(); clearHints();
-    hintTimer = setTimeout(refreshHints, 400);
+    screenshots.invalidate();
+
   };
   const catalogUI = setupCatalog({ request, onUpdated: invalidate });
   const vaccines = setupVaccines({ request, results, onChanged: invalidate,
@@ -84,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const input = source === 'whatsapp' ? whatsappText : fulfillmentText; input.value = text;
     chrome.storage.local.set({ [source === 'whatsapp' ? 'whatsappText' : 'fulfillmentText']: text }); invalidate();
   } });
-  const resetContext = () => { lastGeneralAudit = null; auditController?.abort(); contextRevision++; inputRevision++; activeResult = null; limitDecisions = {}; catalogUI.reset(); screenshots.reset(); vaccines.reset(); clearHints(); };
+  const resetContext = () => { inputClear.cancel(); lastGeneralAudit = null; auditController?.abort(); contextRevision++; inputRevision++; activeResult = null; limitDecisions = {}; catalogUI.reset(); screenshots.reset(); vaccines.reset(); };
   document.getElementById('openPortal').addEventListener('click', () => {
     try { chrome.tabs.create({ url: normalizeBackendUrl(savedBackendUrl) }); } catch (error) { showError(error); }
   });
@@ -94,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const showError = (error) => {
     results.textContent = error.message || 'Unable to contact the backend.';
-    document.getElementById('auditStatus').textContent = 'Audit requires review';
+    document.getElementById('auditStatus').textContent = error.message || 'Audit could not be completed';
 
   };
   const updateAuth = async () => {
@@ -110,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     agentNameInput.value = profile.name;
     authStatus.textContent = `Signed in as ${profile.name} (${profileRoles(profile)})`;
     if (vaccines.vaccineMode()) void vaccines.loadFacilities();
-    void refreshHints();
+
   };
   signInForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -142,10 +131,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const checkConnection = async () => {
     const attempt = ++connectionAttempt;
     if (!savedBackendUrl) {
-      connectionBadge.textContent = '● Save your Render URL';
+      connectionBadge.textContent = '● Connecting to production';
       return;
     }
-    connectionBadge.textContent = '● Connecting / waking service…';
+    connectionBadge.textContent = '● Connecting to production…';
     connectionBadge.style.color = '#B45309';
     connectionBadge.style.backgroundColor = '#FEF3C7';
     try {
@@ -173,28 +162,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const saveLimitAcknowledgement = async (id, key, answer) => {
     const context = contextRevision, version = inputRevision;
-    try { await request(`/api/audits/${encodeURIComponent(id)}/order-limit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, answer }) }); }
+    try { await request(`/api/audits/${encodeURIComponent(id)}/order-limit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, answer }) }); return true; }
     catch { if (context === contextRevision && version === inputRevision) {
       const warning = document.createElement('p'); warning.textContent = 'Decision acknowledged here, but could not be saved to history.'; results.append(warning);
-    } }
+    } return false; }
   };
   const productReview = setupGeneralProductReview({ root: results, request, getResult: () => activeResult,
     getSources: () => ({ whatsappMessage: whatsappText.value, fulfillmentConfirmation: fulfillmentText.value }),
     contextKey: () => `${contextRevision}:${inputRevision}:${savedBackendUrl}`,
-    onSaved: updated => { activeResult = updated; lastGeneralAudit = updated; }, rerender: () => renderResults(), onBusy: busy => { btnVerify.disabled = busy; },
+    onSaved: updated => { activeResult = updated; lastGeneralAudit = updated; }, rerender: () => renderResults(), onBusy: busy => { btnVerify.disabled = busy; if (busy) inputClear.cancel(); },
   });
-  results.addEventListener('click', event => {
+  results.addEventListener('click', async event => {
     const button = event.target.closest('[data-general-limit]');
     if (!button || !activeResult || productReview.isBusy()) return;
     const answer = button.dataset.generalLimit === 'yes'; const key = button.dataset.key;
     if (!activeResult.generalAudit.products.some(product => product.key === key && product.orderLimitEligible)) return;
     limitDecisions[key] = answer; activeResult = acknowledgeOrderLimit(activeResult, key, answer);
-    renderResults(); void saveLimitAcknowledgement(activeResult.id, key, answer);
+    renderResults({holdClear: true});
+    const record = activeResult, version = inputRevision, context = contextRevision;
+    const saved = await saveLimitAcknowledgement(record.id, key, answer);
+    if (saved && record === activeResult && version === inputRevision && context === contextRevision) renderResults();
   });
-  const renderResults = () => {
+  const renderResults = ({holdClear = false} = {}) => {
     if (!activeResult) return;
+    inputClear.schedule({hold: holdClear});
     if (activeResult.generalAudit) {
-      document.getElementById('auditStatus').textContent = activeResult.allMatch ? 'Audit passed' : 'Audit requires review';
+      document.getElementById('auditStatus').textContent = activeResult.allMatch ? 'Audit passed' : generalAuditFindingLabel(activeResult.generalAudit);
       document.getElementById('allocationStatus').textContent = 'Not applicable';
       results.innerHTML = productReview.render(activeResult); void rememberGeneralAudit(activeResult, savedBackendUrl); return;
     }
@@ -312,9 +305,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!scriptSync.owned && (!scriptSync.observed || saved.fsScriptText !== saved.fulfillmentText) && saved.fulfillmentText !== undefined && saved.fulfillmentText !== null) {
       fulfillmentText.value = saved.fulfillmentText;
     }
-    // Migrate the obsolete development default; preserve explicitly configured services.
-    const oldDefault = 'https://ais-dev-ksv3oiifrmnhdib3nb7awh-944779874869.europe-west2.run.app';
-    savedBackendUrl = saved.customBackendUrl && saved.customBackendUrl !== oldDefault ? saved.customBackendUrl : SERVER_URL;
+    savedBackendUrl = SERVER_URL;
+    await chrome.storage.local.remove('customBackendUrl');
     backendUrlInput.value = savedBackendUrl;
     await updateAuth();
     checkConnection();
@@ -323,41 +315,27 @@ document.addEventListener('DOMContentLoaded', () => {
       try { await loadProfile();
         const restoreVersion = inputRevision;
         const savedAudit = await restoreGeneralAudit(request, savedBackendUrl, { whatsappMessage: whatsappText.value, fulfillmentConfirmation: fulfillmentText.value });
-        if (savedAudit && restoreVersion === inputRevision) { activeResult = savedAudit; lastGeneralAudit = savedAudit; renderResults(); }
+        if (savedAudit && restoreVersion === inputRevision) { activeResult = savedAudit; lastGeneralAudit = savedAudit; renderResults({holdClear: true}); }
       } catch (error) { showError(error); await updateAuth(); }
     }
   });
 
+  for (const source of ['whatsapp', 'fulfillment']) {
+    document.getElementById(`${source}Image`).addEventListener('change', () => inputClear.cancel());
+    document.getElementById(`${source}Scan`).addEventListener('click', () => inputClear.cancel());
+    document.getElementById(`${source}Text`).addEventListener('paste', () => inputClear.cancel());
+  }
   whatsappText.addEventListener('input', () => { chrome.storage.local.set({ whatsappText: whatsappText.value }); invalidate(); });
   fulfillmentText.addEventListener('input', () => { chrome.storage.local.set({ fulfillmentText: fulfillmentText.value }); invalidate(); });
 
-  const saveBackend = async (value) => {
-    try {
-      const normalized = normalizeBackendUrl(value);
-      if (savedBackendUrl !== normalized) {
-        await signOut();
-        await updateAuth();
-        activeResult = null;
-        results.textContent = 'Backend changed. Sign in to this service to continue.';
-      }
-      savedBackendUrl = normalized;
-      backendUrlInput.value = normalized;
-      await chrome.storage.local.set({ customBackendUrl: normalized });
-      backendSaveMsg.textContent = 'Backend URL saved.';
-      backendSaveMsg.style.display = 'block';
-      checkConnection();
-    } catch (error) { showError(error); }
-  };
-  btnSaveBackend.addEventListener('click', () => saveBackend(backendUrlInput.value));
-  btnResetBackend.addEventListener('click', async () => {
-    if (SERVER_URL) return saveBackend(SERVER_URL);
-    savedBackendUrl = '';
-    backendUrlInput.value = '';
+  const useProductionBackend = async () => {
+    savedBackendUrl = SERVER_URL;
+    backendUrlInput.value = SERVER_URL;
     await chrome.storage.local.remove('customBackendUrl');
-    await signOut();
-    await updateAuth();
     checkConnection();
-  });
+  };
+  document.getElementById('btnSaveBackend').addEventListener('click', useProductionBackend);
+  document.getElementById('btnResetBackend').addEventListener('click', useProductionBackend);
 
   // Clear inputs action
   if (btnClear) {
@@ -365,7 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
       lastGeneralAudit = null;
       whatsappText.value = '';
       fulfillmentText.value = '';
-      invalidate(); screenshots.reset(); clearHints();
+      invalidate(); screenshots.reset();
       chrome.storage.local.set({ whatsappText: '', fulfillmentText: '' }, () => {
         results.innerHTML = '<p style="color:#6B7280; margin:0; text-align:center;">Inputs cleared. Ready for new audit data!</p>';
       });
@@ -465,7 +443,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (vaccines.vaccineMode()) {
       activeResult = null; btnVerify.disabled = true;
       try {
-        if (normalizeBackendUrl(backendUrlInput.value) !== normalizeBackendUrl(savedBackendUrl)) throw new Error('Click Save to apply the changed backend URL.');
         await vaccines.verify();
       } catch (error) { showError(error); }
       finally { btnVerify.disabled = false; }
@@ -475,12 +452,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const ff = fulfillmentText.value.trim();
 
     if (!wa || !ff) {
-      document.getElementById('auditStatus').textContent = 'Audit requires review';
+      document.getElementById('auditStatus').textContent = !wa ? 'Customer request missing' : 'Fulfilment confirmation missing';
       results.innerHTML = '<span style="color:red; font-size:11px;">Error: Paste or load both the WhatsApp client order and the systems fulfillment log.</span>';
       return;
     }
 
     if (btnVerify.disabled) return;
+    inputClear.cancel();
     const version = inputRevision, context = contextRevision;
     const controller = new AbortController();
     auditController = controller;
@@ -495,10 +473,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }, 3000);
     try {
-      const activeUrl = normalizeBackendUrl(savedBackendUrl);
-      if (normalizeBackendUrl(backendUrlInput.value) !== activeUrl) {
-        throw new Error('Click Save to apply your changed backend URL before auditing.');
-      }
       const data = await request('/api/verify', {
         signal: controller.signal,
         method: 'POST',
@@ -513,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
       requireCatalogAuditResponse(data);
       applyAuditProductLog(data.productCatalog);
       delete data.productCatalog;
-      void refreshHints();
+
       // Initialize active results and render dynamically
       activeResult = data;
       lastGeneralAudit = data.generalAudit ? data : null;

@@ -1,3 +1,8 @@
+import {extractGeneralStructuredPreview,applyGeneralExtractionSubmission,projectGeneralStructuredSource,finishGeneralStructuredAudit} from './generalStructuredExtraction';
+import {applyIdentityDecision} from './generalIdentityDecision';
+import {restoreGeneralIdentityDecisions} from '../src/utils/generalIdentityPersistence';
+import {identityVariationId} from './generalIdentityLearning';
+import {learnPairedCatalogueProducts} from './generalPairedCatalogueLearning';
 import {createAuditStorage} from './auditStorage';
 import { canManageCatalog } from '../shared/productCatalog';
 import { assignedRoles } from '../shared/roles';
@@ -5,6 +10,7 @@ import {canAccessAuditRecord} from './auditRecordAccess';
 import {generalAuditMutations} from './generalAuditMutation';
 import { defaultProducts, applyCatalog } from './productCatalog';
 import { runGeneralProductNameAudit } from './generalProductNameAudit';
+import { generalAuditorAiContext } from './generalAuditorInstructions';
 import { generalInputFingerprint } from '../shared/generalAuditFingerprint';
 import { restoreGeneralProductConfirmations } from '../src/utils/generalProductConfirmationPersistence';
 import { auditReadBudget, auditRemainingMs, auditSignal, auditTiming } from './auditBudget';
@@ -25,6 +31,9 @@ import { learnVerifiedCatalogueAliases, changeCatalogueAlias } from './catalogAl
 import { readGeneralFacilityContext } from './generalFacilityRecords';
 import { createHash } from 'node:crypto';
 import { emptyGeneralFacilityDirectory, activeGeneralFacilities, excludedGeneralFacilities } from './generalFacilityDirectory';
+
+const naturalLanguageTestAliases=structuredClone(service.getAliases());
+const accessoryRouteCatalogProducts=defaultProducts();
 
 function fixture(facilityContext?: () => Promise<any>) {
   service.clearAllAllocations({ clearHistory: true });
@@ -110,8 +119,9 @@ function verifyRoute(app: ReturnType<typeof fixture>) {
     vaccineService: service, resolveCompanionFacility, companionFacilityErrors, CompanionFacilityError,
     resolveBlueprintFacility, blueprintDistricts: {},
     async loadDistrictsFromFirestore() { await app.refresh(); context.blueprintDistricts = { test: app.records.get('vaccine_districts/isolated-test-sheet') }; },
-    runGeneralProductNameAudit, canManageCatalog, assignedRoles, canAccessAuditRecord, generalAuditMutations,
-    learnVerifiedCatalogueAliases,runAdminTransaction,catalogReference,catalogSeed,applyCatalog,
+    extractGeneralStructuredPreview,applyGeneralExtractionSubmission,projectGeneralStructuredSource,finishGeneralStructuredAudit,
+    runGeneralProductNameAudit, generalAuditorAiContext, restoreGeneralIdentityDecisions,identityVariationId,canManageCatalog, assignedRoles, canAccessAuditRecord, generalAuditMutations,
+    learnPairedCatalogueProducts,learnVerifiedCatalogueAliases,runAdminTransaction,catalogReference,catalogSeed,applyCatalog,
     readProductCatalog:{invalidate(){}},
     async queueCatalogueAliasSuggestions(suggestions:any[],actor:string) {
       let catalog=app.records.get(catalogReference.key)||catalogSeed;
@@ -500,8 +510,10 @@ test('main app and actual extension audit body resolve the same saved catalogue 
  const main=await route({auditScope:'general_auditor',whatsappMessage:customer,fulfillmentConfirmation:fulfillment});
  const extension=await route(auditBody(customer,fulfillment,1));
  assert.equal(main.status,200);assert.equal(extension.status,200);
- const businessItems=(result:any)=>result.items.map(({provenance,...item}:any)=>({...item,provenance:provenance.map(({normalizedName,clinicalAttributes,...source}:any)=>source)}));
+ const businessItems=(result:any)=>result.items.map(({provenance,...item}:any)=>({...item,provenance:provenance.map(({normalizedName,clinicalAttributes,catalogMatchMethod,...source}:any)=>source)}));
  assert.deepEqual(businessItems(extension.body),businessItems(main.body));
+ assert.equal(main.body.productMatchingDiagnostics[0].customer[0].matchSource,'Normalized');
+ assert.equal(extension.body.productMatchingDiagnostics[0].customer[0].matchSource,'Alias');
  assert.equal(extension.body.productMatchingDiagnostics[0].customer[0].catalogProductId,main.body.productMatchingDiagnostics[0].customer[0].catalogProductId);
  assert.equal(main.body.items.length,1);assert.equal(main.body.items[0].status,'pending order limit');
  assert.equal(main.body.items[0].name,'Diclofenac 25mg/mL Injection, 3mL');
@@ -521,20 +533,20 @@ test('main app and actual extension audit body resolve the same saved catalogue 
  assert.equal(app.balance('OPV'),15);
 });
 
-test('actual General Auditor route queues new wording for approval for both interfaces without changing allocations',async()=>{
+test('actual General Auditor route learns catalogue-verified wording for reuse by both interfaces without changing allocations',async()=>{
  const app=fixture();await app.refresh();
  app.records.set('product_catalog/current',{revision:30,products:[{id:'verified-pcm',scope:'general',name:'Paracetamol 500mg Tablet',aliases:['PCM 500mg'],contextualAliases:[],category:'medicine',note:''}]});
  const route=verifyRoute(app),header='Facility: Example HC\nOrderer: Test CCA\n';
  const customer=header+'Paracet 500 tabs 20/20',fulfillment=header+'Paracetamol 500mg Tablet [20/20]';
  const first=await route({auditScope:'general_auditor',whatsappMessage:customer,fulfillmentConfirmation:fulfillment});
- assert.equal(first.status,200);assert.equal(first.body.allMatch,true);assert.equal(first.body.aliasLearning.saved,0);
+ assert.equal(first.status,200);assert.equal(first.body.allMatch,true);assert.equal(first.body.aliasLearning.saved,1);
  const saved=app.records.get('product_catalog/current');
- assert.equal(saved.products.length,1);assert.ok(!saved.products[0].aliases.includes('Paracet 500 tabs'));assert.equal(saved.aliasRecords[0].status,'pending');
+ assert.equal(saved.products.length,1);assert.ok(saved.products[0].aliases.includes('Paracet 500 tabs'));assert.equal(saved.aliasRecords[0].status,'approved');
  assert.ok([...app.records.keys()].some(key=>key.startsWith('product_catalog/current/alias_history/')));
  const {auditBody}=await import('../extension/audit.js');
  const second=await route(auditBody(customer,fulfillment,saved.revision));
  assert.equal(second.status,200);assert.equal(second.body.allMatch,true);
- assert.equal(second.body.productMatchingDiagnostics[0].customer[0].matchSource,'Normalized');
+ assert.equal(second.body.productMatchingDiagnostics[0].customer[0].matchSource,'Alias');
  assert.equal(second.body.geminiMetrics.requestStarted,false);assert.equal(second.body.aliasLearning.saved,0);
  assert.equal(app.balance('OPV'),15);
 });
@@ -544,7 +556,7 @@ test('website and extension General verify route share documented full and parti
  app.records.set('product_catalog/current',{revision:90,products:[{id:'rdt',scope:'general',name:'Malaria Rapid Diagnostic Test Kit',aliases:['RDT','Malaria RDT'],contextualAliases:[],category:'diagnostic',note:''}]});
  const route=verifyRoute(app);const {auditBody}=await import('../extension/audit.js');
  for(const [quantity,supplied,status] of [[1,0,'Out of stock'],[1,1,'In stock'],[5,3,'Partially out of stock']] as const){
-  const customer=`Orderer: Grace\nFacility: Abasua Health Centre\nRDT ${quantity}`;
+  const customer=`Orderer: Grace Akabati\nFacility: Abasua Health Centre\nRDT ${quantity}`;
   const confirmation=`Orderer: Grace Akabati\nFacility: Abasua HC\nMalaria Rapid Diagnostic Test Kit [${supplied}/${quantity}]\nStatus: ${status}`;
   for(const body of [{auditScope:'general_auditor',whatsappMessage:customer,fulfillmentConfirmation:confirmation},auditBody(customer,confirmation,90)]){
    const r=await route(body);assert.equal(r.status,200);assert.equal(r.body.allMatch,true);assert.equal(r.body.issueCount,0);
@@ -623,4 +635,120 @@ test('an empty, already-consumed request is rejected without waiting for request
   const app=fixture(),route=verifyRoute(app);let listeners=0;
   const result=await route({}, {readableEnded:true,on(){listeners++;return this;}});
   assert.equal(result.status,400);assert.equal(listeners,0);
+});
+
+test('website and extension accept a matching uncatalogued product without registering it or changing vaccine allocation',async()=>{
+ const app=fixture();await app.refresh();
+ app.records.set('product_catalog/current',{revision:200,products:[]});
+ const route=verifyRoute(app);
+ const customer='Hello, Order request from Good God Pet Shop\nQuantity:\n✓VIR 105 (HB1 1000Ds)-1 vial\nLocation: Akyem Sekyere HC, Atiwa East District\nReceiver: Mary Abena Odurowaa 0544467121';
+ const confirmation='Thank you Abena Odurowaa Mary from Good God Pet Shop for ordering with Zipline. We will now prepare the following items for delivery:\n- VIR 105(HB1) 1000DS [1/1]';
+ const first=await route({auditScope:'general_auditor',whatsappMessage:customer,fulfillmentConfirmation:confirmation});
+ assert.equal(first.status,200);assert.equal(first.body.allMatch,true);assert.equal(first.body.items.length,1);
+ assert.equal(first.body.generalAudit.orderer.whatsappValue,'Mary Abena Odurowaa');
+ assert.equal(first.body.generalAudit.facility.whatsappValue,'Good God Pet Shop');
+ assert.equal(first.body.catalogueLearning.saved,0);
+ const catalog=app.records.get('product_catalog/current');
+ assert.equal(catalog.products.length,0);
+ assert.equal([...app.records.keys()].some(key=>key.startsWith('product_catalog/current/alias_history/')),false);
+ const {auditBody}=await import('../extension/audit.js');
+ const second=await route(auditBody(customer,confirmation,catalog.revision));
+ assert.equal(second.status,200);assert.equal(second.body.allMatch,true);assert.equal(second.body.items.length,1);
+ assert.equal(second.body.items[0].catalogProductId,first.body.items[0].catalogProductId);
+ assert.equal(second.body.catalogueLearning.added,0);assert.equal(app.balance('OPV'),15);
+});
+
+test('website and extension accept the same unlabelled name, labelled facility and attached vial spelling',async()=>{
+ const app=fixture();await app.refresh();const route=verifyRoute(app);
+ const customer='whatsapp\nDate:02/11/26\nYorta Naazie Madina\nName of facility: Monkula CHPS\nDrop area:karaga hospital\nDistrict:karaga\nProduct and quantity\nR21=10Vails';
+ const confirmation='Thank you Yorta Naazie Madina from Monkula CHPS for ordering with Zipline. We will now prepare the following items for delivery:\n- Malaria Vaccine (R21) [10/10]';
+ const {auditBody}=await import('../extension/audit.js');
+ for(const body of [{auditScope:'general_auditor',whatsappMessage:customer,fulfillmentConfirmation:confirmation},auditBody(customer,confirmation,1)]) {
+  const result=await route(body);assert.equal(result.status,200);assert.equal(result.body.allMatch,true);
+  assert.equal(result.body.generalAudit.orderer.whatsappValue,'Yorta Naazie Madina');
+  assert.equal(result.body.generalAudit.facility.whatsappValue,'Monkula CHPS');
+  assert.equal(result.body.items.length,1);assert.equal(result.body.items[0].fulfillment.requested,10);
+  assert.equal(result.body.items[0].fulfillment.supplied,10);assert.equal(result.body.geminiMetrics.calls,0);
+ }
+ assert.equal(app.balance('OPV'),15);
+});
+
+for(const mode of ['whatsapp_and_fulfillment','fulfillment_only'] as const)test(`natural count extraction preserves transactional Blueprint deductions in ${mode}`,async()=>{
+ service.replaceAliases(naturalLanguageTestAliases);
+ applyCatalog({revision:9200,products:defaultProducts()});
+ const app=fixture();await app.refresh();
+ const customer='Dr Timothy Ndebugre from Example HC. Please send four vials of BCG and three vials of OPV.';
+ const confirmation='Thank you Timothy Ndebugre from Example HC for ordering with Zipline.\nBCG x4\nBCG Diluent [4/4]\nOPV 3x\nOPV Dropper [3/3]';
+ const verified=await app.invoke('verify',{auditMode:mode,facilityId:service.getAllFacilities()[0].id,whatsappMessage:customer,fulfillmentConfirmation:confirmation});
+ assert.equal(verified.status,200);assert.equal(verified.body.allMatch,true,JSON.stringify(verified.body));
+ assert.equal(app.balance('BCG'),20);assert.equal(app.balance('OPV'),15,'Verification must not deduct before confirmation');
+ const committed=await app.commit(verified.body);assert.equal(committed.status,200);assert.equal(app.balance('BCG'),16);assert.equal(app.balance('OPV'),12);
+ const repeated=await app.commit(verified.body);assert.equal(repeated.status,200);assert.equal(app.balance('BCG'),16);assert.equal(app.balance('OPV'),12,'Same FS evidence cannot deduct twice');
+});
+
+test('actual verify route preserves a newer saved facility decision over an older cached audit',async()=>{
+ const app=fixture(),route=verifyRoute(app);
+ const body={checkId:'facility-decision-regression',auditScope:'general_auditor',whatsappMessage:'Orderer: Mary Mensah\nFacility: Goldne HC\nORS 5',fulfillmentConfirmation:'Orderer: Mary Mensah\nFacility: Golden HC\nOral Rehydration Salts [5/5]'};
+ const first=await route(body);assert.equal(first.status,200);assert.equal(first.body.generalAudit.facility.status,'review required');
+ for(const action of ['confirm','reject','reset'] as const){
+  const prior=app.records.get('audits/'+body.checkId);
+  const decided=applyIdentityDecision(prior,'facility',action,{id:'cca',name:'Test CCA'});
+  app.records.set('audits/'+body.checkId,decided);
+  const refreshed=await route(body);assert.equal(refreshed.status,200);
+  assert.equal(refreshed.body.generalAudit.facility.identityDecision.action,action);
+  assert.equal(refreshed.body.generalAudit.facility.status,action==='confirm'?'match':action==='reject'?'mismatch':'review required');
+  assert.equal(refreshed.body.generalAudit.facility.identityHistory.length,decided.generalAudit.facility.identityHistory.length);
+ }
+ assert.equal(app.balance('OPV'),15);
+});
+
+test('General Auditor production route recovers source names, preserves reviews and excludes protected modes',async()=>{
+ const app=fixture(),verify=verifyRoute(app);
+ const fulfillmentConfirmation='Thank you Osman Ishak from Example HC for ordering with Zipline. We will now prepare the following items for delivery:\n- Unlisted Compound XYZ 500mg [20/20]';
+ const origin={auditScope:'general_auditor',checkSource:'order_checker_app',deferProductResearch:true};
+ for(const [name,status] of [['Osman Ishak','match'],['Ishak Osman','match'],['Osman Ishaak','review required'],['Peter Owusu','mismatch']] as const){
+  const whatsappMessage=`${name}\nFacility: Example HC\nUnlisted Compound XYZ 500mg - 20`;
+  const response=await verify({...origin,whatsappMessage,fulfillmentConfirmation});
+  assert.equal(response.status,200,JSON.stringify(response.body));
+  assert.equal(response.body.generalAudit.orderer.status,status);assert.equal(response.body.allMatch,status==='match');
+  assert.equal(response.body.whatsappMessage,whatsappMessage);assert.equal(response.body.fulfillmentConfirmation,fulfillmentConfirmation);
+  assert.ok(response.body.generalAudit.ordererExtraction);assert.equal(response.body.storage.status,'saved');
+ }
+ const solo=await verify({...origin,whatsappMessage:'Osman Ishak',fulfillmentConfirmation});
+ assert.equal(solo.status,200);assert.equal(solo.body.generalAudit.orderer.status,'match');assert.equal(solo.body.allMatch,false);
+ const people=await verify({...origin,whatsappMessage:'Osman Ishak\nAli Karim\nFacility: Example HC\nUnlisted Compound XYZ 500mg - 20',fulfillmentConfirmation});
+ assert.equal(people.status,200);assert.equal(people.body.generalAudit.orderer.status,'review required');assert.equal(people.body.allMatch,false);
+ const extension=await verify({...origin,checkSource:'companion_extension',whatsappMessage:'Osman Ishak',fulfillmentConfirmation});
+ assert.equal(extension.status,200);assert.equal(extension.body.generalAudit.ordererExtraction,undefined);
+});
+
+
+test('website structured preview reaches the actual audit route without persisting patient details',async()=>{
+ const app=fixture(),verify=verifyRoute(app),catalog={revision:1,products:defaultProducts()};applyCatalog(catalog);
+ const whatsappMessage="Name: Ama Mensah\nFacility: Example HC\nPatient: Private Patient Fixture\nAge: 33 years\nPatient contact: 0551234567\n1) New Medicine XYZ 500mg - 20";
+ const fulfillmentConfirmation='Thank you Ama Mensah from Example HC for ordering with Zipline. We will prepare the following items: New Medicine XYZ 500mg [20/20].';
+ const preview=extractGeneralStructuredPreview(whatsappMessage,fulfillmentConfirmation,catalog);
+ const response=await verify({auditScope:'general_auditor',checkSource:'order_checker_app',deferProductResearch:true,whatsappMessage,fulfillmentConfirmation,structuredExtraction:{version:1,inputFingerprint:preview.inputFingerprint,catalogRevision:preview.catalogRevision,edits:[],confirmedFields:[],reason:'',acknowledged:false}});
+ assert.equal(response.status,200,JSON.stringify(response.body));assert.equal(response.body.allMatch,true);assert.ok(response.body.generalAudit.structuredExtraction);
+ assert.doesNotMatch(JSON.stringify(response.body),/Private Patient Fixture|0551234567|33 years/);
+ const persisted=app.records.get('audits/'+response.body.id);assert.ok(persisted);assert.doesNotMatch(JSON.stringify(persisted),/Private Patient Fixture|0551234567|33 years/);
+ const protectedMode=await verify({auditScope:'general_auditor',checkSource:'companion_extension',whatsappMessage:'Name: Ama Mensah\nFacility: Example HC\nORS 2',fulfillmentConfirmation:'Name: Ama Mensah\nFacility: Example HC\nORS [2/2]'});
+ assert.equal(protectedMode.status,200);assert.equal(protectedMode.body.generalAudit.structuredExtraction,undefined);
+});
+
+test('actual website General Auditor route separates vaccine accessories before final validation',async()=>{
+ const app=fixture(),catalog={revision:1,products:structuredClone(accessoryRouteCatalogProducts)};
+ app.records.set('product_catalog/current',catalog);applyCatalog(catalog);const verify=verifyRoute(app);
+ const whatsappMessage='Joseph Gumah from Gbimsi CHPS\nGood morning.\nKindly serve us with the following vaccines in vials:\n1. Measles — 3\n2. Men A — 2\n3. Yellow Fever — 2\n4. Rota — 15\n5. OPV — 2';
+ const fulfillmentConfirmation='Thank you Joseph Gumah from Gbimsi CHPS for ordering with Zipline. We will now prepare the following items for delivery:\n- Measles and Rubella Vaccine Diluent [3/3]\n- Measles & Rubella Vaccine [3/3]\n- Meningococcal Conjugate A Vaccine Diluent [2/2]\n- Meningococcal Conjugate A Vaccine [2/2]\n- Oral Polio Vaccine Dropper [2/2]\n- Oral Polio Vaccine (1&3) [2/2]\n- Rotavirus Vaccine Dropper [15/15]\n- Rotavirus Vaccine [15/15]\n- Yellow Fever Vaccine [2/2]\n- Yellow Fever Vaccine Diluent [2/2]';
+ const preview=extractGeneralStructuredPreview(whatsappMessage,fulfillmentConfirmation,catalog);
+ const response=await verify({auditScope:'general_auditor',checkSource:'order_checker_app',deferProductResearch:true,whatsappMessage,fulfillmentConfirmation,structuredExtraction:{version:1,inputFingerprint:preview.inputFingerprint,catalogRevision:preview.catalogRevision,edits:[],confirmedFields:[],reason:'',acknowledged:false}});
+ assert.equal(response.status,200,JSON.stringify(response.body));assert.equal(response.body.items.length,10);assert.ok(response.body.generalAudit.generalAccessoryContext);
+ assert.equal(response.body.generalAudit.orderer.status,'match');assert.equal(response.body.generalAudit.facility.status,'match');assert.equal(response.body.allMatch,false,JSON.stringify({items:response.body.items.map((i:any)=>({name:i.name,status:i.status,evidence:i.provenance.map((p:any)=>({name:p.name,id:p.canonicalId}))})),suggestions:response.body.generalAudit.catalogueSuggestions}));
+ assert.doesNotMatch(response.body.generalAudit.discrepancies.join(' '),/Required (?:diluent|dropper) missing/);
+ assert.ok(response.body.items.filter((i:any)=>/Diluent|Dropper/.test(i.name)).every((i:any)=>i.status==='match'));
+ const choice=response.body.generalAudit.catalogueSuggestions.find((g:any)=>g.alias==='Measles');assert.equal(JSON.stringify(choice.options.map((o:any)=>o.name)),JSON.stringify(['Measles & Rubella Vaccine']));
+ const saved=app.records.get('audits/'+response.body.id);assert.ok(saved.generalAudit.generalAccessoryContext);assert.equal(saved.generalAudit.structuredExtraction.preview.accessoryChecks.length,5);
+ const protectedMode=await verify({auditScope:'general_auditor',checkSource:'companion_extension',whatsappMessage:'Name: Joseph Gumah\nFacility: Gbimsi CHPS\nORS 2',fulfillmentConfirmation:'Name: Joseph Gumah\nFacility: Gbimsi CHPS\nORS [2/2]'});
+ assert.equal(protectedMode.status,200);assert.equal(protectedMode.body.generalAudit.generalAccessoryContext,undefined);assert.equal(app.balance('OPV'),15,'General Auditor must never deduct Blueprint allocations');
 });

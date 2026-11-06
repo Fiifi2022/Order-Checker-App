@@ -1,10 +1,14 @@
-import AllocationOperations from './AllocationOperations';
+import {updateBlueprintCellColor,blueprintCellForeground,headerColorKey,type BlueprintHeaderColors} from '../utils/blueprintCellColors';
+import {expandBlueprintRange} from '../utils/blueprintRangeExpansion';
+import {arrangeBlueprintSheetPaste,hasBlueprintSheetHeadings} from '../utils/blueprintSheetPaste';
+import {blueprintClipboardText,blueprintPasteRowTargets,blueprintPasteQuantity,blueprintClipboardTsv,readBlueprintClipboard} from '../utils/blueprintClipboard';
 import BlueprintMonthTabs from './BlueprintMonthTabs';
 import {useAllocationWorkspace} from './AllocationWorkspace';
 import {allocationImportPreview,allocationNameKey,type AllocationSheet} from '../../shared/allocationOperations';
 import {canManageCatalog,type CatalogProduct} from '../../shared/productCatalog';
 import {assignedRoles} from '../../shared/roles';
 import { authFetch } from '../utils/authFetch';
+import {connectBlueprintLive} from '../utils/blueprintLive';
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { createPortal } from 'react-dom';
@@ -147,6 +151,7 @@ export interface DistrictSheetData {
   rows: FacilityBlueprintRow[];
   blankColumns?: BlankBlueprintColumn[];
   sheetSizing?: BlueprintSizing;
+  headerCellColors?: BlueprintHeaderColors;
   cellMerges?: BlueprintCellMerge[];
   headerLabels?: string[];
   hiddenRowIds?: string[];
@@ -162,6 +167,8 @@ const DEFAULT_BLUEPRINT_HEADER_LABELS = [
   'Started / In-Prog', 'Completed Date', 'Facility Name', 'Sub-district', 'Delivery Site',
   'Start Date', 'Completed', 'Facility', 'Sub-district', 'Delivery Site'
 ];
+
+type BlueprintClipboardSelection = { sheetId: string; rowIds: string[]; columns: number[] };
 
 interface VaccineAllocationBlueprintProps {
   preferredSheetId?: string;
@@ -265,6 +272,9 @@ export default function VaccineAllocationBlueprint({
   const blankColumnsRef = useRef(blankColumns);
   blankColumnsRef.current = blankColumns;
   const updateBlankColumns = (columns: BlankBlueprintColumn[]) => { blankColumnsRef.current = columns; setBlankColumns(columns); };
+  const [headerCellColors,setHeaderCellColors]=useState<BlueprintHeaderColors>({});
+  const headerCellColorsRef=useRef(headerCellColors);
+  const updateHeaderCellColors=(value:BlueprintHeaderColors)=>{headerCellColorsRef.current=value;setHeaderCellColors(value);};
   const [sheetSizing, setSheetSizing] = useState<BlueprintSizing>(emptyBlueprintSizing);
   const sheetSizingRef = useRef(sheetSizing);
   sheetSizingRef.current = sheetSizing;
@@ -281,7 +291,7 @@ export default function VaccineAllocationBlueprint({
     const a = visibleColumns.indexOf(first), b = visibleColumns.indexOf(last);
     return a < 0 || b < 0 ? [] : visibleColumns.slice(Math.min(a, b), Math.max(a, b) + 1);
   };
-  const isColumnDeleted = (index: number) => deletedColumnKeys.includes(blueprintColumnKey(index, products));
+  const isColumnDeleted = (index: number) => deletedColumnKeys.includes(layoutColumnKey(index, products, blankColumns));
   const getSheetColumnLetter = (index: number) => getExcelColumnLetter(visibleColumns.indexOf(index));
   const [hiddenRowIds, setHiddenRowIds] = useState<string[]>([]);
   const [mergeHeaders, setMergeHeaders] = useState(true);
@@ -289,7 +299,7 @@ export default function VaccineAllocationBlueprint({
   const [freezeColumns, setFreezeColumns] = useState(0);
   const [freezeColumnInput, setFreezeColumnInput] = useState('0');
   const [freezeRowOffsets, setFreezeRowOffsets] = useState<Record<number, number>>({});
-  const [freezeMenu, setFreezeMenu] = useState<{ x: number; y: number; kind: 'main' | 'row' | 'column'; index?: number; rowId?: string; rowIds?: string[]; columnIndexes?: number[]; clickedColumn?: number } | null>(null);
+  const [freezeMenu, setFreezeMenu] = useState<{ x: number; y: number; kind: 'main' | 'row' | 'column'; index?: number; rowId?: string; rowIds?: string[]; columnIndexes?: number[]; clickedColumn?: number; clipboard?: BlueprintClipboardSelection } | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [allCellsHighlighted, setAllCellsHighlighted] = useState(false);
   const [fillColor, setFillColor] = useState('#FFF2CC');
@@ -311,9 +321,9 @@ export default function VaccineAllocationBlueprint({
   const clearPendingCellMove = () => { pendingCellMoveRef.current = null; setPendingCellMove(null); };
   const preserveCellRangeRef = useRef(false);
   const [historyVersion, setHistoryVersion] = useState(0);
-  const undoStackRef = useRef<Array<{ rows: FacilityBlueprintRow[]; products: string[]; deletedColumnKeys: string[]; cellMerges: BlueprintCellMerge[]; blankColumns: BlankBlueprintColumn[]; sheetSizing: BlueprintSizing }>>([]);
-  const redoStackRef = useRef<Array<{ rows: FacilityBlueprintRow[]; products: string[]; deletedColumnKeys: string[]; cellMerges: BlueprintCellMerge[]; blankColumns: BlankBlueprintColumn[]; sheetSizing: BlueprintSizing }>>([]);
-  const historySnapshotRef = useRef<{ rows: FacilityBlueprintRow[]; products: string[]; deletedColumnKeys: string[]; cellMerges: BlueprintCellMerge[]; blankColumns: BlankBlueprintColumn[]; sheetSizing: BlueprintSizing } | null>(null);
+  const undoStackRef = useRef<Array<{ rows: FacilityBlueprintRow[]; products: string[]; deletedColumnKeys: string[]; cellMerges: BlueprintCellMerge[]; blankColumns: BlankBlueprintColumn[]; sheetSizing: BlueprintSizing; headerCellColors: BlueprintHeaderColors }>>([]);
+  const redoStackRef = useRef<Array<{ rows: FacilityBlueprintRow[]; products: string[]; deletedColumnKeys: string[]; cellMerges: BlueprintCellMerge[]; blankColumns: BlankBlueprintColumn[]; sheetSizing: BlueprintSizing; headerCellColors: BlueprintHeaderColors }>>([]);
+  const historySnapshotRef = useRef<{ rows: FacilityBlueprintRow[]; products: string[]; deletedColumnKeys: string[]; cellMerges: BlueprintCellMerge[]; blankColumns: BlankBlueprintColumn[]; sheetSizing: BlueprintSizing; headerCellColors: BlueprintHeaderColors } | null>(null);
   const restoringHistoryRef = useRef(false);
   const historyResetPendingRef = useRef(true);
   const historyCellGroupRef = useRef<{ key: string; at: number } | null>(null);
@@ -356,11 +366,14 @@ export default function VaccineAllocationBlueprint({
     document.addEventListener('keydown', onEscape, true);
     return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', onEscape, true); };
   }, [isSheetFullscreen]);
+  const [availableSheetHeight,setAvailableSheetHeight]=useState<number>();
   const [gridScrollMetrics, setGridScrollMetrics] = useState({ clientWidth: 0, scrollWidth: 0, scrollLeft: 0, clientHeight: 0, scrollHeight: 0, scrollTop: 0 });
 
   const syncGridScrollMetrics = () => {
     const element = gridScrollRef.current;
     if (!element) return;
+    const available=Math.max(320,Math.floor(window.innerHeight-Math.max(0,element.getBoundingClientRect().top)-20));
+    setAvailableSheetHeight(previous=>previous===available?previous:available);
     setGridScrollMetrics({
       clientWidth: element.clientWidth,
       scrollWidth: element.scrollWidth,
@@ -474,6 +487,11 @@ export default function VaccineAllocationBlueprint({
   const [blueprintLoadError, setBlueprintLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [autoSave,setAutoSave]=useState(true);
+  const autoSaveRef=useRef(true);
+  const draftRevisionRef=useRef(0);
+  const savedDraftRevisionRef=useRef(0);
+  const saveQueueRef=useRef<Promise<boolean>>(Promise.resolve(true));
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
 
   // Dedicated Comment Section Drawer & Modal State
@@ -790,7 +808,7 @@ export default function VaccineAllocationBlueprint({
         setRows(normalizeBlueprintRowsProgress(activeSheet.rows || [], sheetProducts));
         setCellMerges(activeSheet.cellMerges || []);
         updateBlankColumns(activeSheet.blankColumns || []);
-        updateSheetSizing(activeSheet.sheetSizing || emptyBlueprintSizing());
+        updateSheetSizing(activeSheet.sheetSizing || emptyBlueprintSizing());updateHeaderCellColors(activeSheet.headerCellColors||{});
         setHeaderLabels(activeSheet.headerLabels?.length === 20 ? activeSheet.headerLabels : [...DEFAULT_BLUEPRINT_HEADER_LABELS]);
         setActiveHeaderCell(null);
         updateDeletedColumns(activeSheet.deletedColumnKeys || []);
@@ -824,7 +842,7 @@ export default function VaccineAllocationBlueprint({
     setRows(normalizeBlueprintRowsProgress(target.rows || [], Array.isArray(target.products) ? target.products : [...DEFAULT_BLUEPRINT_PRODUCTS]));
     setCellMerges(target.cellMerges || []);
         updateBlankColumns(target.blankColumns || []);
-        updateSheetSizing(target.sheetSizing || emptyBlueprintSizing());
+        updateSheetSizing(target.sheetSizing || emptyBlueprintSizing());updateHeaderCellColors(target.headerCellColors||{});
     setHeaderLabels(target.headerLabels?.length === 20 ? target.headerLabels : [...DEFAULT_BLUEPRINT_HEADER_LABELS]);
     setActiveHeaderCell(null);
     updateDeletedColumns(target.deletedColumnKeys || []);
@@ -866,7 +884,7 @@ export default function VaccineAllocationBlueprint({
         setRows(newlyCreated.rows || []);
         setCellMerges(newlyCreated.cellMerges || []);
         updateBlankColumns(newlyCreated.blankColumns || []);
-        updateSheetSizing(newlyCreated.sheetSizing || emptyBlueprintSizing());
+        updateSheetSizing(newlyCreated.sheetSizing || emptyBlueprintSizing());updateHeaderCellColors(newlyCreated.headerCellColors||{});
         setHeaderLabels(newlyCreated.headerLabels?.length === 20 ? newlyCreated.headerLabels : [...DEFAULT_BLUEPRINT_HEADER_LABELS]);
         setActiveHeaderCell(null);
         updateDeletedColumns(newlyCreated.deletedColumnKeys || []);
@@ -935,7 +953,7 @@ export default function VaccineAllocationBlueprint({
           setRows(normalizeBlueprintRowsProgress(nextActive.rows || [], Array.isArray(nextActive.products) ? nextActive.products : [...DEFAULT_BLUEPRINT_PRODUCTS]));
           setCellMerges(nextActive.cellMerges || []);
         updateBlankColumns(nextActive.blankColumns || []);
-        updateSheetSizing(nextActive.sheetSizing || emptyBlueprintSizing());
+        updateSheetSizing(nextActive.sheetSizing || emptyBlueprintSizing());updateHeaderCellColors(nextActive.headerCellColors||{});
           setHeaderLabels(nextActive.headerLabels?.length === 20 ? nextActive.headerLabels : [...DEFAULT_BLUEPRINT_HEADER_LABELS]);
           setActiveHeaderCell(null);
           updateDeletedColumns(nextActive.deletedColumnKeys || []);
@@ -993,7 +1011,7 @@ export default function VaccineAllocationBlueprint({
           setRows(normalizeBlueprintRowsProgress(data.district.rows || [], Array.isArray(data.district.products) ? data.district.products : [...DEFAULT_BLUEPRINT_PRODUCTS]));
           setCellMerges(data.district.cellMerges || []);
           updateBlankColumns(data.district.blankColumns || []);
-        updateSheetSizing(data.district.sheetSizing || emptyBlueprintSizing());
+        updateSheetSizing(data.district.sheetSizing || emptyBlueprintSizing());updateHeaderCellColors(data.district.headerCellColors||{});
           setHeaderLabels(data.district.headerLabels?.length === 20 ? data.district.headerLabels : [...DEFAULT_BLUEPRINT_HEADER_LABELS]);
           setActiveHeaderCell(null);
           updateDeletedColumns(data.district.deletedColumnKeys || []);
@@ -1058,7 +1076,7 @@ export default function VaccineAllocationBlueprint({
           setRows(normalizeBlueprintRowsProgress(nextActive.rows || [], Array.isArray(nextActive.products) ? nextActive.products : [...DEFAULT_BLUEPRINT_PRODUCTS]));
           setCellMerges(nextActive.cellMerges || []);
         updateBlankColumns(nextActive.blankColumns || []);
-        updateSheetSizing(nextActive.sheetSizing || emptyBlueprintSizing());
+        updateSheetSizing(nextActive.sheetSizing || emptyBlueprintSizing());updateHeaderCellColors(nextActive.headerCellColors||{});
           setHeaderLabels(nextActive.headerLabels?.length === 20 ? nextActive.headerLabels : [...DEFAULT_BLUEPRINT_HEADER_LABELS]);
           setActiveHeaderCell(null);
           updateDeletedColumns(nextActive.deletedColumnKeys || []);
@@ -1155,14 +1173,14 @@ export default function VaccineAllocationBlueprint({
     setRows(initialRows);
     setCellMerges([]);
     updateBlankColumns([]);
-    updateSheetSizing(emptyBlueprintSizing());
+    updateSheetSizing(emptyBlueprintSizing());updateHeaderCellColors({});
     setHeaderLabels([...DEFAULT_BLUEPRINT_HEADER_LABELS]);
     setActiveHeaderCell(null);
     updateDeletedColumns([]);
     setHiddenRowIds([]);
   };
 
-  const getSheetColumnWidth = (colIdx: number) => sheetSizing.columnWidths[blueprintColumnKey(colIdx, products)] ??
+  const getSheetColumnWidth = (colIdx: number) => sheetSizing.columnWidths[layoutColumnKey(colIdx, products, blankColumns)] ??
     (customColumn(colIdx) ? 120 : colIdx < 5 ? [140, 140, 230, 160, 200][colIdx] : Math.max(50, (productGroupWidths[products[Math.floor((colIdx - 5) / 4)]] ?? 328) / 4));
   const getGridColumnLeft = (colIdx: number) => visibleColumns.slice(0, visibleColumns.indexOf(colIdx)).reduce((sum, index) => sum + getSheetColumnWidth(index), 0);
 
@@ -1173,17 +1191,23 @@ export default function VaccineAllocationBlueprint({
     return {
       display: isColumnDeleted(colIdx) ? 'none' : undefined,
       position: columnFrozen ? 'sticky' : 'static',
-      left: columnFrozen ? `${getGridColumnLeft(colIdx)}px` : 'auto',
+      left: columnFrozen ? `${44 + getGridColumnLeft(colIdx)}px` : 'auto',
       zIndex: rowFrozen && columnFrozen ? 50 : rowFrozen ? 40 : columnFrozen ? 30 : 'auto',
       borderRight: atFrozenColumnEdge ? '2px solid #64748b' : undefined
     };
   };
 
+  const [clipboardDialog,setClipboardDialog] = useState<{mode: 'copy' | 'paste'; selection: BlueprintClipboardSelection; text: string} | null>(null);
+  const contextPasteRef = useRef<{ sheetId: string; paste: (text: string, rowId: string, col: number) => void } | null>(null);
+
   const openFreezeMenu = (event: React.MouseEvent, kind: 'main' | 'row' | 'column', index?: number, columnGroup?: number[]) => {
     event.preventDefault();
     event.stopPropagation();
     setFreezeColumnInput(String(freezeColumns));
+    const header=(event.target as HTMLElement).closest<HTMLElement>('[data-blueprint-header-row]');
+    if(header){setActiveHeaderCell({row:Number(header.dataset.blueprintHeaderRow),col:Number(header.dataset.blueprintHeaderCol)});setFocusedCell(null);setSelectedCellRange(null);}
     const cell = (event.target as HTMLElement).closest<HTMLElement>('[data-grid-cell-col]');
+    if(cell?.dataset.gridCellRow)setActiveHeaderCell(null);
     // Sheet row numbers refer to source order, even when the view is filtered
     // or sorted. Capture the clicked cell rather than a previously focused one.
     const row = cell?.dataset.gridCellRow ? rows.find(row => row.id === cell.dataset.gridCellRow)
@@ -1191,7 +1215,25 @@ export default function VaccineAllocationBlueprint({
     const rowIds = row ? selectedRowIds.has(row.id) ? Array.from(selectedRowIds) : [row.id] : [];
     const columnIndex = kind === 'column' ? index : cell ? Number(cell.dataset.gridCellCol) : undefined;
     const columnIndexes = columnIndex !== undefined && Number.isInteger(columnIndex) ? getColumnDeletionTargets(columnIndex, columnGroup) : [];
-    setFreezeMenu({ x: event.clientX, y: event.clientY, kind, index, rowId: row?.id, rowIds, columnIndexes, clickedColumn: columnIndex });
+    let clipboard: { sheetId: string; rowIds: string[]; columns: number[] } | undefined;
+    if (row && columnIndex !== undefined && kind === 'row') {
+      const bounds = getCellRangeBounds();
+      const visibleIndex = filteredAndSortedRows.findIndex(item => item.id === row.id);
+      const inside = bounds && visibleIndex >= bounds.firstRow && visibleIndex <= bounds.lastRow && columnIndex >= bounds.firstCol && columnIndex <= bounds.lastCol;
+      clipboard = { sheetId: activeDistrictId,
+        rowIds: inside ? filteredAndSortedRows.slice(bounds.firstRow, bounds.lastRow + 1).map(item => item.id) : [row.id],
+        columns: inside ? columnsInRange(bounds.firstCol, bounds.lastCol) : [columnIndex] };
+      if (!inside) {
+        setFocusedCell({rowId: row.id, colIdx: columnIndex});
+        setSelectedCellRange({anchorRowId: row.id, focusRowId: row.id, anchorColIdx: columnIndex, focusColIdx: columnIndex});
+      }
+    }
+    if(!clipboard && kind==='column' && columnIndex!==undefined && filteredAndSortedRows.length) {
+      clipboard={sheetId:activeDistrictId,rowIds:filteredAndSortedRows.map(row=>row.id),columns:columnIndexes.length?columnIndexes:[columnIndex]};
+    } else if(!clipboard && kind==='row' && row) {
+      clipboard={sheetId:activeDistrictId,rowIds:filteredAndSortedRows.filter(item=>rowIds.includes(item.id)).map(item=>item.id),columns:[...visibleColumns]};
+    }
+    setFreezeMenu({ x: event.clientX, y: event.clientY, kind, index, rowId: row?.id, rowIds, columnIndexes, clickedColumn: columnIndex, clipboard });
   };
 
   const getCurrentSheetRow = () => {
@@ -1210,7 +1252,7 @@ export default function VaccineAllocationBlueprint({
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    await persistBlueprintToServer(rows, products, district, month, cellMerges, safeRows, safeColumns);
+    debouncedSaveBlueprint(rows,products,district,month,cellMerges,headerLabels,hiddenRowIds,mergeHeaders,deletedColumnKeysRef.current,safeRows,safeColumns);
   };
 
   const getFocusedCellInfo = () => {
@@ -1249,7 +1291,8 @@ export default function VaccineAllocationBlueprint({
   };
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const persistBlueprintToServer = async (
+  const writeBlueprintToServer = async (
+    savingRevision:number,
     currentRows: FacilityBlueprintRow[],
     currentProducts: string[],
     currentDistrict: string,
@@ -1262,7 +1305,8 @@ export default function VaccineAllocationBlueprint({
     currentMergeHeaders = mergeHeaders,
     currentDeletedColumnKeys = deletedColumnKeysRef.current,
     currentBlankColumns = blankColumnsRef.current,
-    currentSheetSizing = sheetSizingRef.current
+    currentSheetSizing = sheetSizingRef.current,
+    currentHeaderCellColors = headerCellColorsRef.current
   ): Promise<boolean> => {
     const updatedSheet: DistrictSheetData = {
       ...districts.find(sheet => sheet.id === activeDistrictId),
@@ -1273,6 +1317,7 @@ export default function VaccineAllocationBlueprint({
       products: currentProducts,
       blankColumns: currentBlankColumns,
       sheetSizing: currentSheetSizing,
+      headerCellColors: currentHeaderCellColors,
       rows: deleteBlueprintColumnData(currentRows, currentProducts, Array.from({ length: 5 + currentProducts.length * 4 }, (_, index) => index).filter(index => currentDeletedColumnKeys.includes(blueprintColumnKey(index, currentProducts)))),
       cellMerges: currentMerges,
       headerLabels: currentHeaderLabels,
@@ -1292,10 +1337,14 @@ export default function VaccineAllocationBlueprint({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ district: updatedSheet, activeId: activeDistrictId, user: currentUser, cellEdits: editsToFlush,changeReason })
       });
-      if (data && Array.isArray(data.districts)) setDistricts(data.districts); data.districts.forEach((sheet:DistrictSheetData)=>{savedVersionsRef.current[sheet.id]=sheet.updatedAt||null;savedSheetsRef.current[sheet.id]=structuredClone(sheet);});
-      setHasUnsavedChanges(false);
-      setSaveStatus('Saved successfully');
-      setTimeout(() => setSaveStatus(null), 2500);
+      if(!Array.isArray(data?.districts)||!data.districts.some(sheet=>sheet.id===activeDistrictId))throw Error('The server did not confirm the saved sheet.');
+      const current=savingRevision===draftRevisionRef.current;
+      setDistricts(previous=>data.districts!.map(sheet=>!current&&sheet.id===activeDistrictId?previous.find(local=>local.id===sheet.id)||sheet:sheet));
+      data.districts.forEach((sheet:DistrictSheetData)=>{savedVersionsRef.current[sheet.id]=sheet.updatedAt||null;savedSheetsRef.current[sheet.id]=structuredClone(sheet);});
+      savedDraftRevisionRef.current=Math.max(savedDraftRevisionRef.current,savingRevision);
+      setHasUnsavedChanges(!current);
+      setSaveStatus(current?'Saved successfully':'New edits waiting to save');
+      if(current)setTimeout(()=>{if(draftRevisionRef.current===savingRevision)setSaveStatus(status=>status==='Saved successfully'?null:status);},2500);
       return true;
     } catch (err) {
       pendingEditsRef.current = [...editsToFlush, ...pendingEditsRef.current];
@@ -1304,6 +1353,15 @@ export default function VaccineAllocationBlueprint({
       setSaveStatus(`Save failed: ${message}`);
       return false;
     }
+  };
+
+  // Serialize writes. The next save uses the previous confirmed server version;
+  // an older response cannot clear edits made while that request was running.
+  type BlueprintSaveArguments=Parameters<typeof writeBlueprintToServer> extends [number,...infer Args]?Args:never;
+  const persistBlueprintToServer=(...args:BlueprintSaveArguments)=>{
+    const revision=draftRevisionRef.current;
+    const task=saveQueueRef.current.then(()=>writeBlueprintToServer(revision,...args));
+    saveQueueRef.current=task.catch(()=>false);return task;
   };
 
   // Auto-save through the existing Blueprint API, with a manual flush available in the toolbar.
@@ -1316,26 +1374,31 @@ export default function VaccineAllocationBlueprint({
     currentHeaderLabels = headerLabels,
     currentHiddenRowIds = hiddenRowIds,
     currentMergeHeaders = mergeHeaders,
-    currentDeletedColumnKeys = deletedColumnKeysRef.current
+    currentDeletedColumnKeys = deletedColumnKeysRef.current,
+    currentFreezeRows = freezeRows,
+    currentFreezeColumns = freezeColumns
   ) => {
     if(districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'){
       const saved=savedSheetsRef.current[activeDistrictId];
-      if(saved){const copy=structuredClone(saved);setRows(copy.rows);setProducts(copy.products||[]);setDistrict(copy.district);setMonth(copy.month);setCellMerges(copy.cellMerges||[]);updateDeletedColumns(copy.deletedColumnKeys||[]);updateBlankColumns(copy.blankColumns||[]);updateSheetSizing(copy.sheetSizing||emptyBlueprintSizing());setHeaderLabels(copy.headerLabels||[...DEFAULT_BLUEPRINT_HEADER_LABELS]);setHiddenRowIds(copy.hiddenRowIds||[]);}
+      if(saved){const copy=structuredClone(saved);setRows(copy.rows);setProducts(copy.products||[]);setDistrict(copy.district);setMonth(copy.month);setCellMerges(copy.cellMerges||[]);updateDeletedColumns(copy.deletedColumnKeys||[]);updateBlankColumns(copy.blankColumns||[]);updateSheetSizing(copy.sheetSizing||emptyBlueprintSizing());updateHeaderCellColors(copy.headerCellColors||{});setHeaderLabels(copy.headerLabels||[...DEFAULT_BLUEPRINT_HEADER_LABELS]);setHiddenRowIds(copy.hiddenRowIds||[]);}
       setHasUnsavedChanges(false);setSaveStatus('This cycle is closed. Reopen it with a correction reason before editing.');return;
     }
 
     const currentBlankColumns = blankColumnsRef.current;
     const currentSheetSizing = sheetSizingRef.current;
+    const currentHeaderCellColors = headerCellColorsRef.current;
+    draftRevisionRef.current++;
     setHasUnsavedChanges(true);
-    setSaveStatus('Saving...');
+    setSaveStatus(autoSaveRef.current?'Unsaved changes — autosave after typing':'Unsaved changes — click Save');
     setDistricts(prev => prev.map(d => d.id === activeDistrictId
-      ? { ...d, sheetSizing: currentSheetSizing, blankColumns: currentBlankColumns, district: currentDistrict, month: currentMonth, products: currentProducts, rows: currentRows, cellMerges: currentMerges, headerLabels: currentHeaderLabels, hiddenRowIds: currentHiddenRowIds, deletedColumnKeys: currentDeletedColumnKeys, mergeHeaders: currentMergeHeaders, updatedAt: new Date().toISOString() }
+      ? { ...d, freezeRows:currentFreezeRows,freezeColumns:currentFreezeColumns,sheetSizing: currentSheetSizing, headerCellColors: currentHeaderCellColors, blankColumns: currentBlankColumns, district: currentDistrict, month: currentMonth, products: currentProducts, rows: currentRows, cellMerges: currentMerges, headerLabels: currentHeaderLabels, hiddenRowIds: currentHiddenRowIds, deletedColumnKeys: currentDeletedColumnKeys, mergeHeaders: currentMergeHeaders, updatedAt: new Date().toISOString() }
       : d));
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    if(!autoSaveRef.current){saveTimerRef.current=null;return;}
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
-      void persistBlueprintToServer(currentRows, currentProducts, currentDistrict, currentMonth, currentMerges, freezeRows, freezeColumns, currentHeaderLabels, currentHiddenRowIds, currentMergeHeaders, currentDeletedColumnKeys, currentBlankColumns, currentSheetSizing);
-    }, 500);
+      void persistBlueprintToServer(currentRows, currentProducts, currentDistrict, currentMonth, currentMerges, currentFreezeRows, currentFreezeColumns, currentHeaderLabels, currentHiddenRowIds, currentMergeHeaders, currentDeletedColumnKeys, currentBlankColumns, currentSheetSizing, currentHeaderCellColors);
+    }, 1200);
   };
 
   const saveBlueprintToServer = debouncedSaveBlueprint;
@@ -1400,40 +1463,45 @@ export default function VaccineAllocationBlueprint({
   const [liveSheetCheckedAt, setLiveSheetCheckedAt] = useState('');
   const liveSheetRef = useRef({ activeDistrictId, hasUnsavedChanges, rows, districts });
   liveSheetRef.current = { activeDistrictId, hasUnsavedChanges, rows, districts };
-  useEffect(() => {
-    if (loading || hasUnsavedChanges) return;
-    let canceled = false;
-    let fetching = false;
-    const controller = new AbortController();
-    const refreshSavedAllocation = async () => {
-      if (fetching || document.hidden || resizingSheetRef.current) return;
-      fetching = true;
-      try {
-        const data = await safeFetchJson<{ sheet: DistrictSheetData; checkedAt: string }>(`/api/vaccine/blueprint-districts/${encodeURIComponent(activeDistrictId)}/current`, { signal: controller.signal });
-        const current = liveSheetRef.current;
-        if (canceled || current.activeDistrictId !== activeDistrictId || current.hasUnsavedChanges || saveTimerRef.current || resizingSheetRef.current) return;
-        const incoming = data.sheet;
-        if(incoming){savedVersionsRef.current[activeDistrictId]=incoming.updatedAt||null;savedSheetsRef.current[activeDistrictId]=structuredClone(incoming);}
-        setLiveSheetWarning('');
-        setLiveSheetCheckedAt(data.checkedAt);
-        const saved = current.districts.find(sheet => sheet.id === activeDistrictId);
-        if (!incoming || JSON.stringify(incoming) === JSON.stringify(saved)) return;
-        const nextProducts = incoming.products || [...DEFAULT_BLUEPRINT_PRODUCTS];
-        historyResetPendingRef.current = true;
-        setDistricts(previous => previous.map(sheet => sheet.id === activeDistrictId ? incoming : sheet));
-        setProducts(nextProducts);
-        setRows(normalizeBlueprintRowsProgress(incoming.rows || [], nextProducts));
-        updateBlankColumns(incoming.blankColumns || []);
-        updateSheetSizing(incoming.sheetSizing || emptyBlueprintSizing());
-      } catch {
-        if (!canceled) setLiveSheetWarning('Live allocation updates unavailable. Displayed balances may be out of date. Retry before dispatch.');
-      } finally { fetching = false; }
-    };
-    const timer = setInterval(refreshSavedAllocation, 3000);
-    window.addEventListener('focus', refreshSavedAllocation);
-    void refreshSavedAllocation();
-    return () => { canceled = true; controller.abort(); clearInterval(timer); window.removeEventListener('focus', refreshSavedAllocation); };
-  }, [activeDistrictId, hasUnsavedChanges, loading]);
+  const pendingLiveSheetRef=useRef<{sheet:DistrictSheetData;checkedAt:string}|null>(null);
+  const acceptLiveSheetRef=useRef<(data:{sheet:DistrictSheetData;checkedAt:string})=>void>(()=>{});
+  acceptLiveSheetRef.current=data=>{
+    const current=liveSheetRef.current,incoming=data.sheet;
+    if(!incoming||incoming.id!==current.activeDistrictId)return;
+    if(current.hasUnsavedChanges||draftRevisionRef.current!==savedDraftRevisionRef.current||saveTimerRef.current||resizingSheetRef.current){
+      pendingLiveSheetRef.current=data;
+      setLiveSheetWarning('Saved sheet updates are waiting. Your unsaved edits are preserved; save them before applying incoming changes.');return;
+    }
+    const savedVersion=savedVersionsRef.current[incoming.id];
+    if(savedVersion&&incoming.updatedAt&&Date.parse(incoming.updatedAt)<Date.parse(savedVersion))return;
+    savedVersionsRef.current[incoming.id]=incoming.updatedAt||null;savedSheetsRef.current[incoming.id]=structuredClone(incoming);
+    pendingLiveSheetRef.current=null;setLiveSheetWarning('');setLiveSheetCheckedAt(data.checkedAt);
+    const saved=current.districts.find(sheet=>sheet.id===incoming.id);
+    const nextProducts=incoming.products||[...DEFAULT_BLUEPRINT_PRODUCTS];
+    const nextRows=normalizeBlueprintRowsProgress(incoming.rows||[],nextProducts);
+    // A save response may update the sheet list before the grid receives its
+    // queued live event. Compare the displayed rows too, not just that list.
+    if(JSON.stringify(incoming)===JSON.stringify(saved)&&JSON.stringify(nextRows)===JSON.stringify(current.rows))return;
+    historyResetPendingRef.current=true;
+    setDistricts(previous=>previous.map(sheet=>sheet.id===incoming.id?incoming:sheet));setProducts(nextProducts);
+    setRows(nextRows);
+    updateBlankColumns(incoming.blankColumns||[]);updateSheetSizing(incoming.sheetSizing||emptyBlueprintSizing());updateHeaderCellColors(incoming.headerCellColors||{});
+    setCellMerges(incoming.cellMerges||[]);setHeaderLabels(incoming.headerLabels?.length===20?incoming.headerLabels:[...DEFAULT_BLUEPRINT_HEADER_LABELS]);
+    updateDeletedColumns(incoming.deletedColumnKeys||[]);setHiddenRowIds(incoming.hiddenRowIds||[]);
+    setMergeHeaders(incoming.mergeHeaders!==false);setFreezeRows(incoming.freezeRows||0);setFreezeColumns(incoming.freezeColumns||0);
+  };
+  const hasSavedActiveSheet=Object.prototype.hasOwnProperty.call(savedVersionsRef.current,activeDistrictId);
+  useEffect(()=>{
+    if(loading||!hasSavedActiveSheet)return;
+    pendingLiveSheetRef.current=null;
+    return connectBlueprintLive({url:`/api/vaccine/blueprint-districts/${encodeURIComponent(activeDistrictId)}/events`,request:authFetch,document,window,
+      receive:data=>acceptLiveSheetRef.current(data),unavailable:()=>setLiveSheetWarning('Live allocation updates unavailable. Displayed balances may be out of date. Check updates before dispatch.')});
+  },[activeDistrictId,loading,hasSavedActiveSheet]);
+  useEffect(()=>{if(!hasUnsavedChanges&&pendingLiveSheetRef.current)acceptLiveSheetRef.current(pendingLiveSheetRef.current);},[hasUnsavedChanges]);
+  const checkSavedAllocation=async()=>{
+    try{acceptLiveSheetRef.current(await safeFetchJson(`/api/vaccine/blueprint-districts/${encodeURIComponent(activeDistrictId)}/current`));}
+    catch{setLiveSheetWarning('Saved allocation could not be checked. Keep your edits and retry before dispatch.');}
+  };
 
   useEffect(() => () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -1721,12 +1789,12 @@ export default function VaccineAllocationBlueprint({
       const columns = visibleColumns.slice(visibleColumns.indexOf(startColIdx));
       values.forEach((value, offset) => {
         const col = columns[offset]; if (col === undefined) return;
-        if (targetRow.rowKind === 'blank' || customColumn(col)) { updatedRow.cells = { ...updatedRow.cells, [blueprintColumnKey(col, products)]: value }; return; }
+        if (targetRow.rowKind === 'blank' || customColumn(col)) { updatedRow.cells = { ...updatedRow.cells, [layoutColumnKey(col, products, blankColumns)]: value }; return; }
         if (col < 5) { updatedRow[(['processing', 'completed', 'facility', 'subDistrict', 'deliverySite'] as const)[col]] = value; return; }
         const product = products[Math.floor((col - 5) / 4)], sub = (col - 5) % 4;
         if (sub === 3) return;
         const field = (['carryOver', 'allocation', 'distributed'] as const)[sub];
-        const number = value.trim() === '' ? '' : Number(value.replace(/,/g, ''));
+        const number = blueprintPasteQuantity(value);
         const previous = updatedRow.vaccines[product] || {};
         const next = { ...previous, [field]: number };
         next.balance = computeBalance(next.carryOver, next.allocation, next.distributed);
@@ -1734,45 +1802,49 @@ export default function VaccineAllocationBlueprint({
       });
       return updatedRow;
     }
+    const compactNumbers = (prefix:number) => {
+      try {const tail=values.slice(prefix).map(blueprintPasteQuantity);return tail.some(value=>typeof value==='number');} catch {return false;}
+    };
+
     // Pattern A: 1 facility column + 16 allocation columns (17 cols) pasted at Col C (idx 2) or Col A (idx 0)
     const isFacilityPlusAllocations =
-      (startColIdx === 2 && values.length === 1 + productList.length) ||
-      (startColIdx === 0 && values.length === 1 + productList.length);
+      (startColIdx === 2 && values.length === 1 + productList.length && compactNumbers(1)) ||
+      (startColIdx === 0 && values.length === 1 + productList.length && compactNumbers(1));
 
     // Pattern B: 3 columns (Start, Completed, Facility) + 16 allocation columns (19 cols) pasted at Col A (idx 0)
     const isFullDatesPlusAllocations =
-      startColIdx === 0 && values.length === 3 + productList.length;
+      startColIdx === 0 && values.length === 3 + productList.length && compactNumbers(3);
     const isFacilityAndSitePlusAllocations =
-      startColIdx === 2 && values.length === 2 + productList.length;
+      startColIdx === 2 && values.length === 2 + productList.length && compactNumbers(2);
     const isFullDatesAndSitePlusAllocations =
-      startColIdx === 0 && values.length === 4 + productList.length;
+      startColIdx === 0 && values.length === 4 + productList.length && compactNumbers(4);
     const isFullDatesSubDistrictAndSitePlusAllocations =
-      startColIdx === 0 && values.length === 5 + productList.length;
+      startColIdx === 0 && values.length === 5 + productList.length && compactNumbers(5);
     const isFacilitySubDistrictAndSitePlusAllocations =
-      startColIdx === 2 && values.length === 3 + productList.length;
+      startColIdx === 2 && values.length === 3 + productList.length && compactNumbers(3);
 
     // Pattern C: 1 facility column + 3 subcols per vaccine (49 cols) pasted at Col C (idx 2)
     const isFacilityPlus3PerVaccine =
-      startColIdx === 2 && values.length === 1 + productList.length * 3;
+      startColIdx === 2 && values.length === 1 + productList.length * 3 && compactNumbers(1);
 
     // Pattern D: 3 columns + 3 subcols per vaccine (51 cols) pasted at Col A (idx 0)
     const isFullPlus3PerVaccine =
-      startColIdx === 0 && values.length === 3 + productList.length * 3;
+      startColIdx === 0 && values.length === 3 + productList.length * 3 && compactNumbers(3);
     const isFacilityAndSitePlus3PerVaccine =
-      startColIdx === 2 && values.length === 2 + productList.length * 3;
+      startColIdx === 2 && values.length === 2 + productList.length * 3 && compactNumbers(2);
     const isFullDatesAndSitePlus3PerVaccine =
-      startColIdx === 0 && values.length === 4 + productList.length * 3;
+      startColIdx === 0 && values.length === 4 + productList.length * 3 && compactNumbers(4);
     const isFullDatesSubDistrictAndSitePlus3PerVaccine =
-      startColIdx === 0 && values.length === 5 + productList.length * 3;
+      startColIdx === 0 && values.length === 5 + productList.length * 3 && compactNumbers(5);
     const isFacilitySubDistrictAndSitePlus3PerVaccine =
-      startColIdx === 2 && values.length === 3 + productList.length * 3;
+      startColIdx === 2 && values.length === 3 + productList.length * 3 && compactNumbers(3);
 
     if (!deletedColumnKeys.length && (isFacilityPlusAllocations)) {
       const facName = values[0];
       if (facName) updatedRow.facility = facName;
       productList.forEach((pName, pIdx) => {
         const valStr = values[1 + pIdx]?.trim() || '';
-        const numVal = valStr !== '' && !isNaN(Number(valStr.replace(/,/g, ''))) ? Number(valStr.replace(/,/g, '')) : '';
+        const numVal = blueprintPasteQuantity(valStr);
         const prev = updatedRow.vaccines[pName] || {};
         const vData: VaccineSectionData = {
           carryOver: prev.carryOver || '',
@@ -1788,7 +1860,7 @@ export default function VaccineAllocationBlueprint({
       if (values[2]) updatedRow.facility = values[2];
       productList.forEach((pName, pIdx) => {
         const valStr = values[3 + pIdx]?.trim() || '';
-        const numVal = valStr !== '' && !isNaN(Number(valStr.replace(/,/g, ''))) ? Number(valStr.replace(/,/g, '')) : '';
+        const numVal = blueprintPasteQuantity(valStr);
         const prev = updatedRow.vaccines[pName] || {};
         const vData: VaccineSectionData = {
           carryOver: prev.carryOver || '',
@@ -1814,7 +1886,7 @@ export default function VaccineAllocationBlueprint({
       }
       productList.forEach((pName, pIdx) => {
         const raw = values[prefix + pIdx]?.trim() || '';
-        const allocation = raw && Number.isFinite(Number(raw.replace(/,/g, ''))) ? Number(raw.replace(/,/g, '')) : '';
+        const allocation = blueprintPasteQuantity(raw);
         const previous = updatedRow.vaccines[pName] || {};
         updatedRow.vaccines[pName] = { carryOver: previous.carryOver || '', allocation, distributed: previous.distributed || '', balance: computeBalance(previous.carryOver, allocation, previous.distributed) };
       });
@@ -1830,7 +1902,7 @@ export default function VaccineAllocationBlueprint({
       updatedRow.deliverySite = values[prefix - 1] || '';
       productList.forEach((pName, pIdx) => {
         const valStr = values[prefix + pIdx]?.trim() || '';
-        const numVal = valStr !== '' && !isNaN(Number(valStr.replace(/,/g, ''))) ? Number(valStr.replace(/,/g, '')) : '';
+        const numVal = blueprintPasteQuantity(valStr);
         const prev = updatedRow.vaccines[pName] || {};
         updatedRow.vaccines[pName] = {
           carryOver: prev.carryOver || '',
@@ -1856,7 +1928,7 @@ export default function VaccineAllocationBlueprint({
       productList.forEach((pName, pIdx) => {
         const quantities = [0, 1, 2].map(offset => {
           const raw = values[prefix + pIdx * 3 + offset]?.trim().replace(/,/g, '') || '';
-          return raw && Number.isFinite(Number(raw)) ? Number(raw) : '';
+          return blueprintPasteQuantity(raw);
         });
         updatedRow.vaccines[pName] = { carryOver: quantities[0], allocation: quantities[1], distributed: quantities[2], balance: computeBalance(quantities[0], quantities[1], quantities[2]) };
       });
@@ -1874,9 +1946,9 @@ export default function VaccineAllocationBlueprint({
         const cStr = values[prefix + pIdx * 3]?.trim() || '';
         const aStr = values[prefix + pIdx * 3 + 1]?.trim() || '';
         const dStr = values[prefix + pIdx * 3 + 2]?.trim() || '';
-        const cNum = cStr !== '' && !isNaN(Number(cStr.replace(/,/g, ''))) ? Number(cStr.replace(/,/g, '')) : '';
-        const aNum = aStr !== '' && !isNaN(Number(aStr.replace(/,/g, ''))) ? Number(aStr.replace(/,/g, '')) : '';
-        const dNum = dStr !== '' && !isNaN(Number(dStr.replace(/,/g, ''))) ? Number(dStr.replace(/,/g, '')) : '';
+        const cNum = blueprintPasteQuantity(cStr);
+        const aNum = blueprintPasteQuantity(aStr);
+        const dNum = blueprintPasteQuantity(dStr);
         updatedRow.vaccines[pName] = { carryOver: cNum, allocation: aNum, distributed: dNum, balance: computeBalance(cNum, aNum, dNum) };
       });
     } else if (!deletedColumnKeys.length && (isFacilityPlus3PerVaccine)) {
@@ -1885,9 +1957,9 @@ export default function VaccineAllocationBlueprint({
         const cStr = values[1 + pIdx * 3]?.trim() || '';
         const aStr = values[1 + pIdx * 3 + 1]?.trim() || '';
         const dStr = values[1 + pIdx * 3 + 2]?.trim() || '';
-        const cNum = cStr !== '' && !isNaN(Number(cStr.replace(/,/g, ''))) ? Number(cStr.replace(/,/g, '')) : '';
-        const aNum = aStr !== '' && !isNaN(Number(aStr.replace(/,/g, ''))) ? Number(aStr.replace(/,/g, '')) : '';
-        const dNum = dStr !== '' && !isNaN(Number(dStr.replace(/,/g, ''))) ? Number(dStr.replace(/,/g, '')) : '';
+        const cNum = blueprintPasteQuantity(cStr);
+        const aNum = blueprintPasteQuantity(aStr);
+        const dNum = blueprintPasteQuantity(dStr);
         updatedRow.vaccines[pName] = {
           carryOver: cNum,
           allocation: aNum,
@@ -1903,9 +1975,9 @@ export default function VaccineAllocationBlueprint({
         const cStr = values[3 + pIdx * 3]?.trim() || '';
         const aStr = values[3 + pIdx * 3 + 1]?.trim() || '';
         const dStr = values[3 + pIdx * 3 + 2]?.trim() || '';
-        const cNum = cStr !== '' && !isNaN(Number(cStr.replace(/,/g, ''))) ? Number(cStr.replace(/,/g, '')) : '';
-        const aNum = aStr !== '' && !isNaN(Number(aStr.replace(/,/g, ''))) ? Number(aStr.replace(/,/g, '')) : '';
-        const dNum = dStr !== '' && !isNaN(Number(dStr.replace(/,/g, ''))) ? Number(dStr.replace(/,/g, '')) : '';
+        const cNum = blueprintPasteQuantity(cStr);
+        const aNum = blueprintPasteQuantity(aStr);
+        const dNum = blueprintPasteQuantity(dStr);
         updatedRow.vaccines[pName] = {
           carryOver: cNum,
           allocation: aNum,
@@ -1944,10 +2016,7 @@ export default function VaccineAllocationBlueprint({
               ...(updatedRow.vaccines[pName] || {})
             };
 
-            let numVal: number | '' = '';
-            if (val !== '' && !isNaN(Number(val.replace(/,/g, '')))) {
-              numVal = Number(val.replace(/,/g, ''));
-            }
+            const numVal = blueprintPasteQuantity(val);
 
             if (subIdx === 0) {
               vData.carryOver = numVal;
@@ -1967,103 +2036,54 @@ export default function VaccineAllocationBlueprint({
     return normalizeFacilityProgress(updatedRow, productList, todayStr);
   };
 
-  const applyHeaderMappedPaste = (sourceRows: string[][], startRowId: string): boolean => {
-    const normalize = (value: string) => value.toLowerCase().replace(/\b(vaccines?|vials?)\b/g, '').replace(/[^a-z0-9]+/g, '').trim();
-    const aliases: Record<string, string> = { bopv: 'opv', oralpolio: 'opv', oralpoliovaccine: 'opv', measlesrubella: 'mr', yellowfever: 'yf', rotavirus: 'rota', meningococcal: 'mena' };
-    const canonical = (value: string) => aliases[normalize(value)] || normalize(value);
-    const headerIndex = sourceRows.slice(0, 8).findIndex(row => row.some(cell => ['facility', 'facilityname'].includes(normalize(cell))) && row.filter(Boolean).length > 1);
-    if (headerIndex < 0) return false;
-    const header = sourceRows[headerIndex];
-    const facilityCol = header.findIndex(cell => ['facility', 'facilityname'].includes(normalize(cell)));
-    if (facilityCol < 0) return false;
-    const mappings: Array<{ index: number; field: 'processing' | 'completed' | 'facility' | 'deliverySite' | 'subDistrict' | 'comment' | 'carryOver' | 'allocation' | 'distributed' | 'balance'; product?: string }> = [];
-    header.forEach((cell, index) => {
-      const label = normalize(cell);
-      if (index === facilityCol) { mappings.push({ index, field: 'facility' }); return; }
-      if (['processing', 'processingdate', 'startdate', 'started'].includes(label)) { mappings.push({ index, field: 'processing' }); return; }
-      if (['completed', 'completeddate', 'completiondate'].includes(label)) { mappings.push({ index, field: 'completed' }); return; }
-      if (['deliverysite', 'deliverypoint'].includes(label)) { mappings.push({ index, field: 'deliverySite' }); return; }
-      if (['subdistrict', 'subcounty'].includes(label)) { mappings.push({ index, field: 'subDistrict' }); return; }
-      if (['note', 'notes', 'comment', 'comments'].includes(label)) { mappings.push({ index, field: 'comment' }); return; }
-      const suffix = cell.match(/\b(carry[- ]?over|allocation|distributed|balance)\s*$/i)?.[1] || '';
-      const productLabel = suffix ? cell.replace(/\b(carry[- ]?over|allocation|distributed|balance)\s*$/i, '').trim() : cell;
-      const product = products.find(name => canonical(name) === canonical(productLabel));
-      if (product) {
-        const quantityField = !suffix ? 'allocation' : canonical(suffix) === 'carryover' ? 'carryOver' : canonical(suffix) as 'allocation' | 'distributed' | 'balance';
-        mappings.push({ index, product, field: quantityField });
-      }
-    });
-    const productMappings = mappings.filter(mapping => mapping.product);
-    if (!productMappings.length) return false;
-    const unknownHeaders = header.map((cell, index) => ({ cell, index })).filter(({ cell, index }) => cell && index !== facilityCol && !mappings.some(mapping => mapping.index === index));
-    if (unknownHeaders.length) {
-      setSaveStatus(`Paste canceled: unrecognized column “${unknownHeaders[0].cell}”. Rename it to a Blueprint field or product.`);
-      return true;
-    }
-    const dataRows = sourceRows.slice(headerIndex + 1);
-    if (!dataRows.some(row => row.some(Boolean))) {
-      setSaveStatus('Paste canceled: the header row has no data beneath it.');
-      return true;
-    }
-    const startIndex = Math.max(0, rows.findIndex(row => row.id === startRowId));
-    const updated = [...rows];
-    const importedEdits: Array<Record<string, unknown>> = [];
-    const today = new Date().toISOString().slice(0, 10);
-    for (let offset = 0; offset < dataRows.length; offset++) {
-      const cells = dataRows[offset];
-      if (!cells.some(Boolean)) continue;
-      const targetIndex = startIndex + offset;
-      const current = updated[targetIndex] || makeBlankBlueprintRow(`bp_paste_${Date.now()}_${offset}`);
-      const vaccines = Object.fromEntries(Object.entries(current.vaccines || {}).map(([name, value]) => [name, value && typeof value === 'object' ? { ...(value as Record<string, unknown>) } : {}])) as FacilityBlueprintRow['vaccines'];
-      const next: FacilityBlueprintRow = { ...current, vaccines };
-      for (const mapping of mappings) {
-        const raw = cells[mapping.index] ?? '';
-        if (mapping.field === 'facility' || mapping.field === 'processing' || mapping.field === 'completed' || mapping.field === 'deliverySite' || mapping.field === 'subDistrict' || mapping.field === 'comment') {
-          const key = mapping.field;
-          const oldValue = String(next[key] ?? '');
-          if (oldValue !== raw) importedEdits.push({ facility: next.facility || raw, field: key, oldValue, newValue: raw, district, month, timestamp: new Date().toISOString() });
-          next[key] = raw;
-        } else if (mapping.product) {
-          if (mapping.field === 'balance') continue; // Balance is always recalculated from editable quantities.
-          const value = raw.trim().replace(/,/g, '').replace(/^\((.*)\)$/, '-$1');
-          const number = value === '' ? '' : Number(value);
-          if (value !== '' && !Number.isFinite(number)) {
-            setSaveStatus(`Paste canceled: “${raw}” in row ${headerIndex + offset + 2} is not a valid quantity. Nothing was changed.`);
-            return true;
-          }
-          const prior = vaccines[mapping.product] || {};
-          const oldValue = prior[mapping.field] ?? '';
-          if (oldValue !== number) importedEdits.push({ facility: next.facility || 'Facility Row', field: mapping.field, product: mapping.product, oldValue, newValue: number, district, month, timestamp: new Date().toISOString() });
-          vaccines[mapping.product] = { ...prior, [mapping.field]: number };
-        }
-      }
-      for (const mapping of productMappings) {
-        const prior = vaccines[mapping.product!];
-        if (prior) prior.balance = computeBalance(prior.carryOver, prior.allocation, prior.distributed);
-      }
-      if (!next.facility.trim() && productMappings.some(mapping => Boolean(cells[mapping.index]?.trim()))) {
-        setSaveStatus(`Paste canceled: data on row ${headerIndex + offset + 2} has no facility name. Nothing was changed.`);
-        return true;
-      }
-      updated[targetIndex] = normalizeFacilityProgress(next, products, today);
-    }
-    pendingEditsRef.current.push(...importedEdits);
-    setRows(updated);
-    saveBlueprintToServer(updated, products, district, month);
-    setSaveStatus(`Pasted ${dataRows.filter(row => row.some(Boolean)).length} rows by matching spreadsheet headers.`);
+  const tryArrangePastedSheet = (text:string):boolean => {
+    if(!hasBlueprintSheetHeadings(text))return false;
+    if(districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'){setSaveStatus('This cycle is closed. Reopen it before pasting.');return true;}
+    try {
+      const arranged=arrangeBlueprintSheetPaste(text,rows,products,{district,month,catalogue:importCatalog||[]});
+      if(!arranged)return false;
+      const nextRows=normalizeBlueprintRowsProgress(arranged.rows,arranged.products);
+      const pastedIds=new Set(nextRows.slice(0,arranged.preview.rows.length).map(row=>row.id));
+      const columnOffset=(arranged.products.length-products.length)*4;
+      const base=5+products.length*4;
+      const nextMerges=cellMerges.filter(merge=>!merge.rowIds.some(id=>pastedIds.has(id))).map(merge=>({...merge,startCol:merge.startCol>=base?merge.startCol+columnOffset:merge.startCol,endCol:merge.endCol>=base?merge.endCol+columnOffset:merge.endCol}));
+      const fields=new Set(arranged.preview.columns.map(column=>column.product?`vaccine:${column.product}:${column.field}`:`field:${column.field}`));
+      const hidden=hiddenRowIds.filter(id=>!pastedIds.has(id));
+      updateDeletedColumns(deletedColumnKeys.filter(key=>!fields.has(key)));
+      setCellMerges(nextMerges);setHiddenRowIds(hidden);
+      setSearchQuery('');setStatusFilter('all');setSortField('default');
+      historyCellGroupRef.current=null;
+      pendingEditsRef.current.push({facility:'Pasted table',field:'automatic_table_paste',oldValue:rows.length,newValue:nextRows.length,district,month,timestamp:new Date().toISOString()});
+      setRows(nextRows);setProducts(arranged.products);setSelectedCellRange(null);setFocusedCell(null);
+      saveBlueprintToServer(nextRows,arranged.products,district,month,nextMerges,headerLabels,hidden);
+      setSaveStatus(`Pasted and arranged ${arranged.preview.rows.length} facilities; ${arranged.added} new rows and ${arranged.products.length-products.length} new vaccine columns.`);
+    } catch(error){setSaveStatus(`Paste canceled: ${error instanceof Error?error.message:'Could not arrange the table. Nothing was changed.'}`);}
     return true;
+  };
+
+  const applyExpandedRange = (matrix:string[][],startRowId:string|undefined,colIdx:number) => {
+    try {
+      const expanded=expandBlueprintRange({rows,visibleRowIds:filteredAndSortedRows.map(row=>row.id),products,deleted:deletedColumnKeys,blankColumns,startRowId,startCol:colIdx,matrix});
+      const nextRows=normalizeBlueprintRowsProgress(expanded.rows,products);
+      updateBlankColumns(expanded.blankColumns);
+      historyCellGroupRef.current=null;
+      pendingEditsRef.current.push({facility:'Pasted range',field:'expanded_range_paste',oldValue:rows.length,newValue:nextRows.length,district,month,timestamp:new Date().toISOString()});
+      setRows(nextRows);saveBlueprintToServer(nextRows,products,district,month);
+      setSaveStatus(`Pasted ${matrix.length} rows; added ${expanded.addedRows} rows and ${expanded.addedColumns} columns.`);
+    } catch(error){setSaveStatus(`Paste canceled: ${error instanceof Error?error.message:'Invalid data. Nothing was changed.'}`);}
   };
 
   // In-line paste handler for table inputs: pastes Excel / Google Sheets blocks seamlessly across rows and columns
   const handleDirectCellPasteRaw = (pasteData: string, startRowId: string, colIdx: number) => {
-    if (!pasteData || (!pasteData.includes('\t') && !pasteData.includes('\n'))) {
-      return;
-    }
+    if (!pasteData) return;
+    if(tryArrangePastedSheet(pasteData))return;
+    if(districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'){setSaveStatus('This cycle is closed. Reopen it before pasting.');return;}
+    if(!filteredAndSortedRows.some(row=>row.id===startRowId)){setSaveStatus('Select a visible Blueprint cell before pasting.');return;}
 
+    if(!visibleColumns.includes(colIdx)){setSaveStatus('Select a visible Blueprint column before pasting.');return;}
     const tsvRows = parseTsv(pasteData);
     if (tsvRows.length === 0) return;
     const freePaste = rows.find(row => row.id === startRowId)?.rowKind === 'blank' || !!customColumn(colIdx);
-    if (!freePaste && applyHeaderMappedPaste(tsvRows, startRowId)) return;
 
     // Drop the complete multi-row Blueprint header, not just the first row.
     const effectiveRows = freePaste ? tsvRows : stripBlueprintHeaderRows(tsvRows);
@@ -2076,10 +2096,10 @@ export default function VaccineAllocationBlueprint({
         return;
       }
       setRows(prevRows => {
-        const startIndex = Math.max(0, prevRows.findIndex(row => row.id === startRowId));
+        const targetIds=blueprintPasteRowTargets(filteredAndSortedRows.map(row=>row.id),startRowId,parsed.rows.length);
         const nextRows = [...prevRows];
         parsed.rows.forEach((pasteRow, offset) => {
-          const targetIndex = startIndex + offset;
+          const targetIndex = targetIds[offset] ? nextRows.findIndex(row=>row.id===targetIds[offset]) : nextRows.length;
           const existing = nextRows[targetIndex];
           const isFullRow = parsed.detectedAlignment.startsWith('Full row');
           nextRows[targetIndex] = existing
@@ -2094,35 +2114,28 @@ export default function VaccineAllocationBlueprint({
       return;
     }
 
+    const targetIds=blueprintPasteRowTargets(filteredAndSortedRows.map(row=>row.id),startRowId,effectiveRows.length);
     const pasteColumns = visibleColumns.slice(visibleColumns.indexOf(colIdx));
     const totalColumns = pasteColumns.length;
+    if(effectiveRows.some(row=>row.length>totalColumns)){
+      applyExpandedRange(effectiveRows,startRowId,colIdx);return;
+    }
     for (let rowIndex = 0; rowIndex < effectiveRows.length; rowIndex++) {
       const row = effectiveRows[rowIndex];
-      if (row.length > totalColumns) {
-        setSaveStatus(`Paste canceled: row ${rowIndex + 1} extends past the last Blueprint column.`);
+      try {
+        const target=rows.find(row=>row.id===targetIds[rowIndex]) || makeBlankBlueprintRow(`bp_validate_${rowIndex}`);
+        applyValuesToRow(target,row,colIdx,products);
+      } catch(error) {
+        setSaveStatus(`Paste canceled: ${error instanceof Error?error.message:'Invalid quantity. Nothing was changed.'}`);
         return;
-      }
-      for (let offset = 0; offset < row.length; offset++) {
-        const targetColumn = pasteColumns[offset];
-        const targetRow = rows[rows.findIndex(row => row.id === startRowId) + rowIndex];
-        if (targetColumn < 5 || customColumn(targetColumn) || targetRow?.rowKind === 'blank') continue;
-        const vaccineSubcolumn = (targetColumn - 5) % 4;
-        const raw = row[offset].trim().replace(/,/g, '').replace(/^\((.*)\)$/, '-$1');
-        if (vaccineSubcolumn !== 3 && raw && raw !== '-' && raw !== '—' && !Number.isFinite(Number(raw))) {
-          setSaveStatus(`Paste canceled: “${row[offset]}” is not a valid quantity. Nothing was changed.`);
-          return;
-        }
       }
     }
 
     setRows(prevRows => {
-      const startRowIdx = prevRows.findIndex(r => r.id === startRowId);
-      const effectiveStartIdx = startRowIdx !== -1 ? startRowIdx : 0;
-
       const newRows = [...prevRows];
 
       effectiveRows.forEach((rowVals, rOffset) => {
-        const targetRowIdx = effectiveStartIdx + rOffset;
+        const targetRowIdx = targetIds[rOffset] ? newRows.findIndex(row=>row.id===targetIds[rOffset]) : newRows.length;
         if (targetRowIdx < newRows.length) {
           newRows[targetRowIdx] = applyValuesToRow(newRows[targetRowIdx], rowVals, colIdx, products);
         } else {
@@ -2154,16 +2167,53 @@ export default function VaccineAllocationBlueprint({
     });
   };
 
-  const handleDirectCellPaste = (e: React.ClipboardEvent, rowId: string, colIdx: number) => {
-    const pasteData =
-      e.clipboardData?.getData('text/plain') || e.clipboardData?.getData('text') || '';
-    if (!pasteData || (!pasteData.includes('\t') && !pasteData.includes('\n'))) {
-      // Normal single-value clipboard text, allow standard input typing
-      return;
+  const handleGridPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    if(event.defaultPrevented)return;
+    const target=event.target as HTMLElement;
+    const cell=target.closest<HTMLElement>('[data-grid-cell-row][data-grid-cell-col]');
+    const input=target.closest('input,textarea,[contenteditable="true"]');
+    if(input && !cell){
+      const text=blueprintClipboardText(event.clipboardData,event.currentTarget.ownerDocument);
+      if(hasBlueprintSheetHeadings(text)){event.preventDefault();event.stopPropagation();applyGridClipboardText(text,'',visibleColumns[0]??0);}
+      return; // Ordinary header-label text retains native paste.
     }
+    const bounds=getCellRangeBounds();
+    const isRange=!!bounds && (bounds.firstRow!==bounds.lastRow || bounds.firstCol!==bounds.lastCol);
+    const position=isRange && bounds ? {rowId:filteredAndSortedRows[bounds.firstRow]?.id,colIdx:bounds.firstCol}
+      :cell?{rowId:cell.dataset.gridCellRow,colIdx:Number(cell.dataset.gridCellCol)}:bounds?{rowId:filteredAndSortedRows[bounds.firstRow]?.id,colIdx:bounds.firstCol}:focusedCell;
+    const text=blueprintClipboardText(event.clipboardData,event.currentTarget.ownerDocument);
+    if(!text)return;
+    if(hasBlueprintSheetHeadings(text) || (!rows.length && !input)){event.preventDefault();event.stopPropagation();applyGridClipboardText(text,position?.rowId||'',position?.colIdx??visibleColumns[0]??0);return;}
+    if(!position?.rowId)return;
+    const matrix=parseTsv(text);
+    if(!matrix.length)return;
+    const block=matrix.length>1 || matrix[0].length>1;
+    if(input && !isRange && !block && event.clipboardData.getData('text/plain')===text && !/[\r\n\t]/.test(text))return;
+    event.preventDefault();event.stopPropagation();
+    applyGridClipboardText(text,position.rowId,position.colIdx);
+  };
 
-    e.preventDefault();
-    handleDirectCellPasteRaw(pasteData, rowId, colIdx);
+  const applyGridClipboardText = (text: string, rowId: string, colIdx: number) => {
+    const matrix=parseTsv(text);
+    if(!matrix.length)return;
+    if(districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'){setSaveStatus('This cycle is closed. Reopen it before pasting.');return;}
+    if(tryArrangePastedSheet(text))return;
+    if(!rows.length){applyExpandedRange(matrix,undefined,colIdx);return;}
+    if(!filteredAndSortedRows.some(row=>row.id===rowId) || !visibleColumns.includes(colIdx))return;
+    const block=matrix.length>1 || matrix[0].length>1;
+    const position={rowId,colIdx};
+    const row=rows.find(row=>row.id===position.rowId);
+    if(row?.rowKind!=='blank' && !customColumn(position.colIdx) && position.colIdx>=5 && (position.colIdx-5)%4===3){setSaveStatus('Balance is calculated. Paste into Carry-over, Allocation or Distributed.');return;}
+    if(block)handleDirectCellPasteRaw(text,position.rowId,position.colIdx);
+    else updateGridCell(position.rowId,position.colIdx,matrix[0][0]);
+  };
+
+  const handleDirectCellPaste = (event: React.ClipboardEvent, rowId: string, colIdx: number) => {
+    if(event.defaultPrevented)return;
+    const text=blueprintClipboardText(event.clipboardData,event.currentTarget.ownerDocument);
+    if(!/[\t\r\n]/.test(text))return;
+    event.preventDefault();
+    handleDirectCellPasteRaw(text,rowId,colIdx);
   };
 
   // Record completion only after every allocated vaccine has a zero balance.
@@ -2661,7 +2711,7 @@ export default function VaccineAllocationBlueprint({
     const columns = indexes.filter(index => visibleColumns.includes(index));
     if (!columns.length) return;
     setDeletedHistory({ rows: [...rows], products: [...products], deletedColumnKeys: [...deletedColumnKeys], cellMerges: [...cellMerges], blankColumns: [...blankColumns], description: `Deleted ${columns.length} column(s)` });
-    const nextKeys = [...new Set([...deletedColumnKeys, ...columns.map(index => blueprintColumnKey(index, products))])];
+    const nextKeys = [...new Set([...deletedColumnKeys, ...columns.map(index => layoutColumnKey(index, products, blankColumns))])];
     const nextBlank = blankColumns.filter(column => !columns.some(index => customColumn(index)?.id === column.id));
     const nextRows = rebaseFreeCells(rows, deleteBlueprintColumnData(rows, products, columns.filter(index => !customColumn(index))), blankColumns, nextBlank, nextKeys);
     updateBlankColumns(nextBlank);
@@ -2896,8 +2946,9 @@ export default function VaccineAllocationBlueprint({
       rebaseBlueprintFormula(value, oldKeys, nextKeys, oldRows.map(row => row.id), nextRows.map(row => row.id))])) });
   };
   const updateFreeCell = (rowId: string, col: number, value: string) => {
-    const key = blueprintColumnKey(col, products);
-    const oldValue = rows.find(row => row.id === rowId)?.cells?.[key] || '';
+    const key = layoutColumnKey(col, products, blankColumns);
+    const previous=rows.find(row=>row.id===rowId);
+    const oldValue=previous?readGridCell(previous,col):'';
     pendingEditsRef.current.push({ facility: rows.find(row => row.id === rowId)?.facility || 'Blank row', field: key, oldValue, newValue: value, district, month, timestamp: new Date().toISOString() });
     const next = rows.map(row => row.id === rowId ? { ...row, cells: { ...row.cells, [key]: value } } : row);
     setRows(next); saveBlueprintToServer(next, products, district, month);
@@ -2956,18 +3007,21 @@ export default function VaccineAllocationBlueprint({
       updateResizedDimension(kind, key, resizedBlueprintDimension(kind, size, event.key === increase ? 10 : -10));
       saveBlueprintToServer(rows, products, district, month);
     };
-    const col = columns[0], columnKey = blueprintColumnKey(col, products);
+    const col = columns[0], columnKey = layoutColumnKey(col, products, blankColumns);
     const rowNumber = headerRow ?? rows.findIndex(row => row.id === rowKey) + 5;
     const bodyCell = !!rowKey && !headerRow;
     const cellReference = `${getSheetColumnLetter(col)}${rowNumber}`;
-    const colors = bodyCell ? rows.find(row => row.id === rowKey)?.cellColors?.[columnKey] : undefined;
+    const colors = bodyCell ? rows.find(row => row.id === rowKey)?.cellColors?.[columnKey] : headerRow?headerCellColors[headerColorKey(headerRow,columnKey)]:undefined;
+    const foreground=blueprintCellForeground(colors);
     const columnHandle = (headerRow === 4 || bodyCell) && columns.length === 1 ? <span key="resize-column" role="separator" aria-orientation="vertical" aria-label={bodyCell ? `Resize cell ${cellReference} width` : `Resize column ${getSheetColumnLetter(col)}`} aria-valuenow={width} aria-valuemin={36} aria-valuemax={1200} tabIndex={0} title="Drag to change column width" className="absolute -right-[3px] top-0 z-[60] h-full w-1.5 cursor-col-resize touch-none hover:bg-orange-500/60 focus:bg-orange-500/60" onClick={event => event.stopPropagation()}
       onPointerDown={event => beginSheetResize(event, 'column', columnKey, width)} onKeyDown={event => keyboardResize(event, 'column', columnKey, width)} {...common} /> : null;
     const rowHandle = rowKey && (first || bodyCell) && (cell.props.rowSpan || 1) === 1 ? <span key="resize-row" role="separator" aria-orientation="horizontal" aria-label={bodyCell && !first ? `Resize cell ${cellReference} height` : `Resize row ${rowNumber}`} aria-valuenow={height || 32} aria-valuemin={24} aria-valuemax={600} tabIndex={0} title="Drag to change row height" className="absolute -bottom-[3px] left-0 z-[55] h-1.5 w-full cursor-row-resize touch-none hover:bg-orange-500/60 focus:bg-orange-500/60" onClick={event => event.stopPropagation()}
       onPointerDown={event => beginSheetResize(event, 'row', rowKey, height ?? event.currentTarget.closest('tr')!.getBoundingClientRect().height / (zoomLevel / 100))} onKeyDown={event => keyboardResize(event, 'row', rowKey, height || 32)} {...common} /> : null;
-    return React.cloneElement(cell, { 'data-cell-fill': colors?.backgroundColor ? 'true' : undefined, 'data-cell-text': colors?.color ? 'true' : undefined,
+    return React.cloneElement(cell, { 'data-cell-fill': colors?.backgroundColor ? 'true' : undefined, 'data-cell-text': foreground ? 'true' : undefined,
+      ...(headerRow?{'data-blueprint-header-row':headerRow,'data-blueprint-header-col':col}:{}),
+      onContextMenu: (event:React.MouseEvent)=>{if(headerRow){setActiveHeaderCell({row:headerRow,col});setFocusedCell(null);setSelectedCellRange(null);}cell.props.onContextMenu?.(event);},
       style: { ...cell.props.style, ...colors,
-      ...(colors?.color ? { '--blueprint-text-color': colors.color } : {}),
+      ...(foreground ? { '--blueprint-text-color': foreground } : {}),
       width, minWidth: width, maxWidth: width,
       ...(height ? { height, maxHeight: height, paddingTop: 0, paddingBottom: 0, '--blueprint-row-height': `${height}px` } : {}),
       position: !cell.props.style?.position || cell.props.style.position === 'static' ? 'relative' : cell.props.style.position },
@@ -2975,7 +3029,7 @@ export default function VaccineAllocationBlueprint({
       children: <>{cell.props.children}{columnHandle}{rowHandle}</> });
   };
   const renderFreeCell = (col: number, row?: FacilityBlueprintRow, headerRow?: number) => {
-    const item = customColumn(col), key = blueprintColumnKey(col, products);
+    const item = customColumn(col), key = layoutColumnKey(col, products, blankColumns);
     const width = item ? 120 : col < 5 ? [140, 140, 230, 160, 200][col] : Math.max(50, (productGroupWidths[products[Math.floor((col - 5) / 4)]] ?? 328) / 4);
     const nextBase = visibleColumns.slice(visibleColumns.indexOf(col) + 1).find(index => index < baseColumnCount);
     const headerColour = ['#ED7D31', '#F8CBAD', nextBase !== undefined && nextBase < 5 ? '#FFF2CC' : '#FCE4D6', '#FFF2CC'][(headerRow || 1) - 1];
@@ -2997,7 +3051,7 @@ export default function VaccineAllocationBlueprint({
     const ids = Array.from({ length: count }, () => crypto.randomUUID());
     const next = insertBlankColumns(blankColumns, products, deletedColumnKeys, target, side, count, ids);
     const sourceIndex = target ?? visibleColumns.at(-1);
-    const sourceKey = sourceIndex === undefined ? undefined : blueprintColumnKey(sourceIndex, products);
+    const sourceKey = sourceIndex === undefined ? undefined : layoutColumnKey(sourceIndex, products, blankColumns);
     const rebased = rebaseFreeCells(rows, rows, blankColumns, next).map(row => {
       const formatting = sourceKey ? row.baseFormatting?.[sourceKey] : undefined;
       const bold = sourceKey ? row.boldCells?.includes(sourceKey) : false;
@@ -3271,7 +3325,7 @@ export default function VaccineAllocationBlueprint({
       const selected=data.districts.find(sheet=>sheet.id===importPreview.sheets[0].id)!;
       setActiveDistrictId(selected.id);setDistrict(selected.district);setMonth(selected.month);setProducts(selected.products||[]);setRows(selected.rows);
       workspace.setSelection({sheetId:selected.id,district:selected.district,cycle:selected.month,rowId:'',facilityName:'',facilityId:''});
-      historyResetPendingRef.current=true;setCellMerges([]);updateBlankColumns([]);updateSheetSizing(emptyBlueprintSizing());updateDeletedColumns([]);setHiddenRowIds([]);
+      historyResetPendingRef.current=true;setCellMerges([]);updateBlankColumns([]);updateSheetSizing(emptyBlueprintSizing());updateHeaderCellColors({});updateDeletedColumns([]);setHiddenRowIds([]);
       setImportPreview(null);setSaveStatus('Reviewed workbook import saved successfully.');
     }catch(error:any){setSaveStatus(error.message||'Import could not be saved. Your current sheet has not been replaced.');}
     finally{setLoading(false);}
@@ -3420,13 +3474,13 @@ export default function VaccineAllocationBlueprint({
   useLayoutEffect(() => {
     const table = blueprintTableRef.current;
     if (!table) return;
-    const sheetRows = Array.from(table.querySelectorAll('thead tr, tbody tr')) as HTMLTableRowElement[];
+    const sheetRows = Array.from(table.querySelectorAll('[data-sheet-row-index]')) as HTMLTableRowElement[];
     const measureOffsets = () => {
-      let top = 0;
+      let top = (table.querySelector('[data-blueprint-column-ruler]')?.getBoundingClientRect().height || 28) / (zoomLevel / 100);
       const offsets: Record<number, number> = {};
-      sheetRows.forEach((row, index) => {
-        offsets[index + 1] = top;
-        top += row.getBoundingClientRect().height;
+      sheetRows.forEach(row => {
+        offsets[Number(row.dataset.sheetRowIndex)] = top;
+        top += row.getBoundingClientRect().height / (zoomLevel / 100);
       });
       setFreezeRowOffsets(previous => {
         const keys = Object.keys(offsets);
@@ -3448,7 +3502,7 @@ export default function VaccineAllocationBlueprint({
     historyResetPendingRef.current = true;
     undoStackRef.current = [];
     redoStackRef.current = [];
-    historySnapshotRef.current = { rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing };
+    historySnapshotRef.current = { rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing, headerCellColors };
     historyCellGroupRef.current = null;
     setHistoryVersion(version => version + 1);
   }, [activeDistrictId, district, month]);
@@ -3458,41 +3512,41 @@ export default function VaccineAllocationBlueprint({
     const previous = historySnapshotRef.current;
     if (historyResetPendingRef.current) {
       historyResetPendingRef.current = false;
-      historySnapshotRef.current = { rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing };
+      historySnapshotRef.current = { rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing, headerCellColors };
       historyCellGroupRef.current = null;
       setHistoryVersion(version => version + 1);
       return;
     }
     if (restoringHistoryRef.current) {
       restoringHistoryRef.current = false;
-      historySnapshotRef.current = { rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing };
+      historySnapshotRef.current = { rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing, headerCellColors };
       setHistoryVersion(version => version + 1);
       return;
     }
     if (!previous) {
-      historySnapshotRef.current = { rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing };
+      historySnapshotRef.current = { rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing, headerCellColors };
       return;
     }
-    if (previous.rows === rows && previous.products === products && previous.deletedColumnKeys === deletedColumnKeys && previous.cellMerges === cellMerges && previous.blankColumns === blankColumns && previous.sheetSizing === sheetSizing) return;
+    if (previous.rows === rows && previous.products === products && previous.deletedColumnKeys === deletedColumnKeys && previous.cellMerges === cellMerges && previous.blankColumns === blankColumns && previous.sheetSizing === sheetSizing && previous.headerCellColors === headerCellColors) return;
 
     const now = Date.now();
     const groupKey = focusedCell ? `${focusedCell.rowId}:${focusedCell.colIdx}` : '';
     const lastGroup = historyCellGroupRef.current;
-    const isSameTypingSession = Boolean(previous.rows.length === rows.length && previous.blankColumns === blankColumns && previous.sheetSizing === sheetSizing && groupKey && lastGroup?.key === groupKey && now - lastGroup.at < 900);
+    const isSameTypingSession = Boolean(previous.rows.length === rows.length && previous.blankColumns === blankColumns && previous.sheetSizing === sheetSizing && previous.headerCellColors === headerCellColors && groupKey && lastGroup?.key === groupKey && now - lastGroup.at < 900);
     if (!isSameTypingSession) {
       undoStackRef.current.push(previous);
       if (undoStackRef.current.length > 60) undoStackRef.current.shift();
     }
     historyCellGroupRef.current = groupKey ? { key: groupKey, at: now } : null;
     redoStackRef.current = [];
-    historySnapshotRef.current = { rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing };
+    historySnapshotRef.current = { rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing, headerCellColors };
     setHistoryVersion(version => version + 1);
-  }, [rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing, isResizingSheet, focusedCell]);
+  }, [rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing, headerCellColors, isResizingSheet, focusedCell]);
 
   const handleUndo = () => {
     const previous = undoStackRef.current.pop();
     if (!previous) return;
-    redoStackRef.current.push({ rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing });
+    redoStackRef.current.push({ rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing, headerCellColors });
     restoringHistoryRef.current = true;
     historySnapshotRef.current = previous;
     setRows(previous.rows);
@@ -3500,7 +3554,7 @@ export default function VaccineAllocationBlueprint({
     updateDeletedColumns(previous.deletedColumnKeys);
     setCellMerges(previous.cellMerges);
     updateBlankColumns(previous.blankColumns);
-    updateSheetSizing(previous.sheetSizing);
+    updateSheetSizing(previous.sheetSizing);updateHeaderCellColors(previous.headerCellColors||{});
     setSelectedRowIds(new Set());
     setSelectedColumnNames(new Set());
     setFocusedCell(null); setActiveHeaderCell(null); setSelectedCellRange(null);
@@ -3512,7 +3566,7 @@ export default function VaccineAllocationBlueprint({
   const handleRedo = () => {
     const next = redoStackRef.current.pop();
     if (!next) return;
-    undoStackRef.current.push({ rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing });
+    undoStackRef.current.push({ rows, products, deletedColumnKeys, cellMerges, blankColumns, sheetSizing, headerCellColors });
     restoringHistoryRef.current = true;
     historySnapshotRef.current = next;
     setRows(next.rows);
@@ -3520,7 +3574,7 @@ export default function VaccineAllocationBlueprint({
     updateDeletedColumns(next.deletedColumnKeys);
     setCellMerges(next.cellMerges);
     updateBlankColumns(next.blankColumns);
-    updateSheetSizing(next.sheetSizing);
+    updateSheetSizing(next.sheetSizing);updateHeaderCellColors(next.headerCellColors||{});
     setFocusedCell(null); setActiveHeaderCell(null); setSelectedCellRange(null);
     saveBlueprintToServer(next.rows, next.products, district, month, next.cellMerges);
     setSaveStatus('Redo applied');
@@ -3528,7 +3582,7 @@ export default function VaccineAllocationBlueprint({
   };
 
   const gridCellKey = (rowId: string, colIdx: number) => `${rowId}::${colIdx}`;
-  const gridStyleKey = (colIdx: number) => blueprintColumnKey(colIdx, products);
+  const gridStyleKey = (colIdx: number) => layoutColumnKey(colIdx, products, blankColumns);
   const isGridCellBold = (rowId: string, colIdx: number) => Boolean(rows.find(row => row.id === rowId)?.boldCells?.includes(gridStyleKey(colIdx)));
   const registerGridCell = (rowId: string, colIdx: number) => (input: HTMLInputElement | null) => {
     const key = gridCellKey(rowId, colIdx);
@@ -3609,16 +3663,18 @@ export default function VaccineAllocationBlueprint({
     return Boolean(bounds && rowIndex >= bounds.firstRow && rowIndex <= bounds.lastRow && columnsInRange(bounds.firstCol, bounds.lastCol).includes(colIdx));
   };
   const getGridCellRangeHighlightStyle = (rowId: string, colIdx: number): React.CSSProperties =>
-    getAllocationCellStyle(rows.find(row => row.id === rowId)?.baseFormatting?.[blueprintColumnKey(colIdx, products)], undefined, isGridCellInRange(rowId, colIdx));
+    getAllocationCellStyle(rows.find(row => row.id === rowId)?.baseFormatting?.[layoutColumnKey(colIdx, products, blankColumns)], undefined, isGridCellInRange(rowId, colIdx));
   const handleGridColumnHeaderMouseDown = (event: React.MouseEvent<HTMLElement>, colIdx: number) => {
     if (event.button !== 0) { if (event.button === 2) preserveCellRangeRef.current = true; return; }
     if ((event.target as HTMLElement).closest('button') || filteredAndSortedRows.length === 0) return;
+    if(!(event.target as HTMLElement).closest('input,textarea')){event.preventDefault();gridScrollRef.current?.focus({preventScroll:true});}
     const firstRowId = filteredAndSortedRows[0].id;
     isDraggingGridRangeRef.current = true;
     preserveCellRangeRef.current = true;
     setSelectedCellRange({ anchorRowId: firstRowId, anchorColIdx: colIdx, focusRowId: firstRowId, focusColIdx: colIdx });
   };
   const handleSelectGridColumn = (colIdx: number, event?: React.MouseEvent) => {
+    setActiveHeaderCell(null);
     if (filteredAndSortedRows.length === 0) return;
     const firstRowId = filteredAndSortedRows[0].id;
     const lastRowId = filteredAndSortedRows[filteredAndSortedRows.length - 1].id;
@@ -3677,35 +3733,30 @@ export default function VaccineAllocationBlueprint({
     setSaveStatus(makeBold ? 'Bold formatting applied.' : 'Bold formatting removed.');
   };
 
-  const applySelectedCellColor = (property: 'backgroundColor' | 'color', value?: string) => {
-    if (selectedBoldTargets.length === 0) return;
-    const targets = new Map(selectedBoldTargets.map(target => [target.rowId, target.columns]));
-    const updatedRows = rows.map(row => {
-      const columns = targets.get(row.id);
-      if (!columns) return row;
-      const cellColors = { ...row.cellColors };
-      const baseFormatting = { ...row.baseFormatting };
-      columns.forEach(col => {
-        const key = blueprintColumnKey(col, products);
-        const colors = { ...cellColors[key] };
-        if (value) colors[property] = value;
-        else {
-          delete colors[property];
-          if (baseFormatting[key]) {
-            const base = { ...baseFormatting[key] };
-            delete base[property];
-            baseFormatting[key] = base;
-          }
+  const canColorSelection=!!activeHeaderCell || selectedBoldTargets.length>0;
+  const applySelectedCellColor = (property:'backgroundColor'|'color',value?:string) => {
+    if(districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'){setSaveStatus('This cycle is closed. Reopen it before changing cell formatting.');return;}
+    if(!canColorSelection)return;
+    historyCellGroupRef.current=null;
+    if(activeHeaderCell){
+      const key=headerColorKey(activeHeaderCell.row,layoutColumnKey(activeHeaderCell.col,products,blankColumns));
+      updateHeaderCellColors({...headerCellColorsRef.current,[key]:updateBlueprintCellColor(headerCellColorsRef.current[key],property,value)});
+      saveBlueprintToServer(rows,products,district,month);
+    }else{
+      const targets=new Map(selectedBoldTargets.map(target=>[target.rowId,target.columns]));
+      const updatedRows=rows.map(row=>{
+        const columns=targets.get(row.id);if(!columns)return row;
+        const cellColors={...row.cellColors},baseFormatting={...row.baseFormatting};
+        for(const col of columns){
+          const key=layoutColumnKey(col,products,blankColumns);
+          cellColors[key]=updateBlueprintCellColor(cellColors[key],property,value);
+          if(!value && baseFormatting[key]){const base={...baseFormatting[key]};delete base[property];baseFormatting[key]=base;}
         }
-        if (Object.keys(colors).length) cellColors[key] = colors;
-        else delete cellColors[key];
+        return {...row,cellColors,baseFormatting};
       });
-      return { ...row, cellColors, baseFormatting };
-    });
-    historyCellGroupRef.current = null;
-    setRows(updatedRows);
-    saveBlueprintToServer(updatedRows, products, district, month);
-    setSaveStatus(`${property === 'backgroundColor' ? 'Fill' : 'Text'} colour ${value ? 'applied' : 'cleared'}.`);
+      setRows(updatedRows);saveBlueprintToServer(updatedRows,products,district,month);
+    }
+    setSaveStatus(`${property==='backgroundColor'?'Fill':'Text'} colour ${value?'applied':'cleared'}.`);
   };
 
   const getMergeRender = (rowIdx: number, colIdx: number) => {
@@ -3829,7 +3880,7 @@ export default function VaccineAllocationBlueprint({
     const today = new Date().toISOString().slice(0, 10);
     let movedVaccineQuantity = false;
     const setValue = (row: FacilityBlueprintRow, col: number, value: string) => {
-      if (row.rowKind === 'blank' || customColumn(col)) { const key = blueprintColumnKey(col, products); row.cells = { ...row.cells, [key]: value }; return; }
+      if (row.rowKind === 'blank' || customColumn(col)) { const key = layoutColumnKey(col, products, blankColumns); row.cells = { ...row.cells, [key]: value }; return; }
       if (col < 5) {
         const field = (['processing', 'completed', 'facility', 'subDistrict', 'deliverySite'] as const)[col];
         const oldValue = String(row[field] || '');
@@ -3926,7 +3977,12 @@ export default function VaccineAllocationBlueprint({
     isDraggingGridRangeRef.current = true;
     preserveCellRangeRef.current = true;
     if (event.shiftKey && selectedCellRange) {
+      // Native shift-click selects input text from the old focused input and can
+      // scroll/re-enter it, collapsing the sheet range. Keep this a cell selection.
+      event.preventDefault();
+      isDraggingGridRangeRef.current = false;
       setSelectedCellRange(previous => previous ? { ...previous, focusRowId: rowId, focusColIdx: colIdx } : previous);
+      gridInputRefs.current.get(gridCellKey(rowId,colIdx))?.focus({preventScroll:true});
     } else {
       setSelectedCellRange({ anchorRowId: rowId, anchorColIdx: colIdx, focusRowId: rowId, focusColIdx: colIdx });
     }
@@ -3951,7 +4007,7 @@ export default function VaccineAllocationBlueprint({
     }
   };
   const readGridCell = (row: FacilityBlueprintRow, colIdx: number): string => {
-    if (row.rowKind === 'blank' || customColumn(colIdx)) return row.cells?.[blueprintColumnKey(colIdx, products)] || '';
+    if (row.rowKind === 'blank' || customColumn(colIdx)) return row.cells?.[layoutColumnKey(colIdx, products, blankColumns)] ?? row.cells?.[blueprintColumnKey(colIdx, products)] ?? '';
     if (colIdx === 0) return row.processing || '';
     if (colIdx === 1) return row.completed || '';
     if (colIdx === 2) return row.facility || '';
@@ -3971,7 +4027,7 @@ export default function VaccineAllocationBlueprint({
       const next: FacilityBlueprintRow = { ...row, vaccines: { ...row.vaccines } };
       for (const col of columnsInRange(bounds.firstCol, bounds.lastCol)) {
         if (isColumnDeleted(col)) continue;
-        if (next.rowKind === 'blank' || customColumn(col)) { next.cells = { ...next.cells, [blueprintColumnKey(col, products)]: '' }; continue; }
+        if (next.rowKind === 'blank' || customColumn(col)) { next.cells = { ...next.cells, [layoutColumnKey(col, products, blankColumns)]: '' }; continue; }
         if (col < 5) {
           const field = (['processing', 'completed', 'facility', 'subDistrict', 'deliverySite'] as const)[col];
           const oldValue = next[field] || '';
@@ -3998,6 +4054,77 @@ export default function VaccineAllocationBlueprint({
     setRows(updated);
     saveBlueprintToServer(updated, products, district, month);
     setSaveStatus('Selected cells cleared');
+  };
+
+  contextPasteRef.current = {sheetId: activeDistrictId, paste: applyGridClipboardText};
+  const getClipboardSelection = (): BlueprintClipboardSelection | undefined => {
+    const bounds=getCellRangeBounds();
+    if(bounds)return {sheetId:activeDistrictId,rowIds:filteredAndSortedRows.slice(bounds.firstRow,bounds.lastRow+1).map(row=>row.id),columns:columnsInRange(bounds.firstCol,bounds.lastCol)};
+    if(!rows.length)return {sheetId:activeDistrictId,rowIds:[''],columns:[visibleColumns[0]??0]};
+    if(focusedCell && filteredAndSortedRows.some(row=>row.id===focusedCell.rowId))return {sheetId:activeDistrictId,rowIds:[focusedCell.rowId],columns:[focusedCell.colIdx]};
+  };
+  const selectionClipboardText = (selection: BlueprintClipboardSelection) => blueprintClipboardTsv(selection.rowIds.map(id=>{
+    const row=rows.find(item=>item.id===id);
+    return selection.columns.map(col=>row?readGridCell(row,col):'');
+  }));
+  const restoreClipboardFocus = (selection: BlueprintClipboardSelection) => {
+    preserveCellRangeRef.current=true;
+    const input=gridInputRefs.current.get(gridCellKey(selection.rowIds[0],selection.columns[0]));
+    (input || gridScrollRef.current)?.focus({preventScroll:true});
+  };
+  const handleGridCopy = (event: React.ClipboardEvent<HTMLDivElement>, cut=false) => {
+    const target=event.target as HTMLInputElement;
+    const cell=target.closest<HTMLElement>('[data-grid-cell-row][data-grid-cell-col]');
+    if(target.closest('input,textarea,[contenteditable="true"]') && !cell)return;
+    const selection=getClipboardSelection();
+    if(!selection?.rowIds.length || !selection.columns.length)return;
+    if(selection.rowIds.length===1 && selection.columns.length===1 && typeof target.selectionStart==='number' && target.selectionStart!==target.selectionEnd)return;
+    if(cut && districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'){event.preventDefault();return;}
+    try {
+      event.clipboardData.setData('text/plain',selectionClipboardText(selection));
+      event.preventDefault();event.stopPropagation();
+      if(cut){const bounds=getCellRangeBounds();if(bounds)clearGridRange(bounds);else updateGridCell(selection.rowIds[0],selection.columns[0],'');}
+      setSaveStatus(cut?'Selected cells cut':'Selected cells copied');
+    } catch {event.preventDefault();setSaveStatus('Copy failed. Use Copy cells to open a selectable copy box.');}
+  };
+  const handleContextCopy = async (selected?: BlueprintClipboardSelection) => {
+    const selection=selected || freezeMenu?.clipboard;
+    setFreezeMenu(null);
+    if(!selection)return;
+    const text=selectionClipboardText(selection);
+    restoreClipboardFocus(selection);
+    try {
+      if(!navigator.clipboard?.writeText)throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(text);
+      setSaveStatus('Selected cells copied');
+    } catch {
+      if(contextPasteRef.current?.sheetId!==selection.sheetId)return;
+      setClipboardDialog({mode:'copy',selection,text});
+    }
+  };
+  const handleContextPaste = async (selected?: BlueprintClipboardSelection) => {
+    const selection=selected || freezeMenu?.clipboard;
+    setFreezeMenu(null);
+    if(!selection)return;
+    restoreClipboardFocus(selection);
+    try {
+      const text=await readBlueprintClipboard(navigator.clipboard,document);
+      const current=contextPasteRef.current;
+      if(current?.sheetId!==selection.sheetId){setSaveStatus('Sheet changed. Select the destination and paste again.');return;}
+      if(!text){setClipboardDialog({mode:'paste',selection,text:''});return;}
+      current.paste(text,selection.rowIds[0],selection.columns[0]);
+    } catch {
+      if(contextPasteRef.current?.sheetId!==selection.sheetId)return;
+      setClipboardDialog({mode:'paste',selection,text:''});
+    }
+  };
+  const applyClipboardDialog = () => {
+    if(!clipboardDialog || clipboardDialog.mode!=='paste')return;
+    const {selection,text}=clipboardDialog;
+    if(contextPasteRef.current?.sheetId!==selection.sheetId){setSaveStatus('Sheet changed. Select the destination and paste again.');setClipboardDialog(null);return;}
+    contextPasteRef.current.paste(text,selection.rowIds[0],selection.columns[0]);
+    setClipboardDialog(null);
+    restoreClipboardFocus(selection);
   };
 
   const handleGridCellKeyDown = (event: React.KeyboardEvent<HTMLInputElement>, rowId: string, colIdx: number) => {
@@ -4032,40 +4159,7 @@ export default function VaccineAllocationBlueprint({
       }
       return;
     }
-    if (command && (event.key.toLowerCase() === 'c' || event.key.toLowerCase() === 'x')) {
-      const input = event.currentTarget;
-      const bounds = getCellRangeBounds();
-      if (bounds && (bounds.firstRow !== bounds.lastRow || bounds.firstCol !== bounds.lastCol)) {
-        const tsv = filteredAndSortedRows.slice(bounds.firstRow, bounds.lastRow + 1).map(row =>
-          columnsInRange(bounds.firstCol, bounds.lastCol).map(col => readGridCell(row, col)).join('\t')
-        ).join('\n');
-        event.preventDefault();
-        if (!navigator.clipboard) {
-          setSaveStatus('Clipboard access is unavailable in this browser.');
-          return;
-        }
-        void navigator.clipboard.writeText(tsv).then(() => setSaveStatus(event.key.toLowerCase() === 'x' ? 'Selected cells cut' : 'Selected cells copied'));
-        if (event.key.toLowerCase() === 'x') clearGridRange(bounds);
-        return;
-      }
-      if (input.selectionStart !== input.selectionEnd) {
-        if (event.key.toLowerCase() === 'c') return;
-        // Native cut updates the controlled input and is saved through the normal edit path.
-        return;
-      }
-      const row = rows.find(item => item.id === rowId);
-      if (!row) return;
-      event.preventDefault();
-      const copiedValue = readGridCell(row, colIdx);
-      if (navigator.clipboard) {
-        void navigator.clipboard.writeText(copiedValue).then(() => setSaveStatus(event.key.toLowerCase() === 'x' ? 'Cell cut' : 'Cell copied'))
-          .catch(() => setSaveStatus('Clipboard access failed.'));
-      } else {
-        setSaveStatus('Clipboard access is unavailable in this browser.');
-      }
-      if (event.key.toLowerCase() === 'x') updateGridCell(rowId, colIdx, '');
-      return;
-    }
+    // Copy/cut use the native clipboard event, which needs no async clipboard permission.
     const navKeys = ['Enter', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
     if (!navKeys.includes(event.key)) return;
     const input = event.currentTarget;
@@ -4164,6 +4258,16 @@ export default function VaccineAllocationBlueprint({
     ...getFreezeCellStyle(colIdx, rowFrozen),
     backgroundColor: isTopDownGridColumnSelected(colIdx) ? 'rgba(56, 189, 248, 0.72)' : undefined
   });
+  const renderSheetRowNumber = (number:number,rowId?:string) => <th scope="row" data-blueprint-row-number={number} className="sticky left-0 border-b border-r border-slate-300 bg-slate-100 p-0 text-center text-[11px] font-medium text-slate-600 select-none" style={{width:44,minWidth:44,maxWidth:44,zIndex:freezeRows>=number?55:35}}>
+    <button type="button" aria-label={`Select row ${number}`} className="min-h-7 w-full px-1 py-1 hover:bg-sky-100 hover:text-sky-900" onMouseDown={event=>{event.preventDefault();gridScrollRef.current?.focus({preventScroll:true});}} onClick={event=>{
+      if(!rowId){openFreezeMenu(event,'row',number);return;}
+      setActiveHeaderCell(null);
+      const first=visibleColumns[0],last=visibleColumns.at(-1);
+      if(first===undefined || last===undefined)return;
+      setSelectedCellRange({anchorRowId:event.shiftKey&&selectedCellRange?selectedCellRange.anchorRowId:rowId,anchorColIdx:first,focusRowId:rowId,focusColIdx:last});
+      setFocusedCell({rowId,colIdx:first});preserveCellRangeRef.current=true;
+    }} onContextMenu={event=>openFreezeMenu(event,'row',number)}>{number}</button>
+  </th>;
   const focusedCellInfo = getFocusedCellInfo();
   const renderBlueprintMenuItem = (label: string, action: (event: React.MouseEvent<HTMLButtonElement>) => void, disabled = false) => (
     <button
@@ -4176,6 +4280,7 @@ export default function VaccineAllocationBlueprint({
     >{label}</button>
   );
   const selectAllBlueprintCells = () => {
+    setActiveHeaderCell(null);
     setAllCellsHighlighted(true);
     setSelectedRowIds(new Set(rows.map(row => row.id)));
     setSelectedColumnNames(new Set(products));
@@ -4190,10 +4295,10 @@ export default function VaccineAllocationBlueprint({
   }
 
   return (
-    <div id="allocation-blueprint-print-root" className="flex min-w-0 max-w-full flex-col gap-4 w-full bg-white rounded-3xl border border-slate-200 shadow-md p-3 sm:p-6 text-slate-800 antialiased">
-      <style>{`@media print { body * { visibility: hidden !important; } #allocation-blueprint-print-root, #allocation-blueprint-print-root * { visibility: visible !important; } #allocation-blueprint-print-root { position: absolute; inset: 0; width: 100%; padding: 0; border: 0; box-shadow: none; } #allocation-blueprint-sheet { position: static !important; height: auto !important; } #allocation-blueprint-grid-scroll { max-height: none !important; overflow: visible !important; } }`}</style>
+    <div id="allocation-blueprint-print-root" className="flex min-w-0 max-w-full flex-col gap-3 w-full bg-white px-0 py-3 text-slate-800 antialiased">
+      <style>{`@media print { body * { visibility: hidden !important; } #allocation-blueprint-print-root, #allocation-blueprint-print-root * { visibility: visible !important; } #allocation-blueprint-print-root { position: absolute; inset: 0; width: 100%; padding: 0; border: 0; box-shadow: none; } #allocation-blueprint-sheet { position: static !important; height: auto !important; } #allocation-blueprint-grid-scroll { height: auto !important; max-height: none !important; overflow: visible !important; } }`}</style>
       {liveSheetWarning ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{liveSheetWarning}</p>
-        : liveSheetCheckedAt && <p role="status" className="text-xs text-slate-500">Allocation balances last checked at {new Date(liveSheetCheckedAt).toLocaleTimeString()}. Live updates every 3 seconds while this sheet is visible.</p>}
+        : liveSheetCheckedAt && <p role="status" className="text-xs text-slate-500">Saved allocation received at {new Date(liveSheetCheckedAt).toLocaleTimeString()}. Confirmed Vaccine Checker changes update this sheet automatically.</p>}
       {/* Top Banner & Blueprint Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div className="flex min-w-0 items-start gap-3">
@@ -4275,8 +4380,8 @@ export default function VaccineAllocationBlueprint({
           ))}
         </div>
         <div className="flex min-h-14 items-center gap-2 overflow-x-auto border-b border-slate-200 px-3 py-2">
-          <button type="button" onClick={handleUndo} disabled={undoStackRef.current.length === 0} title="Undo" className="min-h-10 min-w-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-base font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-45">↶</button>
-          <button type="button" onClick={handleRedo} disabled={redoStackRef.current.length === 0} title="Redo" className="min-h-10 min-w-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-base font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-45">↷</button>
+          <button type="button" onClick={handleUndo} disabled={undoStackRef.current.length === 0} aria-label="Undo" title="Undo" className="min-h-10 min-w-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-base font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-45">↶</button>
+          <button type="button" onClick={handleRedo} disabled={redoStackRef.current.length === 0} aria-label="Redo" title="Redo" className="min-h-10 min-w-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-base font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-45">↷</button>
           <button type="button" onClick={printBlueprint} title="Print current Blueprint" className="min-h-10 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100">Print</button>
           {!isSheetFullscreen && <button type="button" onClick={() => void toggleSheetFullscreen()} aria-controls="allocation-blueprint-sheet" className="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100" title="Expand only the sheet to full screen">
             <Maximize2 className="h-4 w-4" />Full screen
@@ -4294,12 +4399,12 @@ export default function VaccineAllocationBlueprint({
             <div key={control.property} className="flex shrink-0 items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1">
               <label className="flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-slate-700">
                 {control.label}
-                <input type="color" aria-label={control.label} value={control.value} disabled={selectedBoldTargets.length === 0}
+                <input type="color" aria-label={control.label} value={control.value} disabled={!canColorSelection}
                   onChange={event => { control.setValue(event.target.value); applySelectedCellColor(control.property, event.target.value); }}
                   className="h-8 w-8 cursor-pointer border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-45" />
               </label>
-              <button type="button" onClick={() => applySelectedCellColor(control.property, control.value)} disabled={selectedBoldTargets.length === 0} aria-label={`Apply ${control.label.toLowerCase()}`} className="rounded px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-45">Apply</button>
-              <button type="button" onClick={() => applySelectedCellColor(control.property)} disabled={selectedBoldTargets.length === 0} aria-label={control.clear} title={control.clear} className="rounded px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-45">Clear</button>
+              <button type="button" onClick={() => applySelectedCellColor(control.property, control.value)} disabled={!canColorSelection} aria-label={`Apply ${control.label.toLowerCase()}`} className="rounded px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-45">Apply</button>
+              <button type="button" onClick={() => applySelectedCellColor(control.property)} disabled={!canColorSelection} aria-label={control.clear} title={control.clear} className="rounded px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-45">{control.property==='backgroundColor'?'No fill':'Reset'}</button>
             </div>
           ))}
           <button type="button" onClick={handleMergeSelectedCells} disabled={!getCellRangeBounds() || (getCellRangeBounds()?.lastCol ?? 99) > 3} title="Merge selected cells in columns A–D" className="min-h-10 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-45">Merge</button>
@@ -4309,6 +4414,12 @@ export default function VaccineAllocationBlueprint({
           <button type="button" onClick={event => openFreezeMenu(event, 'main')} className="min-h-10 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100">Freeze</button>
           <button type="button" onClick={() => setFormulaBarVisible(visible => !visible)} className="min-h-10 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100">fx</button>
           <button type="button" onClick={() => void handleSaveChanges()} disabled={!hasUnsavedChanges} title="Save changes" className="min-h-10 whitespace-nowrap rounded-md bg-emerald-700 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-800 disabled:opacity-45">Save</button>
+          <label className="flex items-center gap-2 whitespace-nowrap text-xs font-medium text-slate-700"><input type="checkbox" checked={autoSave} onChange={event=>{
+            const enabled=event.target.checked;setAutoSave(enabled);autoSaveRef.current=enabled;
+            if(saveTimerRef.current){clearTimeout(saveTimerRef.current);saveTimerRef.current=null;}
+            if(hasUnsavedChanges){setSaveStatus(enabled?'Unsaved changes — autosave after typing':'Unsaved changes — click Save');if(enabled)saveTimerRef.current=setTimeout(()=>{saveTimerRef.current=null;void handleSaveChanges();},1200);}
+          }}/>Autosave after typing</label>
+          <button type="button" disabled={hasUnsavedChanges||loading} onClick={()=>void checkSavedAllocation()} className="min-h-10 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm disabled:opacity-45">Check updates</button>
           <button type="button" onClick={() => fileInputRef.current?.click()} title="Upload Excel or CSV" className="min-h-10 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100">Upload</button>
           <button type="button" onClick={handleExportExcel} title="Download as Excel" className="min-h-10 whitespace-nowrap rounded-md bg-[#ED7D31] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#C55A11]">Download</button>
         </div>
@@ -4332,9 +4443,11 @@ export default function VaccineAllocationBlueprint({
       </section>
 
       {importPreview&&<section className="bg-white border border-purple-300 rounded-xl p-4 space-y-3" aria-label="Blueprint import preview"><h3 className="font-bold">Review import: {importPreview.fileName}</h3>{!importCatalog&&<p role="alert" className="text-amber-800">Product catalogue unavailable. Reload the page before applying this import.</p>}<p>Nothing is saved until you apply this preview. {importPreview.skipped} unsupported worksheets will be skipped.</p>{importPreview.skippedMessages?.map(item=><p key={item.sheetName} className="text-sm text-amber-800">Skipped {item.sheetName}: {item.errors.join('; ')||'No supported allocation table'}</p>)}<div className="max-h-80 overflow-auto">{allocationImportPreview(districts,importPreview.sheets,importCatalog).map(sheet=><div key={sheet.sheetId} className="border rounded p-2 mb-2 text-sm"><strong>{sheet.district} · {sheet.cycle}</strong><p>{sheet.newFacilities.length} new facilities · {sheet.removedFacilities.length} removed facilities · {sheet.changes.length} changed fields</p>{sheet.newFacilities.length>0&&<p>New: {sheet.newFacilities.join(', ')}</p>}{sheet.removedFacilities.length>0&&<p>Removed: {sheet.removedFacilities.join(', ')}</p>}{sheet.findings.map((issue,index)=><p key={index} className={issue.severity==='error'?'text-red-800':'text-amber-800'}>{issue.facility}: {issue.message}</p>)}<details><summary>Review quantity and field changes</summary>{sheet.changes.map((change,index)=><p key={index}>{change.facility} · {change.product||''} · {change.field}: {String(change.before??'Not recorded')} → {String(change.after??'Not recorded')}</p>)}</details></div>)}</div><button type="button" disabled={loading||!canManageCatalog(assignedRoles(currentUser))||!importCatalog||allocationImportPreview(districts,importPreview.sheets,importCatalog).some(sheet=>sheet.findings.some(issue=>issue.severity==='error'))} onClick={()=>void confirmImport()} className="border rounded p-2">Apply reviewed import</button><button type="button" disabled={loading} onClick={()=>setImportPreview(null)} className="border rounded p-2 ml-2">Cancel import</button></section>}
-      {districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'&&<p role="status" className="bg-amber-50 text-amber-900 border rounded p-3">Closed cycle — allocation changes are locked. Open Cycle controls and record a correction reason to reopen it.</p>}
-      <label className="block text-sm">Reason for allocation changes (recorded in history)<input value={changeReason} onChange={event=>setChangeReason(event.target.value)} maxLength={1000} className="border rounded p-2 w-full" placeholder="e.g. Reviewed monthly allocation update"/></label>
-      <AllocationOperations sheets={districts} canManage={canManageCatalog(assignedRoles(currentUser))&&!hasUnsavedChanges} onUpdated={()=>void loadBlueprintFromServer()} onAudit={onFacilitySelectedForOrder}/>
+      {districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'&&<p role="status" className="bg-amber-50 text-amber-900 border rounded p-3">Closed cycle — allocation changes are locked. Use Cycle controls in Vaccine Dashboard and record a correction reason to reopen it.</p>}
+      {hasUnsavedChanges && <label className="block text-sm">Reason for allocation changes (recorded in history)<input value={changeReason} onChange={event=>setChangeReason(event.target.value)}
+        onFocus={()=>{if(saveTimerRef.current){clearTimeout(saveTimerRef.current);saveTimerRef.current=null;}}}
+        onBlur={()=>{if(autoSaveRef.current && hasUnsavedChanges){saveTimerRef.current=setTimeout(()=>{saveTimerRef.current=null;void handleSaveChanges();},1200);}}}
+        maxLength={1000} className="border rounded p-2 w-full" placeholder="e.g. Reviewed monthly allocation update"/></label>}
       {/* Multi-District & Months Selection Dropdown Bar - Unified Single Line */}
       <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:px-4 shadow-xs">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
@@ -4893,6 +5006,16 @@ export default function VaccineAllocationBlueprint({
             <>
               <button type="button" className="fixed inset-0 z-[70] cursor-default" aria-label="Close Freeze menu" onClick={() => setFreezeMenu(null)} />
               <div role="menu" className="fixed z-[80] min-w-56 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl" style={{ left: Math.max(8, Math.min(freezeMenu.x, window.innerWidth - 240)), top: Math.max(8, Math.min(freezeMenu.y, window.innerHeight - 300)), maxHeight: Math.max(100, window.innerHeight - Math.max(8, Math.min(freezeMenu.y, window.innerHeight - 300)) - 8) }} onClick={event => event.stopPropagation()}>
+                <div className="border-b border-slate-200 px-2 py-2">
+                  <label className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-700">Fill colour<input type="color" aria-label="Cell fill colour" value={fillColor} disabled={!canColorSelection} onChange={event=>{setFillColor(event.target.value);applySelectedCellColor('backgroundColor',event.target.value);}} className="h-7 w-10" /></label>
+                  <button role="menuitem" type="button" disabled={!canColorSelection} onClick={()=>{applySelectedCellColor('backgroundColor');setFreezeMenu(null);}} className="freeze-menu-item disabled:opacity-40">No fill</button>
+                </div>
+                {freezeMenu.clipboard && <>
+                  <button role="menuitem" type="button" onClick={() => void handleContextCopy()} className="freeze-menu-item">Copy</button>
+                  <button role="menuitem" type="button" onClick={() => void handleContextPaste()} disabled={districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'} className="freeze-menu-item disabled:opacity-40">Paste</button>
+                  <button role="menuitem" type="button" onClick={()=>{setClipboardDialog({mode:'paste',selection:freezeMenu.clipboard!,text:''});setFreezeMenu(null);}} disabled={districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'} className="freeze-menu-item disabled:opacity-40">Paste from Excel…</button>
+                  <div className="my-1 border-t border-slate-100" />
+                </>}
                 {freezeMenu.kind !== 'main' && <>
                   <button role="menuitem" type="button" onClick={() => {
                     setFreezeMenu(null);
@@ -4965,23 +5088,78 @@ export default function VaccineAllocationBlueprint({
             <span className="text-sm font-semibold">Allocation sheet</span>
             <button type="button" onClick={() => void toggleSheetFullscreen()} title="Exit full screen (Esc)" className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-100"><Minimize2 className="h-4 w-4" />Exit full screen</button>
           </div>}
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+          <button type="button" disabled={!getClipboardSelection()} onClick={()=>void handleContextCopy(getClipboardSelection())} className="rounded border border-slate-300 px-3 py-1 text-xs font-semibold disabled:opacity-40">Copy cells</button>
+          <button type="button" disabled={!getClipboardSelection() || districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'} onClick={()=>{const selection=getClipboardSelection();if(selection)setClipboardDialog({mode:'paste',selection,text:''});}} className="rounded border border-slate-300 px-3 py-1 text-xs font-semibold disabled:opacity-40">Paste data</button>
+          <span className="text-xs text-slate-600">Select a destination cell, then paste with Ctrl+V / Cmd+V or Paste data.</span>
+          {saveStatus && <span role="status" className="text-xs font-semibold text-slate-700">{saveStatus}</span>}
+        </div>
+        {clipboardDialog && createPortal(<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={event=>event.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-labelledby="blueprint-clipboard-title" className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl" onKeyDown={event=>{
+            event.stopPropagation();
+            if(event.key==='Escape'){setClipboardDialog(null);restoreClipboardFocus(clipboardDialog.selection);}
+            if(event.key==='Tab'){
+              const controls=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('textarea,button:not(:disabled)'));
+              const index=controls.indexOf(document.activeElement as HTMLElement);
+              if(event.shiftKey && index===0){event.preventDefault();controls.at(-1)?.focus();}
+              else if(!event.shiftKey && index===controls.length-1){event.preventDefault();controls[0]?.focus();}
+            }
+          }}>
+            <h3 id="blueprint-clipboard-title" className="font-bold text-slate-900">{clipboardDialog.mode==='paste'?'Paste into Blueprint':'Copy Blueprint cells'}</h3>
+            <p className="my-2 text-sm text-slate-600">{clipboardDialog.mode==='paste'?'Paste your Excel rows and columns below using Ctrl+V or Cmd+V, then click Apply paste.':'The selected cells are ready below. Press Ctrl+C or Cmd+C to copy them.'}</p>
+            <textarea aria-label={clipboardDialog.mode==='paste'?'Excel data to paste':'Selected cells to copy'} autoFocus ref={element=>{if(element && clipboardDialog.mode==='copy')element.select();}} readOnly={clipboardDialog.mode==='copy'} value={clipboardDialog.text} onChange={event=>setClipboardDialog({...clipboardDialog,text:event.target.value})} onPaste={event=>{
+              if(clipboardDialog.mode!=='paste')return;
+              const text=blueprintClipboardText(event.clipboardData,event.currentTarget.ownerDocument);
+              if(text){event.preventDefault();setClipboardDialog({...clipboardDialog,text});}
+            }} className="h-64 w-full rounded border border-slate-300 p-3 font-mono text-sm text-slate-900" />
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" onClick={()=>{setClipboardDialog(null);restoreClipboardFocus(clipboardDialog.selection);}} className="rounded border border-slate-300 px-4 py-2 text-sm">{clipboardDialog.mode==='paste'?'Cancel':'Done'}</button>
+              {clipboardDialog.mode==='paste' && <button type="button" disabled={!clipboardDialog.text.trim()} onClick={applyClipboardDialog} className="rounded bg-purple-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Apply paste</button>}
+            </div>
+          </div>
+        </div>,isSheetFullscreen ? blueprintSheetRef.current || document.body : document.body)}
         <div className={`flex min-w-0 items-stretch ${isSheetFullscreen ? 'min-h-0 flex-1' : ''}`}>
           <div
             id="allocation-blueprint-grid-scroll"
             ref={gridScrollRef}
+            tabIndex={0}
+            role="region"
+            aria-label="Allocation Blueprint spreadsheet"
+            onPasteCapture={handleGridPaste}
+            onCopyCapture={event=>handleGridCopy(event)}
+            onCutCapture={event=>handleGridCopy(event,true)}
+            onMouseDownCapture={event=>{
+              const target=event.target as HTMLElement;
+              if(target.closest('input,textarea,button,[contenteditable="true"]'))return;
+              event.currentTarget.focus({preventScroll:true});
+              const cell=target.closest<HTMLElement>('[data-grid-cell-row][data-grid-cell-col]');
+              if(cell?.dataset.gridCellRow){
+                setActiveHeaderCell(null);
+                const rowId=cell.dataset.gridCellRow,col=Number(cell.dataset.gridCellCol);
+                handleGridCellMouseDown(event,rowId,col);
+                gridInputRefs.current.get(gridCellKey(rowId,col))?.focus({preventScroll:true});
+              }
+            }}
+            style={isSheetFullscreen?undefined:{height:availableSheetHeight??'calc(100dvh - 260px)'}}
             onScroll={syncGridScrollMetrics}
-            className={`allocation-blueprint-scroll min-w-0 flex-1 overflow-auto ${isSheetFullscreen ? 'h-full min-h-0 max-h-none' : 'max-h-[680px]'}`}
+            className={`allocation-blueprint-scroll min-w-0 flex-1 overflow-auto ${isSheetFullscreen ? 'h-full min-h-0 max-h-none' : 'min-h-[320px]'}`}
           >
-            <style>{`[data-cell-text="true"], [data-cell-text="true"] input { color: var(--blueprint-text-color) !important; } [data-cell-fill="true"] input { background-color: transparent !important; } [data-blueprint-bold="true"], [data-blueprint-bold="true"] input { font-weight: 700 !important; } .blueprint-sized-cell > div { height: var(--blueprint-row-height); max-height: var(--blueprint-row-height); min-height: 0; overflow: hidden; } .blueprint-sized-cell input { max-height: calc(var(--blueprint-row-height) - 2px); }`}</style>
+            <style>{`[data-cell-text="true"], [data-cell-text="true"] :is(input,div,span) { color: var(--blueprint-text-color) !important; } [data-cell-fill="true"] input { background-color: transparent !important; } [data-blueprint-bold="true"], [data-blueprint-bold="true"] input { font-weight: 700 !important; } .blueprint-sized-cell > div { height: var(--blueprint-row-height); max-height: var(--blueprint-row-height); min-height: 0; overflow: hidden; } .blueprint-sized-cell input { max-height: calc(var(--blueprint-row-height) - 2px); }`}</style>
             <fieldset disabled={districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed'} className="contents">
-            <table onChangeCapture={event=>{if(districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed')event.stopPropagation();}} ref={blueprintTableRef} onContextMenu={event => openFreezeMenu(event, 'row')} style={{ zoom: zoomLevel / 100, tableLayout: 'fixed', width: visibleColumns.reduce((sum, col) => sum + getSheetColumnWidth(col), 0) }} className="text-left border-collapse select-text text-xs">
-            <colgroup>{visibleColumns.map(col => <col key={blueprintColumnKey(col, products)} style={{ width: getSheetColumnWidth(col) }} />)}</colgroup>
+            <table onChangeCapture={event=>{if(districts.find(sheet=>sheet.id===activeDistrictId)?.cycleState==='closed')event.stopPropagation();}} ref={blueprintTableRef} onContextMenu={event => openFreezeMenu(event, 'row')} style={{ zoom: zoomLevel / 100, tableLayout: 'fixed', width: 44 + visibleColumns.reduce((sum, col) => sum + getSheetColumnWidth(col), 0) }} className="text-left border-collapse select-text text-xs">
+            <colgroup><col style={{width:44,minWidth:44}} />{visibleColumns.map(col => <col key={layoutColumnKey(col, products, blankColumns)} style={{ width: getSheetColumnWidth(col) }} />)}</colgroup>
             {/* Table Header Section */}
             <thead className="font-sans">
+              <tr data-blueprint-column-ruler className="sticky top-0 z-[65] h-7 bg-slate-100 text-slate-600">
+                <th className="sticky left-0 z-[70] border-b border-r border-slate-300 bg-slate-100 p-0" style={{width:44,minWidth:44}}><button type="button" aria-label="Select entire Blueprint" onClick={selectAllBlueprintCells} className="h-7 w-full hover:bg-sky-100">▦</button></th>
+                {visibleColumns.map(col=><th key={layoutColumnKey(col,products,blankColumns)} scope="col" data-blueprint-column-letter={getSheetColumnLetter(col)} className="border-b border-r border-slate-300 bg-slate-100 p-0 text-center text-[11px] font-semibold" style={{width:getSheetColumnWidth(col),minWidth:getSheetColumnWidth(col),...(visibleColumns.indexOf(col)<freezeColumns?{position:'sticky',left:44+getGridColumnLeft(col),zIndex:66}:{} )}}>
+                  <button type="button" aria-label={`Select column ${getSheetColumnLetter(col)}`} className="h-7 w-full hover:bg-sky-100 hover:text-sky-900" onMouseDown={event=>{event.preventDefault();gridScrollRef.current?.focus({preventScroll:true});}} onClick={event=>handleSelectGridColumn(col,event)} onContextMenu={event=>openFreezeMenu(event,'column',col)}>{getSheetColumnLetter(col)}</button>
+                </th>)}
+              </tr>
               {/* ========================================================= */}
               {/* ROW 1: DISTRICT & MONTH TITLE BANNER                     */}
               {/* ========================================================= */}
-              <BlueprintLayoutRow baseColumns={baseVisibleColumns} columns={visibleColumns} renderCell={col => renderFreeCell(col, undefined, 1)} decorateCell={(cell, columns, first) => decorateSizedCell(cell, columns, first, 'header:1', 1)} data-sheet-row-index={1} onContextMenu={event => openFreezeMenu(event, 'row', 1)} style={freezeRows >= 1 ? { position: 'sticky', top: `${freezeRowOffsets[1] ?? 0}px`, zIndex: 40, boxShadow: freezeRows === 1 ? 'inset 0 -2px 0 #64748b' : undefined } : undefined} className="bg-[#ED7D31] text-white border-b border-black">
+              <BlueprintLayoutRow baseColumns={baseVisibleColumns} columns={visibleColumns} renderCell={col => renderFreeCell(col, undefined, 1)} decorateCell={(cell, columns, first) => decorateSizedCell(cell, columns, first, 'header:1', 1)} leadingCell={renderSheetRowNumber(1)} data-sheet-row-index={1} onContextMenu={event => openFreezeMenu(event, 'row', 1)} style={freezeRows >= 1 ? { position: 'sticky', top: `${freezeRowOffsets[1] ?? 0}px`, zIndex: 40, boxShadow: freezeRows === 1 ? 'inset 0 -2px 0 #64748b' : undefined } : undefined} className="bg-[#ED7D31] text-white border-b border-black">
                 {/* Date and facility columns frozen in Row 1 */}
                 <th
                   className="sticky left-0 z-40 bg-[#ED7D31] border-r border-black py-2.5 px-2 text-center w-[140px] min-w-[140px] text-[10px] font-bold text-orange-100"
@@ -5024,7 +5202,7 @@ export default function VaccineAllocationBlueprint({
               {/* ========================================================= */}
               {/* ROW 2: PROCESSING, COMPLETED, FACILITY, VACCINES          */}
               {/* ========================================================= */}
-              <BlueprintLayoutRow baseColumns={baseVisibleColumns} columns={visibleColumns} renderCell={col => renderFreeCell(col, undefined, 2)} decorateCell={(cell, columns, first) => decorateSizedCell(cell, columns, first, 'header:2', 2)} data-sheet-row-index={2} onContextMenu={event => openFreezeMenu(event, 'row', 2)} style={freezeRows >= 2 ? { position: 'sticky', top: `${freezeRowOffsets[2] ?? 0}px`, zIndex: 40, boxShadow: freezeRows === 2 ? 'inset 0 -2px 0 #64748b' : undefined } : undefined} className="bg-[#F8CBAD] text-slate-900 border-b border-black text-xs font-black uppercase tracking-wider">
+              <BlueprintLayoutRow baseColumns={baseVisibleColumns} columns={visibleColumns} renderCell={col => renderFreeCell(col, undefined, 2)} decorateCell={(cell, columns, first) => decorateSizedCell(cell, columns, first, 'header:2', 2)} leadingCell={renderSheetRowNumber(2)} data-sheet-row-index={2} onContextMenu={event => openFreezeMenu(event, 'row', 2)} style={freezeRows >= 2 ? { position: 'sticky', top: `${freezeRowOffsets[2] ?? 0}px`, zIndex: 40, boxShadow: freezeRows === 2 ? 'inset 0 -2px 0 #64748b' : undefined } : undefined} className="bg-[#F8CBAD] text-slate-900 border-b border-black text-xs font-black uppercase tracking-wider">
                 {/* Col A: Processing / Start Date */}
                 <th
                   className="sticky left-0 z-40 bg-[#ED7D31] text-white border-r border-black py-2.5 px-2 text-center w-[140px] min-w-[140px]"
@@ -5081,7 +5259,7 @@ export default function VaccineAllocationBlueprint({
               {/* ========================================================= */}
               {/* ROW 3: GROUPED VACCINE HEADERS (4 COLUMNS EACH)           */}
               {/* ========================================================= */}
-              <BlueprintLayoutRow baseColumns={baseVisibleColumns} columns={visibleColumns} renderCell={col => renderFreeCell(col, undefined, 3)} decorateCell={(cell, columns, first) => decorateSizedCell(cell, columns, first, 'header:3', 3)} data-sheet-row-index={3} onContextMenu={event => openFreezeMenu(event, 'row', 3)} style={freezeRows >= 3 ? { position: 'sticky', top: `${freezeRowOffsets[3] ?? 0}px`, zIndex: 40, boxShadow: freezeRows === 3 ? 'inset 0 -2px 0 #64748b' : undefined } : undefined} className="bg-[#FCE4D6] text-slate-900 border-b border-black text-[11px] font-black text-center">
+              <BlueprintLayoutRow baseColumns={baseVisibleColumns} columns={visibleColumns} renderCell={col => renderFreeCell(col, undefined, 3)} decorateCell={(cell, columns, first) => decorateSizedCell(cell, columns, first, 'header:3', 3)} leadingCell={renderSheetRowNumber(3)} data-sheet-row-index={3} onContextMenu={event => openFreezeMenu(event, 'row', 3)} style={freezeRows >= 3 ? { position: 'sticky', top: `${freezeRowOffsets[3] ?? 0}px`, zIndex: 40, boxShadow: freezeRows === 3 ? 'inset 0 -2px 0 #64748b' : undefined } : undefined} className="bg-[#FCE4D6] text-slate-900 border-b border-black text-[11px] font-black text-center">
                 {/* Frozen column placeholders */}
                 <th
                   className="sticky left-0 z-40 bg-[#FFF2CC] border-r border-black py-1.5 px-2 text-[10px] text-slate-600 font-bold"
@@ -5263,7 +5441,7 @@ export default function VaccineAllocationBlueprint({
               {/* ========================================================= */}
               {/* ROW 4: SUBCOLUMNS (Carry-over, Allocation, Dist, Balance)   */}
               {/* ========================================================= */}
-              <BlueprintLayoutRow baseColumns={baseVisibleColumns} columns={visibleColumns} renderCell={col => renderFreeCell(col, undefined, 4)} decorateCell={(cell, columns, first) => decorateSizedCell(cell, columns, first, 'header:4', 4)} data-sheet-row-index={4} onContextMenu={event => openFreezeMenu(event, 'row', 4)} style={freezeRows >= 4 ? { position: 'sticky', top: `${freezeRowOffsets[4] ?? 0}px`, zIndex: 40, boxShadow: freezeRows === 4 ? 'inset 0 -2px 0 #64748b' : undefined } : undefined} className="bg-[#FFF2CC] text-slate-900 border-b-2 border-black text-[10.5px] font-black text-center uppercase tracking-tight">
+              <BlueprintLayoutRow baseColumns={baseVisibleColumns} columns={visibleColumns} renderCell={col => renderFreeCell(col, undefined, 4)} decorateCell={(cell, columns, first) => decorateSizedCell(cell, columns, first, 'header:4', 4)} leadingCell={renderSheetRowNumber(4)} data-sheet-row-index={4} onContextMenu={event => openFreezeMenu(event, 'row', 4)} style={freezeRows >= 4 ? { position: 'sticky', top: `${freezeRowOffsets[4] ?? 0}px`, zIndex: 40, boxShadow: freezeRows === 4 ? 'inset 0 -2px 0 #64748b' : undefined } : undefined} className="bg-[#FFF2CC] text-slate-900 border-b-2 border-black text-[10.5px] font-black text-center uppercase tracking-tight">
                 {/* Frozen column headers */}
                 <th
                   className="sticky left-0 z-40 bg-[#FFF2CC] border-r border-black py-2 px-2 text-center w-[140px] min-w-[140px] group/colH select-none cursor-pointer"
@@ -5467,7 +5645,7 @@ export default function VaccineAllocationBlueprint({
             >
               {filteredAndSortedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={totalColumnCount} className="py-12 text-center text-slate-400">
+                  <td colSpan={totalColumnCount + 1} className="py-12 text-center text-slate-400">
                     <p className="text-sm font-bold text-slate-600 mb-1">No rows found</p>
                     <p className="text-xs">Click "Add Facility Row" or "+5 Blank Rows" to start entering data.</p>
                   </td>
@@ -5494,6 +5672,7 @@ export default function VaccineAllocationBlueprint({
                     <BlueprintLayoutRow baseColumns={baseVisibleColumns} columns={visibleColumns} plainRow={row.rowKind === 'blank'} renderCell={col => renderFreeCell(col, row)} decorateCell={(cell, columns, first) => decorateSizedCell(cell, columns, first, row.id)}
                       key={row.id}
                       data-progress-status={progressStatus}
+                      leadingCell={renderSheetRowNumber(rowNumber,row.id)}
                       data-sheet-row-index={rowNumber}
                       onContextMenu={event => { setFocusedCell({ rowId: row.id, colIdx: focusedCell?.colIdx ?? 0 }); openFreezeMenu(event, 'row', rowNumber); }}
                       style={freezeRows >= rowNumber ? { position: 'sticky', top: `${freezeRowOffsets[rowNumber] ?? 0}px`, zIndex: 40, boxShadow: freezeRows === rowNumber ? 'inset 0 -2px 0 #64748b' : undefined } : undefined}
@@ -5536,7 +5715,6 @@ export default function VaccineAllocationBlueprint({
                         }}
                       >
                         <div className="flex items-center h-full px-2 py-1.5 gap-1 relative">
-                          <span className="w-4 shrink-0 text-right text-[9px] font-semibold text-slate-400" onContextMenu={event => { setFocusedCell({ rowId: row.id, colIdx: focusedCell?.colIdx ?? 0 }); openFreezeMenu(event, 'row', rowNumber); }}>{rowNumber}</span>
                           <span
                             data-reorder-handle
                             draggable={canReorderFacilityRows}
@@ -5565,16 +5743,6 @@ export default function VaccineAllocationBlueprint({
                             className="mr-0.5 accent-sky-600 rounded shrink-0 cursor-pointer w-3.5 h-3.5"
                             title="Highlight row (Shift-click for range selection)"
                           />
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleRowSelect(row.id, e);
-                            }}
-                            className="text-[10px] text-slate-400 font-mono w-4 shrink-0 text-right mr-1 cursor-pointer hover:text-slate-800"
-                            title="Click to highlight row (Shift-click for range selection)"
-                          >
-                            {rowIdx + 1}
-                          </span>
                           <div className="flex-1 flex items-center min-w-0">
                             <input
                               type="text"
@@ -5793,7 +5961,7 @@ export default function VaccineAllocationBlueprint({
                         const bal = computeBalance(vData.carryOver, vData.allocation, vData.distributed);
                         const vaccineStatus = allocationWorksheet ? getAllocationStatus(vData) : undefined;
                         const cellStyle = (colIdx: number) => ({
-                          ...getAllocationCellStyle(row.baseFormatting?.[blueprintColumnKey(colIdx, products)], vaccineStatus, isGridCellInRange(row.id, colIdx) || (focusedCell?.rowId === row.id && focusedCell.colIdx === colIdx) || allCellsHighlighted || selectedColumnNames.has(pName) || isSelected),
+                          ...getAllocationCellStyle(row.baseFormatting?.[layoutColumnKey(colIdx, products, blankColumns)], vaccineStatus, isGridCellInRange(row.id, colIdx) || (focusedCell?.rowId === row.id && focusedCell.colIdx === colIdx) || allCellsHighlighted || selectedColumnNames.has(pName) || isSelected),
                           ...(bal === 0 ? { backgroundColor: '#15803D' } : {})
                         });
                         const inputStyle = {
@@ -5951,7 +6119,7 @@ export default function VaccineAllocationBlueprint({
 
             {/* Table Footer: Summary & Column Totals */}
             <tfoot className="bg-[#FFF2CC] border-t-2 border-black font-sans text-xs font-black">
-              <BlueprintLayoutRow baseColumns={baseVisibleColumns} columns={visibleColumns} renderCell={col => <td key={col} className="border border-black bg-[#FFF2CC]" />} decorateCell={(cell, columns, first) => decorateSizedCell(cell, columns, first)}>
+              <BlueprintLayoutRow baseColumns={baseVisibleColumns} columns={visibleColumns} renderCell={col => <td key={col} className="border border-black bg-[#FFF2CC]" />} leadingCell={<th scope="row" className="sticky left-0 z-35 border-r border-slate-300 bg-slate-100 text-center text-slate-500" aria-label="Totals">Σ</th>} decorateCell={(cell, columns, first) => decorateSizedCell(cell, columns, first)}>
                 <td style={getFreezeCellStyle(0)} className="sticky left-0 z-30 bg-[#FFF2CC] border-r border-black py-2.5 px-2 text-center text-slate-900 w-[140px] min-w-[140px]">
                   TOTALS
                 </td>

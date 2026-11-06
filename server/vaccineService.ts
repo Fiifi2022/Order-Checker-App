@@ -1,3 +1,11 @@
+import {malariaVaccineIdentityConflict} from '../shared/generalVaccineCatalog';
+import {isSyringeDescription,resolveSyringeCatalogue,normalizeSyringeOrderLine} from '../shared/syringeIdentity';
+import type {CatalogProduct} from '../shared/productCatalog';
+let syringeProducts:readonly CatalogProduct[]=[];
+export function setSyringeCatalogue(products:readonly CatalogProduct[]){syringeProducts=products;}
+import {cleanOrderRequest,normalizeOrderCountText,normalizeCatalogueCountText,ORDER_NUMBER_WORDS,hasExplicitNegativeOrderCount} from '../shared/orderText';
+import {projectNaturalOrderText} from '../src/utils/generalSentenceExtraction';
+import {generalDocumentLabel} from '../src/utils/generalDocumentStructure';
 /**
  * Vaccine Allocation Validation & Tracking Service
  * Authoritative transactional service for DCO vaccine allocations,
@@ -51,6 +59,7 @@ export const SYRINGE_CONSUMABLE_PRODUCTS = [
  */
 export function isDeviceProduct(productName: string): boolean {
   if (!productName) return false;
+  if(isSyringeDescription(productName))return true;
   const p = productName.toLowerCase().trim();
 
   // 1. Soloshot 0.05ml
@@ -283,6 +292,7 @@ export function getAliases() {
 }
 
 export function replaceAliases(aliases: Record<string, string[]>) {
+  syringeProducts=Object.entries(aliases).filter(([name])=>isSyringeDescription(name)).map(([name,values])=>({id:name,name,scope:'vaccine' as const,category:'device',aliases:values,contextualAliases:[],note:''}));
   customAliases = { ...aliases };
   return customAliases;
 }
@@ -297,7 +307,7 @@ export function normalizeProductName(value: string): string {
   return value
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/^\s*(?:[•*#>–—-]+\s*|\d+[.)]\s*)/, '')
+    .replace(/^\s*(?:[•*#>–—-]+\s*|\d+(?:\.(?!\d)|\))\s*)/, '')
     .replace(/\b[a-z](?:\.\s*[a-z])+\b(?:\.(?![a-z]))?/gi, value=>value.replace(/[.\s]/g,''))
     .toLowerCase()
     .replace(/\bdiluents\b/g, 'diluent')
@@ -310,6 +320,9 @@ export function normalizeProductName(value: string): string {
 
 // Live dropdown selections require a complete alias, never a substring of another product.
 export function matchExactVaccineName(rawName: string): { canonical: string; confidence: 'high' | 'none' } {
+  const syringe=resolveSyringeCatalogue(rawName,syringeProducts);
+  if(syringe && syringeProducts.length)return {canonical:syringe.product?.name||rawName,confidence:syringe.product?'high':'none'};
+  if(malariaVaccineIdentityConflict(rawName,rawName))return {canonical:rawName,confidence:'none'};
   const normalized = normalizeProductName(rawName || '');
   const matches = Object.entries(customAliases).filter(([canonical, aliases]) =>
     [canonical, ...aliases].some(alias => normalizeProductName(alias) === normalized)).map(([canonical]) => canonical);
@@ -318,6 +331,9 @@ export function matchExactVaccineName(rawName: string): { canonical: string; con
 
 export function matchVaccineName(rawName: string): { canonical: string; confidence: 'high' | 'medium' | 'none' } {
   if (!rawName?.trim()) return { canonical: rawName, confidence: 'none' };
+  if(malariaVaccineIdentityConflict(rawName,rawName))return {canonical:rawName,confidence:'none'};
+  const syringe=resolveSyringeCatalogue(rawName,syringeProducts);
+  if(syringe && syringeProducts.length)return {canonical:syringe.product?.name||rawName,confidence:syringe.product?'high':'none'};
   const normalized = normalizeProductName(rawName);
   const aliasEntries = Object.entries(customAliases)
     .flatMap(([canonical, aliases]) => [canonical, ...aliases].map(alias => ({
@@ -338,6 +354,7 @@ export function matchVaccineName(rawName: string): { canonical: string; confiden
   const inputIsAccessory = /\b(diluent|dropper|water|solvent)\b/.test(normalized);
   const candidates = new Set(aliasEntries.filter(entry =>
     entry.isAccessory === inputIsAccessory &&
+    entry.alias !== 'malaria vaccine' &&
     (` ${normalized} `).includes(` ${entry.alias} `)
   ).map(entry => entry.canonical));
   // Ambiguous multi-vaccine text is not a synonym for either identity.
@@ -680,7 +697,7 @@ export interface ParsedVaccineLinesResult {
 const FS_METADATA_LINE = /^(?:(?:facility|hospital|clinic|health\s*cent(?:re|er)|hc|chps|dhd|district|order|orderer|name|customer|sender|phone|contact|date|delivered|received|status|dr|cca|to|for|recipient|dispatch)\s*[:=–—].*|(?:packing slip|items loaded|order verified))$/i;
 const PRODUCT_LINE_HINT = /\b(vaccine|bcg|opv|penta|pentavalent|pcv|pneumococcal|rota|rotavirus|mr|measles|rubella|yellow fever|\byf\b|men\s*a|mena|meningitis|hpv|papilloma|ipv|polio|tetanus|\btd\b|diluent|dropper|syringe|needle|soloshot|r21|malaria)\b/i;
 
-const SMALL_QUANTITY_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const SMALL_QUANTITY_WORDS=ORDER_NUMBER_WORDS;
 const QUANTITY_TOKEN = '-?\\d[\\d,]*(?:\\.\\d+)?|one|two|three|four|five|six|seven|eight|nine|ten';
 const QUANTITY_UNIT = '(?:vials?|doses?|packs?|boxes?|pieces?|pcs?|units?)';
 
@@ -691,17 +708,21 @@ function quantityTokenValue(token: string) {
 function parseVaccineQuantity(line: string): { rawName: string; quantityToken: string; referenceQuantity?: number } | null {
   const bracket = line.match(/^(.+?)\s*\[\s*(-?\d[\d,]*(?:\.\d+)?)\s*(?:\/\s*(-?\d[\d,]*(?:\.\d+)?))?\]\s*[.!]?$/);
   if (bracket) return { rawName: bracket[1].trim(), quantityToken: bracket[2], referenceQuantity: bracket[3] === undefined ? undefined : Number(bracket[3].replace(/,/g, '')) };
+  const deviceRatio=isSyringeDescription(line)&&line.match(/^(.+?)\s+(\d+)\s*\/\s*(\d+)\s*$/);
+  if(deviceRatio)return {rawName:deviceRatio[1].trim(),quantityToken:deviceRatio[2],referenceQuantity:Number(deviceRatio[3])};
   const parentheses = line.match(new RegExp(`^(.+?)\\s*\\(\\s*(${QUANTITY_TOKEN})\\s*\\)\\s*[.!]?$`, 'i'));
   if (parentheses) return { rawName: parentheses[1].trim(), quantityToken: parentheses[2] };
   const labelled = line.match(new RegExp(`^(.+?)\\s+(?:qty|quantity)\\s*[:=]?\\s*(${QUANTITY_TOKEN})(?:\\s*${QUANTITY_UNIT})?\\s*[.!]?$`, 'i'));
   if (labelled) return { rawName: labelled[1].trim(), quantityToken: labelled[2] };
+  const postfix=line.match(new RegExp(`^(.+?)\\s+(${QUANTITY_TOKEN})\\s*[x×]\\s*[.!]?$`,'i'));
+  if(postfix)return {rawName:postfix[1].trim(),quantityToken:postfix[2]};
   const multiplied = line.match(new RegExp(`^(.+?)\\s*[x×]\\s*(${QUANTITY_TOKEN})(?:\\s*${QUANTITY_UNIT})?\\s*[.!]?$`, 'i'));
   if (multiplied) return { rawName: multiplied[1].trim(), quantityToken: multiplied[2] };
   // Prefer a recognized trailing product/quantity split over a leading number.
   // This keeps "5 in 1 10" and "PCV 13 8" from treating identity digits as quantities.
   const trailing = line.match(new RegExp(`^(.+?)\\s*(?:[,;:=–—-]|\\s)\\s*(${QUANTITY_TOKEN})(?:\\s*${QUANTITY_UNIT})?\\s*[.!]?$`, 'i'));
   if (trailing && matchVaccineName(trailing[1]).confidence !== 'none') return { rawName: trailing[1].trim(), quantityToken: trailing[2] };
-  const leading = line.match(new RegExp(`^(${QUANTITY_TOKEN})\\s+(?:${QUANTITY_UNIT}\\s+)?(.+?)\\s*[.!]?$`, 'i'));
+  const leading = line.match(new RegExp(`^(${QUANTITY_TOKEN})\\s+(?:${QUANTITY_UNIT}\\s+)?(?:of\\s+)?(.+?)\\s*[.!]?$`, 'i'));
   if (leading) return { rawName: leading[2].trim(), quantityToken: leading[1] };
   if (trailing) return { rawName: trailing[1].trim(), quantityToken: trailing[2] };
   return null;
@@ -725,16 +746,31 @@ export function isVaccineProductText(value: string) {
   return !isDeviceProduct(value) && (PRODUCT_LINE_HINT.test(value) || matchVaccineName(value).confidence !== 'none');
 }
 
-export function parseVaccineLinesDetailed(text: string, options: { allowZero?: boolean } = {}): ParsedVaccineLinesResult {
+export function parseVaccineLinesDetailed(text: string, options: { allowZero?: boolean;facilityContext?:GeneralFacilityContext } = {}): ParsedVaccineLinesResult {
   if (!text?.trim()) return { items: [], errors: [] };
   const items: ParsedVaccineLine[] = [];
   const errors: string[] = [];
 
-  const cleanedLines = text.split(/\r?\n/).map(line => line.trim().replace(/^(?:[\s•*#>]+|[–—-]\s+)+/, '').replace(/^\d+[.)]\s*/, '').replace(/^\d+-\s+/, '').replace(/^(?:please\s+)?(?:send|supply|give|pack|provide)\s+(?:me\s+)?/i, '').trim());
-  const lines = cleanedLines.flatMap(line => expandCompanionRequest(line) || [line]);
+  const knownClause=(value:string)=>{const item=parseVaccineQuantity(value);return !!item&&matchExactVaccineName(item.rawName).confidence==='high';};
+  text=projectNaturalOrderText(text,options.facilityContext||{},value=>knownClause(normalizeOrderCountText(value,QUANTITY_UNIT)));
+  const cleanedLines = text.split(/\r?\n/).map(line => normalizeSyringeOrderLine(line).trim().replace(/^(?:[\s•*#>]+|[–—-]\s+)+/, '').replace(/^\(\d+\)\s*/, '').replace(/^\d+(?:\.(?!\d)|\))\s*/, '').replace(/^\d+-\s+/, '').replace(/^(?:please\s+)?(?:send|supply|give|pack|provide)\s+(?:me\s+)?/i, '').trim());
+  const prepared=cleanedLines.flatMap(raw=>{
+    const field=generalDocumentLabel(raw);
+    if(field && field.field!=='products' && field.field!=='quantity')return [];
+    const value=field?.field==='products'&&field.value?field.value:raw;
+    if(matchExactVaccineName(value).confidence==='high')return [value];
+    let line=normalizeOrderCountText(cleanOrderRequest(value),QUANTITY_UNIT);
+    line=normalizeCatalogueCountText(line,knownClause);
+    const course=line.replace(/^(?:(?:a|the)\s+)?full\s+course\s+of\s+/i,'');
+    if(course!==line && knownClause(course))line=course;
+    const parts=line.split(/\s*,\s*|\s+and\s+/i);
+    return parts.length>1&&parts.every(knownClause)?parts:[line];
+  });
+  const lines = prepared.flatMap(line => expandCompanionRequest(line) || [line]);
   for (const rawLine of lines) {
     let line = rawLine;
     if (!line || FS_METADATA_LINE.test(line)) continue;
+    if(hasExplicitNegativeOrderCount(line)){errors.push(`INVALID_QUANTITY: Negative order count: "${rawLine.trim()}".`);continue;}
     line = line.replace(/(\d),(\d{3})/g, '$1$2');
 
     // Bare identity names (including 5-in-1 and PCV13) contain no order quantity.
@@ -1065,8 +1101,8 @@ export function validateVaccineOrder(params: {
     }
   } else {
     // 2. Parse Order Sources from text
-    const waParse = orderSource === 'whatsapp' ? parseVaccineLinesDetailed(whatsappMessage) : { items: [], errors: [] };
-    const fsParse = parseVaccineLinesDetailed(fulfillmentConfirmation, { allowZero: true });
+    const waParse = orderSource === 'whatsapp' ? parseVaccineLinesDetailed(whatsappMessage,{facilityContext}) : { items: [], errors: [] };
+    const fsParse = parseVaccineLinesDetailed(fulfillmentConfirmation, { allowZero: true,facilityContext });
     const waItems = waParse.items;
     const fsItems = fsParse.items;
 

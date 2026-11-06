@@ -470,3 +470,6 @@ export function parseBlueprintPaste(
     errors
   };
 }
+
+// Shared identity key for spreadsheet header mapping (not clinical substitution).
+export {productKey as blueprintProductKey};

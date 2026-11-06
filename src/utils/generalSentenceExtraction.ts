@@ -1,3 +1,4 @@
+import {ORDER_PERSON_TITLE_SOURCE,stripOrderPersonTitle} from '../../shared/orderText';
 import { findGeneralFacilityNames, normalizeGeneralFacilityName, type GeneralFacilityContext } from './generalFacility';
 
 const person = (name: string) => {
@@ -5,10 +6,10 @@ const person = (name: string) => {
   return words.length <= 6 && /^[\p{L}][\p{L}'’ .-]*$/u.test(name) &&
     !/\b(?:patient|client|recipient|nurse|officer|doctor|facility|hospital|centre|center|chps|hc|please|need|send|we|from|at|and|team|everyone|you)\b/i.test(name);
 };
-const title = '(?:Dr|Mr|Mrs|Ms|Nurse|Officer)\\.?';
+const title = ORDER_PERSON_TITLE_SOURCE;
 const name = `((?:${title}\\s+)?[\\p{L}][\\p{L}'’ .-]{0,100}?)`;
-const withoutTitle = (value: string) => value.trim().replace(new RegExp(`^${title}\\s+`, 'i'), '');
-const boundary = '(?=\\s*[,;.!?\\n]|\\s+(?:and\\s+)?(?:(?:please|pls|kindly)\\s+)?(?:we|i|send|supply|request|need|want|require|would|deliver)\\b|$)';
+const withoutTitle = stripOrderPersonTitle;
+const boundary = '(?=\\s*[,;.!?\\n]|\\s+(?:and\\s+)?(?:(?:please|pls|kindly)\\s+)?(?:we|i|send|supply|requests?|needs?|wants?|requires?|would|deliver)\\b|$)';
 const facilityText = '(?:(?:St|Dr|Mt)\\.|[^;\\n.!?])';
 
 /** Grammatical projection only: values remain source substrings, never inferred identities.
@@ -78,4 +79,28 @@ function projectLine(raw: string, context: GeneralFacilityContext): string {
       return `\nDelivery area: ${destination.trim()}${mark}\n`;
     });
   return text;
+}
+
+
+/** Catalogue-backed partitions of compact orders. No name or quantity is supplied
+ * from the opposite audit input; multiple valid partitions remain unresolved. */
+export function projectCompactOrderSentence(raw:string,context:GeneralFacilityContext,isProductClause:(value:string)=>boolean):string {
+ if(/[:=]|\b(?:patient|client|recipient|diagnosis|referring|physician|contact|deliver(?:y)?|drop)\b/i.test(raw))return raw;
+ const facilities=findGeneralFacilityNames(raw,context.records);
+ if(facilities.length!==1)return raw;
+ const facility=facilities[0],at=raw.toLowerCase().indexOf(facility.toLowerCase());
+ if(at<0)return raw;
+ const before=raw.slice(0,at).replace(/[,;\s]+$/,'').trim(),after=raw.slice(at+facility.length).replace(/^[,;\s]+/,'').trim();
+ const validPerson=(value:string)=>{const name=withoutTitle(value);return person(name)&&name.split(/\s+/).length>=2&&!/\b(?:from|at|hello|hi|this|is|my|name|mr|mrs|miss|pa|midwife|needs?|wants?|requests?|requires?|urgently|kindly|please|send|supply|full|course|of|qty|quantity|order|vials?|four)\b/i.test(name);};
+ if(validPerson(before)&&isProductClause(after))return `Orderer: ${withoutTitle(before)}\nFacility: ${facility}\n${after}`;
+ if(before)return raw;
+ const tokens=[...after.matchAll(/\S+/g)];
+ const candidates=tokens.slice(1).flatMap(token=>{const person=after.slice(0,token.index).trim(),product=after.slice(token.index).trim();return validPerson(person)&&isProductClause(product)?[{person,product}]:[];});
+ if(candidates.length!==1)return raw;
+ return `Facility: ${facility}\nOrderer: ${withoutTitle(candidates[0].person)}\n${candidates[0].product}`;
+}
+
+export function projectNaturalOrderText(raw:string,context:GeneralFacilityContext,isProductClause:(value:string)=>boolean,protectedLine:(line:string)=>boolean=()=>false){
+ const compact=raw.split('\n').map(line=>protectedLine(line)?line:projectCompactOrderSentence(line,context,isProductClause)).join('\n');
+ return projectGeneralOrderSentences(compact,context,protectedLine);
 }

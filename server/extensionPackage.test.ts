@@ -1,15 +1,16 @@
+import {PRODUCTION_BACKEND_URL} from '../extension/backend-target.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import AdmZip from 'adm-zip';
 import { readFile } from 'node:fs/promises';
-import { buildExtensionPackage, extensionAssets } from './extensionPackage';
+import { buildExtensionPackage, extensionAssets, resolveExtensionBackendUrl } from './extensionPackage';
 
 test('downloaded companion includes every module and only the selected public connection config', async () => {
   const zip = new AdmZip(await buildExtensionPackage('http://localhost:3000', 'public-browser-key'));
   const names = zip.getEntries().map(entry => entry.entryName);
   assert.deepEqual(new Set(names), new Set([...extensionAssets, 'config.js']));
   const manifest = JSON.parse(zip.readAsText('manifest.json'));
-  assert.equal(manifest.version, '2.3.47');
+  assert.equal(manifest.version, '2.3.64');
   assert.equal(manifest.side_panel.default_path, 'sidepanel.html');
   assert.match(zip.readAsText('sidepanel.html'), /<details class="fs-connection-check" aria-label="FS connection"/);
   assert.match(zip.readAsText('sidepanel.html'), /<details[^>]*aria-label="FS connection"[^>]*\bhidden\b[^>]*display:none/);
@@ -17,7 +18,8 @@ test('downloaded companion includes every module and only the selected public co
   for (const file of [manifest.background.service_worker, manifest.side_panel.default_path, manifest.options_page, ...Object.values(manifest.icons) as string[]]) {
     assert.ok(names.includes(file), `Missing manifest asset ${file}`);
   }
-  assert.match(zip.readAsText('config.js'), /http:\/\/localhost:3000/);
+  assert.ok(zip.readAsText('config.js').includes(PRODUCTION_BACKEND_URL));
+  assert.doesNotMatch(zip.readAsText('config.js'), /localhost|onrender/);
   assert.match(zip.readAsText('config.js'), /public-browser-key/);
   assert.match(zip.readAsText('config.js'), /fulfillment-gh3-production/);
   assert.ok(JSON.parse(zip.readAsText('manifest.json')).host_permissions.includes('https://fulfillment-gh3-production.platform.flyzipline.com/*'));
@@ -39,17 +41,17 @@ test('downloaded companion includes every module and only the selected public co
   }
 });
 
-test('extension URL resolution skips placeholders and handles local and Render downloads', async () => {
-  const { resolveExtensionBackendUrl: resolve } = await import('./extensionPackage');
-  assert.equal(resolve({ appUrl: 'MY_APP_URL', host: 'localhost:3000' }), 'http://localhost:3000');
-  assert.equal(resolve({ appUrl: 'undefined', renderUrl: 'https://ordercheck.onrender.com', host: 'localhost:3000' }), 'https://ordercheck.onrender.com');
-  assert.equal(resolve({ appUrl: ' https://dispatch.example.com/ ', renderUrl: 'https://ordercheck.onrender.com', host: 'localhost:3000' }), 'https://dispatch.example.com');
-  assert.equal(resolve({ appUrl: 'dispatch.example.com', host: 'localhost:3000' }), 'https://dispatch.example.com');
-  assert.equal(resolve({ appUrl: 'dispatch.example.com:8443' }), 'https://dispatch.example.com:8443');
-  assert.equal(resolve({ appUrl: 'localhost:3000' }), 'http://localhost:3000');
-  assert.equal(resolve({ host: '[::1]:3000' }), 'http://[::1]:3000');
-  for (const appUrl of ['not a URL', 'ftp://dispatch.example.com', 'https://user:password@dispatch.example.com', 'https://dispatch.example.com/api?secret=value']) {
-    assert.equal(resolve({ appUrl, host: 'localhost:3000' }), 'http://localhost:3000');
+test('extension packages always use production despite old URLs, local downloads or environment overrides', async () => {
+  for (const settings of [{}, {host:'localhost:3000'}, {appUrl:'http://localhost:3000'},
+    {appUrl:'https://old.onrender.com', railwayDomain:'different.up.railway.app'},
+    {appUrl:'https://unrelated.example', host:'other.example'}]) {
+    assert.equal(resolveExtensionBackendUrl(settings), PRODUCTION_BACKEND_URL);
   }
-  assert.throws(() => resolve({ appUrl: 'MY_APP_URL' }), /valid app address/);
+  for (const input of ['http://localhost:3000', 'https://old.onrender.com', 'https://unrelated.example']) {
+    const zip = new AdmZip(await buildExtensionPackage(input, 'public-browser-key'));
+    assert.ok(zip.readAsText('config.js').includes(PRODUCTION_BACKEND_URL));
+    const manifest = JSON.parse(zip.readAsText('manifest.json'));
+    assert.ok(manifest.host_permissions.includes(PRODUCTION_BACKEND_URL + '/*'));
+    assert.ok(!manifest.host_permissions.includes(input + '/*'));
+  }
 });

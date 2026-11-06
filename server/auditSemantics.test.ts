@@ -12,7 +12,7 @@ const empty = (): AuditSemantics => ({ facility: pair(), orderer: pair(), custom
 const product = (sourceText: string, name: string, normalizedName: string, quantityText: string, quantity: number, confidence = 0.99): SemanticProduct => ({ sourceText, name, normalizedName, quantityText, quantity, confidence });
 const client = (data: unknown, onCall = () => {}) => () => ({ models: { async generateContent(options: any) {
   onCall(); assert.equal(options.config.responseMimeType, 'application/json'); assert.ok(options.config.responseSchema);
-  assert.equal(options.config.httpOptions.timeout, 4000);
+  assert.equal(options.config.httpOptions.timeout, 10000);
   return { text: JSON.stringify(data) };
 } } });
 const headers = 'Facility: Kade HC\nOrderer: Isaac Awuyem\n';
@@ -114,7 +114,7 @@ test('semantic name variation needs AI confidence and equal deterministic first/
   const b = 'Facility: Kade Health Centre\nOrderer: Isaac Awuyem\nPCM - 5';
   const data = empty(); data.orderer = { customerRequest: { value: 'Isaac Mensah Awuyem', sourceText: 'Orderer: Isaac Mensah Awuyem', confidence: 0.99 }, fulfilmentConfirmation: { value: 'Isaac Awuyem', sourceText: 'Orderer: Isaac Awuyem', confidence: 0.99 }, equivalent: true, confidence: 0.99 };
   const result = await runGeneralSemanticAudit(a, b, {}, {}, client(data));
-  assert.equal(result.generalAudit.orderer.status, 'match');
+  assert.equal(result.generalAudit.orderer.status, 'review required');
   assert.equal(result.generalAudit.orderer.whatsappValue, 'Isaac Mensah Awuyem');
   assert.equal(result.generalAudit.facility.status, 'match');
   data.orderer.fulfilmentConfirmation.value = 'Evelyn Awuyem'; data.orderer.fulfilmentConfirmation.sourceText = 'Orderer: Evelyn Awuyem';

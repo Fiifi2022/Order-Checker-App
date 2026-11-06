@@ -26,7 +26,7 @@ export function generalAuditAnalytics(records: any[]) {
     frequentlyMismatchedProducts: frequent('discrepancy'), frequentlyOutOfStockProducts: frequent('out of stock') };
 }
 export function generalRuleDiagnostics() {
-  const request = 'Facility: Vea Health Centre\nOrderer: Mary A. Mensah\nPhone: 0241234567\nORS - 1 box';
+  const request = 'Facility: Vea Health Centre\nOrderer: Mary Mensah\nPhone: 0241234567\nORS - 1 box';
   const supplied = 'Facility: VEA HC\nOrderer: Mary Mensah\nPhone: +233241234567\nORS - 25 units';
   const headers = 'Facility: Vea HC\nOrderer: Mary Mensah\n';
   const lower = runGeneralAuditor(headers + 'Product A - 10', headers + 'Product A - 5');

@@ -1,4 +1,6 @@
-import {generalVaccineCounterpart} from '../../shared/generalVaccineCatalog';
+import {resolveSyringeCatalogue,syringeDescriptionConflict,unsafeSyringeAlias,productSyringeSpecifications} from '../../shared/syringeIdentity';
+import {generalBloodDescription} from './generalBloodProducts';
+import {generalVaccineCounterpart,malariaVaccineIdentityConflict} from '../../shared/generalVaccineCatalog';
 import { catalogKey, catalogProductNames, type CatalogProduct } from '../../shared/productCatalog';
 import { generalClinicalAttributes, matchGeneralClinicalProducts, type GeneralClinicalAttributes } from './generalProductMatching';
 
@@ -109,6 +111,10 @@ const identityAttributes = (name: string) => generalClinicalAttributes(name, ide
 /** Permanent learning needs the product's important details in the new wording;
  * a counterpart can resolve this audit without authorizing a broader alias. */
 export function canAutomaticallyLearnGeneralAlias(name:string,product:CatalogProduct) {
+  const device=productSyringeSpecifications(product);
+  if(device){const source=productSyringeSpecifications({...product,name,deviceSpecifications:undefined});return !!source?.capacityMl&&!unsafeSyringeAlias(name,product)&&Object.entries(device).every(([key,value])=>source[key as keyof typeof source]===value);}
+  const blood=generalBloodDescription(name),registeredBlood=generalBloodDescription(product.name);
+  if(blood && (!registeredBlood || blood.group!==registeredBlood.group))return false;
   const source=identityAttributes(name),target=identityAttributes(product.name);
   const measurements=new Set(source.measurements);
   if(!source.measurements.length && source.forms.length && source.bareNumbers.length===1 && target.measurements.length===1 && /^\d+(?:\.\d+)?mg$/.test(target.measurements[0]) &&
@@ -121,8 +127,15 @@ export function canAutomaticallyLearnGeneralAlias(name:string,product:CatalogPro
     (['forms','routes','releases','qualifiers'] as const).every(field=>target[field].every(value=>source[field].includes(value)));
 }
 const measurementKind = (value: string) => value.replace(/[\d.]+/g, '');
+const percentageStrengths=(name:string)=>[...name.normalize('NFKC').matchAll(/\b(?:d)?(\d+(?:\.\d+)?)\s*%/gi)].map(match=>`${Number(match[1])}%`).sort();
 /** Explicit details may be omitted, but two stated values of the same kind must agree. */
 export function generalCatalogAttributeConflict(a: string, b: string): string | undefined {
+  const percentA=percentageStrengths(a),percentB=percentageStrengths(b);
+  if(percentA.length&&percentB.length&&JSON.stringify(percentA)!==JSON.stringify(percentB))return 'Explicit percentage strengths differ between the product descriptions.';
+  if(malariaVaccineIdentityConflict(a,b))return 'Different malaria vaccine identities cannot be treated as the same product.';
+  const deviceConflict=syringeDescriptionConflict(a,b);if(deviceConflict)return deviceConflict;
+  const bloodA=generalBloodDescription(a),bloodB=generalBloodDescription(b);
+  if(bloodA && bloodB && (bloodA.component!==bloodB.component || bloodA.group!==bloodB.group)) return 'Blood component or ABO/Rh group differs or is not specified in both messages.';
   const left = identityAttributes(a), right = identityAttributes(b);
   // In an injection presented as a total amount per ampoule volume, retain
   // that stated volume when the catalogue also specifies the container.
@@ -151,6 +164,26 @@ export function generalCatalogAttributeConflict(a: string, b: string): string | 
   }
 }
 const catalogFamilyKey=(value:string)=>identityAttributes(value).ingredient.split(' ').filter(Boolean).sort().join(' ');
+/** An alias may explain wording, but cannot erase two different stated strengths. */
+export function generalCatalogStrengthConflict(a:string,b:string) {
+  if(!generalCatalogAttributeConflict(a,b))return false;
+  const strengths=(name:string)=>{
+    const attrs=identityAttributes(name);
+    const values=[...attrs.measurements.filter(value=>/^[\d.]+(?:mg|iu)/.test(value)),...percentageStrengths(name)];
+    if(!values.length&&attrs.forms.length&&attrs.bareNumbers.length===1)values.push(`${attrs.bareNumbers[0]}mg`);
+    return values.sort();
+  };
+  const left=strengths(a),right=strengths(b);
+  return left.length>0&&right.length>0&&JSON.stringify(left)!==JSON.stringify(right);
+}
+/** Candidate routing only; shared ingredient identity does not approve omitted specifications. */
+export function sameGeneralCatalogIngredient(a:string,b:string) {
+  const left=catalogFamilyKey(a),right=catalogFamilyKey(b);
+  return !!left&&left===right;
+}
+export function generalCatalogIngredientWords(name:string) {
+  return identityAttributes(name).ingredient.split(' ').filter(Boolean);
+}
 // Every candidate and its medical attributes still constrain fuzzy wording.
 function safeNameWord(a:string,b:string) {
   if(a===b)return true;
@@ -184,6 +217,7 @@ function indexCurrentCatalog(current:readonly CatalogProduct[]) {
   for(const source of current) {
     const counterpart=source.scope==='vaccine'?generalVaccineCounterpart(source,current):undefined;
     for(const value of catalogProductNames(source)) {
+      if(unsafeSyringeAlias(value,source))continue;
       const owners=generalLabels.get(catalogKey(value));
       const product=counterpart && (!owners || [...owners].every(id=>id===counterpart.id)) ? counterpart : source;
       const row={product,value,family:catalogFamilyKey(value),canonicalFamily:catalogFamilyKey(product.name),order:indexedCatalogNames.length};
@@ -199,6 +233,7 @@ function indexCurrentCatalog(current:readonly CatalogProduct[]) {
 /** Resolve against the supplied current Product Catalog, including every approved alias.
  * No second vocabulary, retained snapshot, AI call or quantity inference lives here. */
 function resolveCurrentCatalogIdentity(name: string, current: readonly CatalogProduct[], preferredIds: readonly string[] = [], depth = 0): GeneralCatalogResolution {
+  const syringe=resolveSyringeCatalogue(name,current);if(syringe)return syringe;
   const normalizedName = identityKey(name);
   const candidates=indexedCatalogNames;
   let direct=exactCatalogNames.get(normalizedName) || [];
@@ -269,6 +304,25 @@ function resolveCurrentCatalogIdentity(name: string, current: readonly CatalogPr
   const directAlias = pick(direct, true);
   // Explicit saved presentation aliases retain their approved whole-label mapping.
   if (directAlias?.product && directAlias.source==='Alias' && identityAttributes(directAlias.product.name).forms.length) return directAlias;
+  const blood=generalBloodDescription(name);
+  if(blood?.group && depth<3) {
+    // The repository owns the component ID; ABO/Rh stays on source evidence.
+    const component=resolveCurrentCatalogIdentity(blood.component,current,preferredIds,depth+1);
+    if(component.product) {
+      const registered=generalBloodDescription(component.product.name);
+      const suppliedQualifiers=identityAttributes(name).qualifiers,registeredQualifiers=identityAttributes(component.product.name).qualifiers;
+      if(registered && !registered.group && !(suppliedQualifiers.length && registeredQualifiers.length && suppliedQualifiers.some(value=>!registeredQualifiers.includes(value)))) return {...component,normalizedName,source:'Normalized'};
+    }
+  }
+  if(blood?.group) {
+    // Some repositories store each group/presentation instead of a generic component.
+    const qualified=pick(candidates.filter(row=>{
+      const registered=generalBloodDescription(row.value);
+      return registered?.group===blood.group && registered.component===blood.component &&
+        !generalCatalogAttributeConflict(name,row.value) && !generalCatalogAttributeConflict(name,row.product.name);
+    }),false);
+    if(qualified)return qualified;
+  }
   const input = identityAttributes(name);
   const sourceFamily=catalogFamilyKey(name),families=new Set([sourceFamily]);
   for(const row of aliasFamilies.get(sourceFamily)||[]) {

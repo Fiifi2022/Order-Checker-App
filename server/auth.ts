@@ -1,5 +1,6 @@
 import { assignedRoles } from '../shared/roles';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import {accountAvailabilityError} from './accountAvailability';
 import type { RequestHandler } from 'express';
 
 export interface AuthProfile {
@@ -55,9 +56,9 @@ export function createAuthentication(
     }
     let profile: AuthProfile | null;
     try { profile = await budget(req, () => findProfile(identity.email.toLowerCase())); }
-    catch { res.status(503).json({ error: 'Account access could not be verified. Please retry.' }); return; }
+    catch(error) { res.status(503).json(accountAvailabilityError(error)); return; }
     if (!profile || !assignedRoles(profile).length) {
-      res.status(403).json({ error: 'Your account has not been granted access. Contact an administrator.' }); return;
+      res.status(403).json({ error: 'Your account has not been granted access. Contact an administrator.',code:'ACCOUNT_NOT_APPROVED' }); return;
     }
     if (!canAccess(assignedRoles(profile), req.method, req.path)) {
       res.status(403).json({ error: 'Your role does not permit this action.' }); return;

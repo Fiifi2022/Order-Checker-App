@@ -13,7 +13,13 @@ export const emptyGeneralFacilityDirectory = (): GeneralFacilityDirectoryState =
 const fail = (status: number, message: string): never => { throw Object.assign(new Error(message), { status }); };
 const identity = (record: { name: string; district?: string; region?: string }) =>
   [record.name, record.district || '', record.region || ''].map(normalizeGeneralFacilityName).join('|');
-export function allGeneralFacilities(state: GeneralFacilityDirectoryState) { return [...baseGeneralFacilities, ...state.added]; }
+export function allGeneralFacilities(state: GeneralFacilityDirectoryState) {
+ const byKey=new Map<string,string[]>();
+ for(const alias of state.aliasApprovals||[])if(alias.active)byKey.set(alias.key,[...(byKey.get(alias.key)||[]),alias.alias]);
+ return [...baseGeneralFacilities, ...state.added].map(record=>{
+ const learned=byKey.get(record.key)||[];
+ return learned.length?{...record,verifiedAliases:[...new Set([...(record.verifiedAliases||[]),...learned])]}:record;
+}); }
 export function activeGeneralFacilities(state: GeneralFacilityDirectoryState) {
   const removed = new Set(state.removedKeys);
   return allGeneralFacilities(state).filter(record => !removed.has(record.key));
@@ -58,7 +64,7 @@ export function changeGeneralFacilityDirectory(state: GeneralFacilityDirectorySt
       removedKeys = removedKeys.filter(key => key !== input.key);
     }
   }
-  const updated = { revision: state.revision + 1, added, removedKeys, updatedBy: actor, updatedAt: new Date().toISOString() };
+  const updated = { ...state,revision: state.revision + 1, added, removedKeys, updatedBy: actor, updatedAt: new Date().toISOString() };
   if (Buffer.byteLength(JSON.stringify(updated), 'utf8') > 750000) fail(400, 'The facility list is full. Contact an administrator to expand it.');
   return updated;
 }

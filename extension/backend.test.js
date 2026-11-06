@@ -1,3 +1,4 @@
+import {PRODUCTION_BACKEND_URL} from './backend-target.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeBackendUrl, fetchJson } from './backend.js';
@@ -37,6 +38,7 @@ test('sign-in, token refresh and authenticated audits; revoked sessions clear wi
     assert.equal(await getToken(), 'renewed');
     assert.equal(session.authSession.refreshToken, 'new-refresh');
     await backendRequest('https://ordercheck.onrender.com', '/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(calls.at(-1).url, PRODUCTION_BACKEND_URL + '/api/verify');
     assert.equal(calls.at(-1).options.headers.Authorization, 'Bearer renewed');
     assert.equal(calls.at(-1).options.headers['Content-Type'], 'application/json');
     auditStatus = 401;

@@ -8,22 +8,23 @@ export function GeneralProductName({ name }: { name: string }) {
   return <>{generalProductDisplayName(name)}</>;
 }
 
-export function GeneralOrderLimitPrompt({ product, onDecision, disabled = false }: {
+export function GeneralOrderLimitPrompt({ product, onDecision, disabled = false, confirmationLabels = false }: {
   product: GeneralProductResult;
   onDecision: (key: string, answer: boolean) => void;
   disabled?: boolean;
+  confirmationLabels?: boolean;
 }) {
   if (!product.orderLimitEligible) return null;
   const confirmed = product.orderLimitDecision === true && product.fulfillmentStatus === 'order limit applied';
   return <div className={`${confirmed ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'} border p-3 rounded-xl text-xs space-y-2`}>
-    <p className="font-semibold">Was this quantity reduced because of an order limit?</p>
+    <p className="font-semibold">{confirmationLabels ? <><span>Order Limit Confirmation Required</span><span className="block font-normal">Was this quantity reduced because of an order limit?</span></> : 'Was this quantity reduced because of an order limit?'}</p>
     <p><GeneralProductName name={product.name} /> — Requested: {product.requested} {product.requestedUnit}; Supplied: {product.supplied} {product.suppliedUnit}; Difference: {product.difference} {product.conversion?.unit || product.requestedUnit}</p>
     <div className="flex gap-2">
       {[true, false].map(answer => <button key={String(answer)} type="button" disabled={disabled}
         aria-pressed={product.orderLimitDecision === answer}
         onClick={() => onDecision(product.key, answer)}
         className={`px-4 py-2 rounded-lg border font-semibold disabled:opacity-50 ${product.orderLimitDecision === answer ? answer ? 'bg-green-700 text-white border-green-700' : 'bg-red-700 text-white border-red-700' : 'bg-white text-purple-800 border-purple-200'}`}>
-        {answer ? 'Yes — reduced by order limit' : 'No — report discrepancy'}
+        {confirmationLabels ? answer ? 'Confirm Order Limit' : 'No, Keep Discrepancy' : answer ? 'Yes — reduced by order limit' : 'No — report discrepancy'}
       </button>)}
     </div>
     {product.orderLimitDecision === true && <p role="status" className="text-green-800">Approved — Order Limit Applied</p>}

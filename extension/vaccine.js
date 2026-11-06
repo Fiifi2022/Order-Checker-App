@@ -75,7 +75,7 @@ export function setupVaccines({ request, inputs, results, onChanged }) {
       results.append(row);
     }
     for (const text of [...(data.errors || []), ...(data.warnings || [])]) { const row = document.createElement('p'); row.textContent = text; results.append(row); }
-    auditStatus.textContent = data.auditStatus === 'requires_review' ? 'Requires review' : data.auditStatus === 'passed' ? 'Passed' : 'Failed';
+    auditStatus.textContent = data.auditStatus === 'requires_review' ? [...(data.errors || []), ...(data.warnings || [])].join('; ') || 'Allocation could not be verified' : data.auditStatus === 'passed' ? 'Passed' : 'Failed';
     status.textContent = committed ? 'Already deducted' : data.allocationStatus === 'deducted' ? 'Allocation status pending verification' : data.allocationStatus === 'not_applicable' ? 'Not applicable' : /allocation (exceeded|exhausted)/i.test((data.errors || []).join(' ')) ? 'Insufficient allocation' : 'Awaiting allocation update';
     confirm.hidden = true;
     confirm.textContent = confirmLabel;
@@ -97,7 +97,7 @@ export function setupVaccines({ request, inputs, results, onChanged }) {
       }
       if (!existingReceipt && data.canCommit && data.allMatch === true && data.isValid === true) await deduct(data, current);
     } catch (error) {
-      if (current === version) { auditStatus.textContent = 'Audit requires review'; status.textContent = 'Awaiting allocation update'; results.textContent = error.message; }
+      if (current === version) { auditStatus.textContent = error.message || 'Allocation audit could not be completed'; status.textContent = 'Awaiting allocation update'; results.textContent = error.message; }
     } finally { busy = false; confirm.disabled = false; }
   };
   const showReceipt = transaction => {

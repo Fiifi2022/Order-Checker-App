@@ -1,0 +1,24 @@
+# Include only application build inputs, never local workstation state.
+/*
+!/Dockerfile
+!/package.json
+!/package-lock.json
+!/tsconfig.json
+!/vite.config.ts
+!/index.html
+!/server.ts
+!/firebase-applet-config.json
+!/scripts/
+!/src/
+!/shared/
+!/server/
+!/extension/
+!/data/
+/data/*
+!/data/health-facilities-2026-10-19.csv
+**/node_modules/
+**/.env
+**/.env.*
+**/*service-account*.json
+**/*firebase-adminsdk*.json
+**/*.log

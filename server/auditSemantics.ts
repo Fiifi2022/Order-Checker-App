@@ -1,3 +1,5 @@
+import {GEMINI_MODEL,GEMINI_THINKING_CONFIG} from './geminiModel';
+import {geminiProviderTimeout} from './geminiTransport';
 import { optionalAuditAi } from './auditBudget';
 import { AUDIT_AI_FALLBACK_MS } from '../shared/auditPerformance';
 import { isGeneralBiologic } from '../src/utils/generalMedicalTerminology';
@@ -199,15 +201,15 @@ export async function analyzeAuditLanguage(customer: string, fulfilment: string,
   const key = JSON.stringify([options.cacheScope || 'local', scope, customer, fulfilment, scope === 'vaccine' ? getAliases() : null]);
   let entry = cache.get(key);
   if (!entry || entry.expires <= Date.now()) {
-    logger.info('[Audit semantics] Gemini semantic analysis started', { scope, model: 'gemini-2.5-flash-lite' });
+    logger.info('[Audit semantics] Gemini semantic analysis started', { scope, model: GEMINI_MODEL });
     const result = (async () => {
       try {
+        const client = getClient();
         return await geminiUsage.run(() => optionalAuditAi(async signal => {
-          const client = getClient();
           const response = await client.models.generateContent({
-            model: 'gemini-2.5-flash-lite',
+            model: GEMINI_MODEL,
             contents: JSON.stringify({ customerRequest: customer, fulfilmentConfirmation: fulfilment, supportedVaccineAliases: getAliases() }),
-            config: { abortSignal: signal, systemInstruction: scope === 'general' ? `${auditSemanticPrompt}\n\n${medicalProductAcronymReference}` : auditSemanticPrompt, responseMimeType: 'application/json', responseSchema: auditSemanticSchema, temperature: 0.1, httpOptions: { timeout: Math.max(1, timeoutMs), retryOptions: { attempts: 1 } } }
+            config: { abortSignal: signal, systemInstruction: scope === 'general' ? `${auditSemanticPrompt}\n\n${medicalProductAcronymReference}` : auditSemanticPrompt, responseMimeType: 'application/json', responseSchema: auditSemanticSchema, thinkingConfig: GEMINI_THINKING_CONFIG, httpOptions: { timeout: geminiProviderTimeout(timeoutMs), retryOptions: { attempts: 1 } } }
           });
           if (signal.aborted) throw new Error('AI fallback time budget exceeded');
           let data: unknown;
@@ -216,7 +218,7 @@ export async function analyzeAuditLanguage(customer: string, fulfilment: string,
           if (!accepted) { logger.warn('[Audit semantics] Gemini response rejected due to invalid structure', { scope }); throw new Error('Invalid Gemini semantic response'); }
           logger.info('[Audit semantics] Gemini semantic analysis successful', { scope });
           return accepted;
-        }, timeoutMs, options.signal));
+        }, timeoutMs, options.signal),client);
       } catch (error: any) {
         // Raw SDK errors can contain secrets and pasted medical text. Log only a numeric status.
         const code = Number(error?.status || error?.code);

@@ -128,7 +128,7 @@ test('corrected aliases keep unique identities when an earlier spelling is propo
  assert.equal(reproposed.catalog.aliasRecords!.find(row=>row.text==='Earlier spelling')!.status,'pending');
 });
 
-test('new deterministic shorthand requires confirmation before permanent alias approval',async()=>{
+test('unique deterministic shorthand is automatically learned and reused without Gemini',async()=>{
  let stored=seed(),aiCalls=0,events:CatalogAliasEvent[]=[];
  const {learnVerifiedCatalogueAliases}=await import('./catalogAliasLearning');
  const request=header+'Paracet 500 tabs 20/20',log=header+'Paracetamol 500mg Tablet [20/20]';
@@ -138,13 +138,12 @@ test('new deterministic shorthand requires confirmation before permanent alias a
  }};
  const provider=()=>{aiCalls++;throw Error('Routine catalogue matching must not call Gemini');};
  const first=await runGeneralProductNameAudit(request,log,stored,support,provider);
- assert.equal(first.allMatch,true);assert.equal(aiCalls,0);assert.equal(first.aliasLearning.saved,0);assert.equal(first.aliasLearning.status,'review_required');
- assert.equal(stored.products.length,3);assert.ok(!stored.products.find(p=>p.id==='pcm')!.aliases.includes('Paracet 500 tabs'));
+ assert.equal(first.allMatch,true);assert.equal(aiCalls,0);assert.equal(first.aliasLearning.saved,1);assert.equal(first.aliasLearning.status,'saved');
+ assert.equal(stored.products.length,3);assert.ok(stored.products.find(p=>p.id==='pcm')!.aliases.includes('Paracet 500 tabs'));
  const record=stored.aliasRecords!.find(record=>record.text==='Paracet 500 tabs')!;
- assert.equal(record.source,'deterministic');assert.equal(record.status,'pending');assert.equal(record.active,false);
- assert.equal(record.clinicalUncertainty,false);assert.equal(record.approvedAt,null);assert.equal(record.approvedBy,null);
- assert.deepEqual(events.map(event=>event.action),['propose']);
- stored=changeCatalogueAlias(stored,{action:'approve',id:record.id,revision:stored.revision,identityConfirmed:true},'verified-user').catalog;
+ assert.equal(record.source,'deterministic');assert.equal(record.status,'approved');assert.equal(record.active,true);
+ assert.equal(record.clinicalUncertainty,false);assert.ok(record.approvedAt);assert.equal(record.approvedBy,'catalogue-verifier:test-user');
+ assert.deepEqual(events.map(event=>event.action),['propose','approve']);
  const revision=stored.revision;
  const second=await runGeneralProductNameAudit(request,log,JSON.parse(JSON.stringify(stored)),support,provider);
  assert.equal(second.allMatch,true);assert.equal(aiCalls,0);assert.equal(stored.revision,revision);

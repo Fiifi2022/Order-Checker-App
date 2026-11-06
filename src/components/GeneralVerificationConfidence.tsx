@@ -1,14 +1,15 @@
 import type { GeneralAuditCheckSummary } from '../utils/generalAuditTypes';
 
-export default function GeneralVerificationConfidence({ summary, pendingOrderLimits = 0, allMatch, decision }: {
+export default function GeneralVerificationConfidence({ summary, pendingOrderLimits = 0, allMatch, decision, finding }: {
   summary: GeneralAuditCheckSummary;
   pendingOrderLimits?: number;
   allMatch?: boolean;
   decision?: 'match' | 'discrepancy' | 'review';
+  finding?: string;
 }) {
   const matched = (allMatch ?? (summary.totalChecks > 0 && summary.failedChecks === 0)) && summary.discrepancyCount === 0 && pendingOrderLimits === 0 && !summary.reviewRequiredCount && !summary.missingRequiredCount;
   const review = decision === 'review';
-  const label = review ? 'REVIEW REQUIRED' : summary.discrepancyCount > 0 ? 'DISCREPANCY DETECTED' : matched ? 'SYSTEM MATCH' : 'CLARIFICATION REQUIRED';
+  const label = review ? (finding || 'Order information could not be verified') : summary.discrepancyCount > 0 ? 'DISCREPANCY DETECTED' : matched ? 'SYSTEM MATCH' : 'CLARIFICATION REQUIRED';
   const color = matched ? '#22C55E' : review || summary.confidence >= 75 ? '#F59E0B' : '#EF4444';
   const textColor = matched ? 'text-green-600' : review || summary.confidence >= 75 ? 'text-amber-600' : 'text-red-600';
   return <div className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm flex flex-col items-center text-center">
@@ -22,9 +23,10 @@ export default function GeneralVerificationConfidence({ summary, pendingOrderLim
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className={`text-3xl font-black ${textColor}`}>{summary.confidence}%</span>
-        <span className={`text-[9px] font-mono tracking-wide uppercase ${textColor}`}>{label}</span>
+        <span className={`max-w-48 text-[9px] font-mono tracking-wide uppercase ${textColor}`}>{review ? 'CHECK INCOMPLETE' : label}</span>
       </div>
     </div>
+    {review && <p className="text-xs text-amber-800 mb-2">{label}</p>}
     <p className="text-xs text-slate-500 leading-relaxed max-w-[200px]">
       Checks compulsory orderer, facility, products and quantities. Delivery/drop area and district are informational.
     </p>

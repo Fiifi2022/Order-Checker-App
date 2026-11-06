@@ -68,8 +68,8 @@ const COUNT_UNIT_ALIASES: Record<string, string> = {
   vial: 'vial', vials: 'vial',
   dose: 'dose', doses: 'dose',
   capsule: 'capsule', capsules: 'capsule',
-  bottle: 'bottle', bottles: 'bottle',
-  piece: 'piece', pieces: 'piece', pc: 'piece', pcs: 'piece'
+  bottle: 'bottle', bottles: 'bottle', btl: 'bottle', btls: 'bottle',
+  piece: 'piece', pieces: 'piece', pc: 'piece', pcs: 'piece', pics: 'piece'
 };
 
 function extractCountUnit(value: unknown): string | null {

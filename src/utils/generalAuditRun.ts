@@ -1,4 +1,4 @@
-import { compareGeneralProducts, enforceGeneralProductAssignments, enforceGeneralIdentityMatches, normalizeGeneralProductName, parseGeneralProducts, runGeneralAuditor, summarizeGeneralProducts, type GeneralAuditSupport, type GeneralComparisonItem } from './generalAuditor';
+import { compareGeneralProducts, enforceGeneralProductAssignments, enforceGeneralIdentityMatches, normalizeGeneralProductName, parseGeneralProducts, runGeneralAuditor, summarizeGeneralProducts, generalFourParameterRecord, type GeneralAuditSupport, type GeneralComparisonItem } from './generalAuditor';
 import { traceGeneralAudit } from './generalAuditDebug';
 import { assertGeneralProductEvidence } from './generalProductEvidence';
 
@@ -28,7 +28,11 @@ export function completeGeneralAuditRun<T extends Record<string, unknown>>(run: 
     record.whatsappMessage === run.inputs.whatsappMessage.trim() && record.fulfillmentConfirmation === run.inputs.fulfillmentConfirmation.trim() &&
     Array.isArray(record.items) && record.generalAudit && record.meta && typeof record.allMatch === 'boolean' && typeof record.issueCount === 'number') {
     assertGeneralProductEvidence(record.items as GeneralComparisonItem[]);
-    return { ...record, ...run.inputs } as unknown as T & ReturnType<typeof runGeneralAuditor>;
+    // Trust retained server evidence, not an independently stale headline or
+    // counter. Rebuild the final gate without reparsing, rematching or AI.
+    if(record.auditEngine!=='general-catalog-v3')return { ...record, ...run.inputs } as unknown as T & ReturnType<typeof runGeneralAuditor>;
+    const rebuilt=generalFourParameterRecord({ ...record, ...run.inputs }) as unknown as T & ReturnType<typeof runGeneralAuditor>;
+    return {...rebuilt,status:rebuilt.allMatch?'resolved' as const:'pending' as const,...(!rebuilt.allMatch?{resolutionNotes:'',resolvedAt:null}:{})};
   }
   const serverResult = record.auditEngine === 'general-deterministic-v1' &&
     record.whatsappMessage === run.inputs.whatsappMessage.trim() &&

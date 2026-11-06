@@ -1,12 +1,20 @@
+import type {GeneralStructuredPreview,GeneralExtractionSubmission} from '../shared/generalStructuredExtraction';
+import {hasActiveIdentityDecision,identityResearchGeneration} from '../shared/generalIdentityResearch';
+import {actOnProductResearch,researchPendingProducts,mergeResearchResult,markResearchUnavailable} from '../shared/productResearchClient';
+import type {IdentityField,IdentityDecision} from './utils/generalIdentityDecision';
+import {generalAuditFindingLabel, generalAuditConfirmedLabel} from './utils/generalAuditFindingLabel';
+import DispatchAuditScenarios from './components/DispatchAuditScenarios';
+import type {DispatchAuditScenario} from './data/dispatchAuditScenarios';
 import {AllocationWorkspaceProvider} from './components/AllocationWorkspace';
 import AuditStorageNotice from './components/AuditStorageNotice';
 import {retryAuditStorage} from '../shared/auditStorageClient';
 import GeneralInventory, { generalInventoryRows } from './components/GeneralInventory';
+import {confirmGeneralReview,type ReviewConfirmation} from '../shared/generalReviewConfirmation';
 import { generalInputFingerprint, sameGeneralAuditSources } from '../shared/generalAuditFingerprint';
+import {markCatalogueSuggestion} from '../shared/confirmCatalogueSuggestion';
 import { AUDIT_TARGET_MS, AUDIT_HARD_TIMEOUT_MS, AUDIT_DELAY_MESSAGE, AUDIT_TIMEOUT_MESSAGE, auditTimeoutSetting } from '../shared/auditPerformance';
 import GeneralFacilityManager from './components/GeneralFacilityManager';
 import { acknowledgeOrderLimit } from '../shared/orderLimitAcknowledgement';
-import ProductReceivingHints from './components/ProductReceivingHints';
 import ProductCatalog from './components/ProductCatalog';
 import { applyGeneralCatalog } from './utils/productCatalog';
 import { setCatalogRevision, canManageCatalog } from '../shared/productCatalog';
@@ -189,6 +197,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
   const [fulfillmentConfirmation, setFulfillmentConfirmation] = useState('');
   
   const [generalImageReset, setGeneralImageReset] = useState(0);
+  const internalGeneralInputUpdate=useRef<{whatsappMessage:string;fulfillmentConfirmation:string}|null>(null);
   const [generalAuditorSection, setGeneralAuditorSection] = useState<'check' | 'facilities'>('check');
   const [generalServiceWarning, setGeneralServiceWarning] = useState('');
   // These guards belong only to the General Auditor inputs and requests.
@@ -418,6 +427,9 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
     setActiveTab('auditor');
   };
   useEffect(() => {
+    const internal=internalGeneralInputUpdate.current;
+    internalGeneralInputUpdate.current=null;
+    if(internal&&internal.whatsappMessage===whatsappMessage&&internal.fulfillmentConfirmation===fulfillmentConfirmation)return;
     invalidateGeneralAudit();
     const saved = pendingSavedAudit.current;
     pendingSavedAudit.current = null;
@@ -463,33 +475,108 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
     }
   };
 
-  // Quick helper to auto-populate test cases
-  const applySampleData = (caseType: 'perfect' | 'discrepancy_qty' | 'discrepancy_extra' | 'vaccine_diluent_mismatch' | 'vaccine_dropper_mismatch') => {
+  const applySampleData = (scenario: DispatchAuditScenario) => {
+    try { localStorage.removeItem(savedAuditStorageKey); } catch { /* No browser storage. */ }
     invalidateGeneralAudit();
     setGeneralImageReset(value => value + 1);
     setIsDemoAudit(true);
-    if (caseType === 'perfect') {
-      setWhatsappMessage(`Name: Kwame Mensah\nPhone: 0244123456\nFacility: St. Jude's Clinic\nHey Zipline, please dispatch:\n- 20 units of ACT 20/120mg\n- 5 cards of ORS\nThank you!`);
-      setFulfillmentConfirmation(`RECIPIENT: Kwame Mensah\nCONTACT: +233244123456\nFACILITY: St. Jude's\nREADY FOR FLIGHT:\n- Coartem 20/120mg: 20 units\n- ORT: 5 cards\nREADY FOR LAUNCH BUFFER.`);
-    } else if (caseType === 'discrepancy_qty') {
-      setWhatsappMessage(`Requester: Dr. Abigail Larbi\nFacility: Kade Health Center\nRef Phone: 0559876543\nMedical inventory order request:\n- 10 cards of PCM 500mg\n- 5 packs of Malaria RDT\n- 20 vials of Saline water`);
-      setFulfillmentConfirmation(`CUSTOMER: Abigail Larbi\nFACILITY: Kade Health Center (Logistics branch)\nCONTACT: +233559876543\nSUPPLIES PROVISIONED:\n- Paracetamol 500mg: 5 cards\n- Saline IV Fluids: 20 vials`);
-    } else if (caseType === 'discrepancy_extra') {
-      setWhatsappMessage(`Good morning, this is Nurse Beatrice from Begoro Hospital (phone 0201112223).\nWe urgently need:\n- 50 doses of AL\n- 10 packs of ORS`);
-      setFulfillmentConfirmation(`FULFILMENT SYSTEM LOG:\nHospital: Begoro Hospital\nAuthorized Contact: Nurse Evelyn\nPhone: 0201112223\nFlight cargo manifest:\n- Coartem (AL): 50 doses\n- ORT: 10 packs\n- Malaria RDT: 2 packs`);
-    } else if (caseType === 'vaccine_diluent_mismatch') {
-      setWhatsappMessage(`Sender: Nurse Mary\nClinic: Legon Clinic\nPhone: 0244998877\nVaccine stock required:\n- 10 vials of Yellow Fever vaccine\n- 10 Diluents for Yellow Fever`);
-      setFulfillmentConfirmation(`OFFLINE FULFILLMENT ENTRY:\nRecipient: Mary\nFacility: Legon Clinic\nPhone: +233244998877\nDispatched itemization:\n- YFV Vaccine: 10 vials\n- Yellow Fever Diluents: 5 vials`);
-    } else if (caseType === 'vaccine_dropper_mismatch') {
-      setWhatsappMessage(`Sender: Dr. Kwasi\nHospital: Kumasi Hospital\nPhone: 0205566778\nVaccine order list:\n- 15 vials of OPV vaccine\n- 15 Droppers`);
-      setFulfillmentConfirmation(`SYSTEM CONFIRMATION:\nCustomer: Dr. Kwasi\nFacility: Kumasi Hospital\nPhone: 0205566778\nManifest Prepared:\n- OPV Polio vaccine: 15 vials\n(NO droppers of any kind were loaded)`);
-    }
+    currentGeneralInputs.current = {whatsappMessage: scenario.customerRequest, fulfillmentConfirmation: scenario.fulfillmentConfirmation};
+    setWhatsappMessage(scenario.customerRequest);
+    setFulfillmentConfirmation(scenario.fulfillmentConfirmation);
   };
 
-  const verifyOrder = () => runGeneralVerification();
+  const prepareGeneralExtraction=async()=>{
+    if(generalAuditRequest.current)return;
+    const inputs={...currentGeneralInputs.current};
+    if(!inputs.whatsappMessage.trim()||!inputs.fulfillmentConfirmation.trim()){setError('Provide both messages before auditing.');return;}
+    invalidateGeneralAudit();const revision=generalAuditRevision.current,controller=new AbortController();generalAuditRequest.current=controller;setLoading(true);
+    const timeout=setTimeout(()=>controller.abort(),20000);
+    try{
+      const response=await authFetch('/api/general/extract',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({...inputs,auditScope:'general_auditor'})});
+      const data=await response.json();if(!response.ok)throw Error(data.error||'The messages could not be read. Retry the audit.');
+      if(revision!==generalAuditRevision.current||controller.signal.aborted)return;
+      const extraction=data as GeneralStructuredPreview;
+      const sanitized={whatsappMessage:extraction.customer.sourceText,fulfillmentConfirmation:extraction.fulfillment.sourceText};
+      if(!sanitized.whatsappMessage.trim()||!sanitized.fulfillmentConfirmation.trim())throw Error('Add order details to both messages before auditing.');
+      // Extraction is internal. Continue automatically without asserting that a
+      // CCA confirmed uncertain fields or changing the original comparison rules.
+      clearTimeout(timeout);generalAuditRequest.current=null;
+      if(inputs.whatsappMessage!==sanitized.whatsappMessage||inputs.fulfillmentConfirmation!==sanitized.fulfillmentConfirmation){
+        internalGeneralInputUpdate.current=sanitized;currentGeneralInputs.current=sanitized;
+        setWhatsappMessage(sanitized.whatsappMessage);setFulfillmentConfirmation(sanitized.fulfillmentConfirmation);
+      }
+      await runGeneralVerification({},undefined,undefined,{version:1,inputFingerprint:extraction.inputFingerprint,catalogRevision:extraction.catalogRevision,edits:[],confirmedFields:[],reason:'',acknowledged:false});
+    }catch(error){if(revision===generalAuditRevision.current)setError(controller.signal.aborted?'The audit timed out. Your messages remain available; retry.':error instanceof Error?error.message:'The audit could not complete.');}
+    finally{clearTimeout(timeout);if(generalAuditRequest.current===controller){generalAuditRequest.current=null;setLoading(false);}}
+  };
+  const verifyOrder = () => prepareGeneralExtraction();
 
   const [savingProductConfirmation, setSavingProductConfirmation] = useState(false);
   const productConfirmationInFlight = useRef(false);
+  const actOnResearch=async(alias:string,action:'research'|'reject'|'confirm'|'keep',productId?:string,saveAlias?:boolean)=>{
+    if(!result||loading||productConfirmationInFlight.current)throw Error('Wait for the current audit action to finish.');
+    const record=result,revision=generalAuditRevision.current;
+    if(!sameGeneralAuditSources(record,currentGeneralInputs.current))throw Error('The messages changed. Open the current audit before reviewing suggestions.');
+    if(action==='research'){
+      const updated=await actOnProductResearch(async(url,options)=>{const response=await authFetch(url,options),data=await response.json();if(!response.ok)throw Error(data.error||'Research unavailable');return data;},record,alias,action);
+      if(revision===generalAuditRevision.current&&sameGeneralAuditSources(record,currentGeneralInputs.current))setResult(current=>mergeResearchResult(current,updated));
+      return;
+    }
+    productConfirmationInFlight.current=true;setSavingProductConfirmation(true);
+    try{
+      const updated=await actOnProductResearch(async(url,options)=>{const response=await authFetch(url,options),data=await response.json();if(!response.ok)throw Error(data.error||'Product research action could not be saved.');return data;},record,alias,action,productId,saveAlias);
+      if(revision===generalAuditRevision.current&&sameGeneralAuditSources(record,currentGeneralInputs.current))setResult(updated);
+      void fetchHistory();
+    }finally{productConfirmationInFlight.current=false;setSavingProductConfirmation(false);}
+  };
+
+  const attemptedBackgroundResearch=useRef(new Set<string>());
+  const researchIdentity=async(field:'facility'|'orderer')=>{
+    if(!result||!sameGeneralAuditSources(result,currentGeneralInputs.current))return;
+    const record=result;
+    try{const updated=await researchPendingProducts(async(url,options)=>{const response=await authFetch(url,options),data=await response.json();if(!response.ok)throw Error(data.error||'Research unavailable');return data;},record,field);if(sameGeneralAuditSources(record,currentGeneralInputs.current))setResult(current=>mergeResearchResult(current,updated));}
+    catch{if(sameGeneralAuditSources(record,currentGeneralInputs.current))setResult(current=>markResearchUnavailable(current,record));}
+  };
+  useEffect(()=>{
+    if(loading||!result||!generalDetails)return;
+    const pending=generalDetails.catalogueSuggestions?.filter(g=>g.researchStatus==='deferred'&&!g.retainedDiscrepancy)||[];
+    const identities=Object.entries(generalDetails.identityResearch||{}).filter(([field,value])=>value?.status==='deferred'&&generalDetails[field as 'facility'|'orderer'].status==='review required'&&!hasActiveIdentityDecision(generalDetails[field as 'facility'|'orderer']));
+    if(!pending.length&&!identities.length)return;
+    const record=result,key=JSON.stringify([record.id,generalInputFingerprint(record),pending.map(g=>[g.alias,g.researchRevision||0]),identities,identityResearchGeneration(generalDetails)]);
+    if(attemptedBackgroundResearch.current.has(key))return;
+    if(attemptedBackgroundResearch.current.size>128)attemptedBackgroundResearch.current.clear();
+    attemptedBackgroundResearch.current.add(key);
+    void researchPendingProducts(async(url,options)=>{const response=await authFetch(url,options),data=await response.json();if(!response.ok)throw Error(data.error||'Research unavailable');return data;},record)
+      .then(updated=>{if(sameGeneralAuditSources(record,currentGeneralInputs.current))setResult(current=>mergeResearchResult(current,updated));})
+      .catch(()=>{if(sameGeneralAuditSources(record,currentGeneralInputs.current))setResult(current=>markResearchUnavailable(current,record));});
+  },[result,loading]);
+
+  const chooseCatalogueSuggestion=async(alias:string,productId:string)=>{
+    if(!result||loading||productConfirmationInFlight.current)throw Error('Wait for the current audit action to finish.');
+    const record=result,revision=generalAuditRevision.current;
+    if(!generalDetails?.catalogueSuggestions?.some(group=>group.alias===alias&&group.options.some(option=>option.productId===productId)) || !sameGeneralAuditSources(record,currentGeneralInputs.current))throw Error('The audit changed. Run it again before selecting a product.');
+    productConfirmationInFlight.current=true;setSavingProductConfirmation(true);
+    try{
+      const updated=await markCatalogueSuggestion(async(url,options)=>{
+        const response=await authFetch(url,options),data=await response.json();
+        if(!response.ok)throw Error(data.error||'Product suggestion could not be saved.');return data;
+      },record,alias,productId);
+      if(revision===generalAuditRevision.current&&sameGeneralAuditSources(record,currentGeneralInputs.current))setResult(updated);
+      void fetchHistory();
+    }finally{productConfirmationInFlight.current=false;setSavingProductConfirmation(false);}
+
+  };
+  const confirmGeneralReviewAction = async (decision:ReviewConfirmation) => {
+    if(!result||loading||productConfirmationInFlight.current)throw Error('Wait for the current audit action to finish.');
+    const record=result,revision=generalAuditRevision.current;
+    if(!sameGeneralAuditSources(record,currentGeneralInputs.current))throw Error('The messages changed. Open the current audit before confirming.');
+    productConfirmationInFlight.current=true;setSavingProductConfirmation(true);
+    try{
+      const updated=await confirmGeneralReview(async(url,options)=>{const response=await authFetch(url,options),data=await response.json();if(!response.ok)throw Error(data.error||'Confirmation could not be saved.');return data;},record,decision);
+      if(revision===generalAuditRevision.current&&sameGeneralAuditSources(record,currentGeneralInputs.current))setResult(updated);
+      void fetchHistory();
+    }finally{productConfirmationInFlight.current=false;setSavingProductConfirmation(false);}
+  };
   const confirmGeneralProduct = async (key: string, productKey: string) => {
     if (!result || loading || productConfirmationInFlight.current) throw new Error('Wait for the current audit action to finish.');
     const record = result;
@@ -510,6 +597,19 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
     } finally { productConfirmationInFlight.current = false; setSavingProductConfirmation(false); }
   };
 
+  const decideGeneralIdentity = async (field:IdentityField,action:IdentityDecision['action'],acknowledged?:boolean,saveAlias?:boolean)=>{
+    if(!result||!generalDetails||loading||productConfirmationInFlight.current)throw Error('Wait for the current audit action to finish.');
+    const record=result,revision=generalAuditRevision.current;
+    if(!sameGeneralAuditSources(record,currentGeneralInputs.current))throw Error('The messages changed. Audit the current messages before deciding.');
+    productConfirmationInFlight.current=true;setSavingProductConfirmation(true);
+    try{
+      const response=await authFetch(`/api/audits/${encodeURIComponent(record.id)}/identity-decision`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({field,action,identityAcknowledged:acknowledged===true,saveAlias:saveAlias===true,previousRevision:generalDetails[field].identityDecision?.revision||0,whatsappMessage:record.whatsappMessage,fulfillmentConfirmation:record.fulfillmentConfirmation,inputFingerprint:generalInputFingerprint(record)})});
+      const updated=await response.json();if(!response.ok)throw Error(updated.error||'Identity decision could not be saved.');
+      if(revision===generalAuditRevision.current&&sameGeneralAuditSources(record,currentGeneralInputs.current))setResult(updated);
+      void fetchHistory();
+    }finally{productConfirmationInFlight.current=false;setSavingProductConfirmation(false);}
+  };
+
   const answerGeneralOrderLimit = (key: string, answer: boolean) => {
     if (!result || !generalDetails || loading || savingProductConfirmation || !generalDetails.products.some(product => product.key === key && product.orderLimitEligible)) return;
     if (!sameGeneralAuditSources(result, currentGeneralInputs.current)) return;
@@ -521,7 +621,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
       .catch(() => setGeneralServiceWarning('Order-limit decision acknowledged on screen, but could not be saved to history.'));
   };
 
-  const runGeneralVerification = async (orderLimitDecisions: Record<string, boolean> = {}, existingCheckId?: string, immediateResult?: AuditRecord) => {
+  const runGeneralVerification = async (orderLimitDecisions: Record<string, boolean> = {}, existingCheckId?: string, immediateResult?: AuditRecord, structuredExtraction?:GeneralExtractionSubmission) => {
     if (generalAuditRequest.current) return; // Guard same-frame double clicks too.
     const previousResult = immediateResult ? result : null;
     const inputs = { whatsappMessage: currentGeneralInputs.current.whatsappMessage, fulfillmentConfirmation: currentGeneralInputs.current.fulfillmentConfirmation };
@@ -577,6 +677,8 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
         body: JSON.stringify({
           ...run.inputs,
           auditScope: 'general_auditor',
+          ...(structuredExtraction?{structuredExtraction,productCatalogRevision:structuredExtraction.catalogRevision}:{}),
+          deferProductResearch: true,
           includeProductCatalog: true,
           checkSource: 'order_checker_app',
           checkId: existingCheckId || priorAudit?.id || `AUD-${crypto.randomUUID()}`,
@@ -959,7 +1061,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
       </div>
 
       {/* Main Container */}
-      <main className="flex-1 min-w-0 max-w-7xl w-full mx-auto p-3 sm:p-6 lg:p-8 flex flex-col gap-6" id="main-content">
+      <main className={`flex-1 min-w-0 w-full mx-auto flex flex-col ${activeTab === 'vaccine_blueprint' ? 'max-w-none p-0 gap-0' : 'max-w-7xl p-3 sm:p-6 lg:p-8 gap-6'}`} id="main-content">
         {activeTab === 'extension' && <ExtensionSetup />}
         
         {/* EXACT 67-COLUMN VACCINE ALLOCATION BLUEPRINT (sample.xlsx) */}
@@ -1030,50 +1132,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
               Compares facility name, name of orderer, products, and quantities between the current WhatsApp Message (Customer Request) and Fulfilment Confirmation (System Entry). Stock shortages, confirmed Order Limits, and approved packaging conversions are valid. Genuine product, quantity, or identity errors require correction.
             </p>
 
-            {/* Presets Row */}
-            <div className="bg-purple-50/50 border border-purple-100 rounded-2xl p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 shadow-sm">
-              <div className="space-y-0.5">
-                <span className="text-[10px] font-bold text-purple-600 tracking-wider uppercase block">Interactive Dispatch Audit Scenarios</span>
-                <span className="text-xs font-semibold text-[#3B1A5E] block">Select a demo scenario to compare the two example inputs. Demo checks are labeled and excluded from KPI totals:</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => applySampleData('perfect')}
-                  className="px-3 py-1.5 bg-white border border-green-200 hover:bg-green-50 text-green-700 text-[11px] font-bold rounded-xl transition cursor-pointer"
-                >
-                  🟢 Perfect Order Match
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applySampleData('discrepancy_qty')}
-                  className="px-3 py-1.5 bg-white border border-amber-200 hover:bg-amber-50 text-amber-800 text-[11px] font-bold rounded-xl transition cursor-pointer"
-                >
-                  🟡 Quantity Mismatch (PCM)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applySampleData('discrepancy_extra')}
-                  className="px-3 py-1.5 bg-white border border-purple-200 hover:bg-purple-50 text-purple-700 text-[11px] font-bold rounded-xl transition cursor-pointer"
-                >
-                  🟣 Extra Cargo Manifest
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applySampleData('vaccine_diluent_mismatch')}
-                  className="px-3 py-1.5 bg-white border border-rose-200 hover:bg-rose-50 text-[#991B1B] text-[11px] font-bold rounded-xl transition cursor-pointer"
-                >
-                  🔴 Diluent Presence Mismatch
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applySampleData('vaccine_dropper_mismatch')}
-                  className="px-3 py-1.5 bg-white border border-rose-200 hover:bg-rose-50 text-[#991B1B] text-[11px] font-bold rounded-xl transition cursor-pointer"
-                >
-                  🔴 Dropper Count Mismatch
-                </button>
-              </div>
-            </div>
+            <DispatchAuditScenarios onSelect={applySampleData} />
 
             {isAdministrator && <GeneralMonitoring onOpenAudit={openSavedGeneralAudit} />}
             {generalServiceWarning && <p role="status" className="text-xs text-amber-800">{generalServiceWarning}</p>}
@@ -1094,7 +1153,6 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
 
                 <GeneralScreenshotInput ref={customerImage} label="Customer Request" resetKey={generalImageReset} inputsKey={JSON.stringify([whatsappMessage, fulfillmentConfirmation])} onInvalidate={invalidateGeneralAudit} onText={text => handleCustomChange('whatsapp', text)} />
 
-                <ProductReceivingHints scope="general" text={whatsappMessage} />
 
                 {/* Render normal text input mode or as parsed result visualization */}
                 <div className="relative flex-1 flex flex-col gap-1.5">
@@ -1126,7 +1184,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                   </div>
                   
                   <GeneralScreenshotInput ref={fulfillmentImage} label="Fulfillment Confirmation" resetKey={generalImageReset} inputsKey={JSON.stringify([whatsappMessage, fulfillmentConfirmation])} onInvalidate={invalidateGeneralAudit} onText={text => handleCustomChange('fulfillment', text)} />
-                  <ProductReceivingHints scope="general" text={fulfillmentConfirmation} />
+
                   <div className="relative flex-1">
                     <textarea
                       id="fulfillment-input"
@@ -1257,7 +1315,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         </div>
                         <div>
                           <h3 className="font-black text-[#3B1A5E] text-lg leading-tight md:text-xl flex items-center gap-2 flex-wrap">
-                            {result.allMatch && generalDetails ? 'ORDER CONFIRMED, CLEAR TO LAUNCH' : generalDecisionReview ? 'REVIEW REQUIRED' : generalDetails?.finalStatus || result.verdict}
+                            {result.allMatch && generalDetails ? generalAuditConfirmedLabel(generalDetails) : generalDecisionReview && generalDetails ? 'Needs Review' : generalDetails?.finalStatus || result.verdict}
                             <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-mono font-medium">{result.storage?.status==='saved'?'Saved audit':'Session Log'}</span>
                             {verificationTime !== null && (
                               <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded font-mono font-semibold flex items-center gap-1">
@@ -1268,7 +1326,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                           </h3>
                           {generalDetails && result.issueCount > 0 ? <GeneralDiscrepancySubtitle discrepancies={generalDetails.discrepancies} /> : (
                           <p className="text-xs text-slate-500 mt-1 sm:mt-0">
-                            {result.allMatch && generalDetails ? 'All audit checks cleared.' : generalDetails?.message || (result.allMatch
+                            {result.allMatch && generalDetails ? 'No Discrepancy Detected' : generalDecisionReview && generalDetails ? generalAuditFindingLabel(generalDetails) : generalDetails?.message || (result.allMatch
                               ? 'Confirmed — No discrepancy. Stock availability and any confirmed order limits are recorded below.'
                               : generalDetails?.pendingOrderLimitCount && result.issueCount === 0
                                 ? 'Answer the Order Limit question for each reduced quantity before confirming.'
@@ -1282,7 +1340,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         <span className={`text-[10px] font-mono px-3 py-1.5 rounded-full font-bold shadow-sm uppercase ${
                           result.allMatch ? 'bg-green-100 text-green-805' : generalDecisionReview || (generalReviewRequired || generalDetails?.pendingOrderLimitCount) && result.issueCount === 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
                         }`}>
-                          {result.allMatch ? generalDetails ? 'ORDER CONFIRMED' : 'VERIFIED MATCH' : generalDecisionReview ? 'REVIEW REQUIRED' : result.issueCount > 0 ? 'DISCREPANCY' : generalDetails?.auditSummary?.missingRequiredCount ? 'MISSING REQUIRED INFORMATION' : generalDetails?.productTotals?.quantityReview && result.issueCount===0 ? 'QUANTITY REVIEW REQUIRED' : generalReviewRequired && result.issueCount === 0 ? 'CLARIFICATION REQUIRED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
+                          {result.allMatch ? generalDetails ? 'ORDER CONFIRMED' : 'VERIFIED MATCH' : generalDecisionReview && generalDetails ? 'Needs Review' : result.issueCount > 0 ? 'DISCREPANCY' : generalDetails?.auditSummary?.missingRequiredCount ? 'MISSING REQUIRED INFORMATION' : generalDetails?.productTotals?.quantityReview && result.issueCount===0 ? 'QUANTITY REVIEW REQUIRED' : generalReviewRequired && result.issueCount === 0 ? 'CLARIFICATION REQUIRED' : generalDetails?.pendingOrderLimitCount ? 'AWAITING VALIDATION' : 'DISCREPANCY DETECTED'}
                         </span>
                         {result.allMatch ? (
                           <button
@@ -1332,7 +1390,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
 
                         <div className="space-y-3">
                           {generalDetails && <AuditStorageNotice storage={result.storage} busy={savingAuditStorage} onRetry={()=>void retryCurrentAuditStorage()} error={auditStorageError} />}
-                          {generalDetails ? <GeneralInventory items={result.items as unknown as import('./utils/generalAuditor').GeneralComparisonItem[]} details={generalDetails} onConfirm={confirmGeneralProduct} onOrderLimit={answerGeneralOrderLimit} disabled={loading || savingProductConfirmation} /> : result.items.map((item, idx) => {
+                          {generalDetails ? <GeneralInventory key={result.id} record={result} onIdentityDecision={decideGeneralIdentity} onIdentityResearch={researchIdentity} items={result.items as unknown as import('./utils/generalAuditor').GeneralComparisonItem[]} details={generalDetails} onConfirm={confirmGeneralProduct} onOrderLimit={answerGeneralOrderLimit} onChooseSuggestion={chooseCatalogueSuggestion} onResearchAction={actOnResearch} disabled={loading || savingProductConfirmation} /> : result.items.map((item, idx) => {
                             const colors = getStatusColor(item.status);
                             const generalProduct = generalDetails?.products.find(product => product.name === item.name);
                             return (
@@ -1439,6 +1497,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
 
                         {/* Confidence Score Gauge */}
                         {generalDetails ? <GeneralVerificationConfidence
+                          finding={generalDetails.decision === 'review' ? generalAuditFindingLabel(generalDetails) : undefined}
                           decision={generalDetails.decision}
                           summary={generalDetails.auditSummary ?? buildGeneralAuditCheckSummary(result.items, generalDetails.facility, generalDetails.orderer, generalDetails.phone, result.issueCount)}
                           pendingOrderLimits={generalDetails.pendingOrderLimitCount}
@@ -1485,7 +1544,7 @@ export default function App({ authenticatedUser }: { authenticatedUser: UserRole
                         </div>
                         )}
 
-                        {generalDetails && <GeneralAuditDetails details={generalDetails} onConfirmProduct={confirmGeneralProduct} confirmationDisabled={loading || savingProductConfirmation} />}
+                        {generalDetails && <GeneralAuditDetails key={result.id} consolidateSuggestions items={result.items as unknown as import('./utils/generalAuditor').GeneralComparisonItem[]} onConfirmReview={confirmGeneralReviewAction} details={generalDetails} onIdentityDecision={decideGeneralIdentity} onConfirmProduct={confirmGeneralProduct} confirmationDisabled={loading || savingProductConfirmation} />}
 
                         {/* AI Insights and notes */}
                         <div className="bg-[#3B1A5E] text-white p-5 rounded-2xl shadow-md border border-[#2C1349] relative overflow-hidden">

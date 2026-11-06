@@ -81,7 +81,7 @@
             <button id="whatsappScan" type="button" class="btn-small" disabled>Scan screenshot</button>
           </div>
           <p id="whatsappScanStatus" class="scan-status" role="status"></p>
-          <aside id="whatsappHints" class="reminders" role="status" hidden></aside>
+
         </section>
 
         <section class="block">
@@ -101,7 +101,7 @@
             <button id="fulfillmentScan" type="button" class="btn-small" disabled>Scan screenshot</button>
           </div>
           <p id="fulfillmentScanStatus" class="scan-status" role="status"></p>
-          <aside id="fulfillmentHints" class="reminders" role="status" hidden></aside>
+
 
           <button id="btnVerify" type="button" class="btn-primary btn-wide">Analyze discrepancies</button>
           <div id="confirmGroup" class="confirm-group" hidden>
@@ -266,7 +266,7 @@
         </form>
 
         <p id="catalogStatus" class="form-message" role="status" data-tone="muted"></p>
-        <p class="hint">Keep strengths, formulations, and vaccine companions separate. Receiving reminders do not change quantities.</p>
+        <p class="hint">Keep strengths, formulations, and vaccine companions separate.</p>
       </section>
     </section>
 
@@ -278,12 +278,12 @@
         </summary>
         <div class="conn-body">
           <div class="conn-row">
-            <input id="backendUrlInput" type="url" inputmode="url" spellcheck="false" aria-label="Verification service URL" placeholder="https://your-service.run.app">
-            <button id="btnSaveBackend" type="button" class="btn-small btn-save">Save</button>
-            <button id="btnResetBackend" type="button" class="btn-small">Reset</button>
+            <input id="backendUrlInput" readonly value="https://ordercheck-production.up.railway.app" type="url" inputmode="url" spellcheck="false" aria-label="Verification service URL" >
+            <button id="btnSaveBackend" hidden type="button" class="btn-small btn-save">Save</button>
+            <button id="btnResetBackend" hidden type="button" class="btn-small">Reset</button>
           </div>
           <p id="backendSaveMsg" class="form-message" role="status" data-tone="success" hidden></p>
-          <p class="hint">Where audits are sent. After you change it, sign in again. A sleeping service can take about a minute to start.</p>
+          <p class="hint">Connected automatically to the production OrderCheck website. No backend URL setup is needed.</p>
         </div>
       </details>
     </footer>

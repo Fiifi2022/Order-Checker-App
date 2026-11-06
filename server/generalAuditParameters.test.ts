@@ -47,7 +47,7 @@ for (const side of ['customer', 'fulfilment'] as const) {
     assert.equal(result.allMatch, false); assert.equal(result.issueCount, 0);
     assert.equal(result.auditSummary.missingRequiredCount, 1);
     assert.equal(result.generalAudit.finalStatus, 'REVIEW REQUIRED');
-    assert.match(html(result), /REVIEW REQUIRED/);
+    assert.match(html(result), /missing from (?:customer request|fulfilment)/);
   });
 }
 
@@ -135,6 +135,6 @@ test('an unclear additional product keeps verified items while the product field
   const result = await runGeneralSemanticAudit(headers + products + '\nInclude something unusual.', headers + products, {}, support, () => { throw Error('Unavailable'); });
   assert.equal(result.allMatch, false);
   const markup = html(result);
-  assert.match(markup, /Products \(mandatory\)<\/span><span class="text-amber-800">REVIEW REQUIRED/);
+  assert.match(markup, /Products \(mandatory\)<\/span><span class="text-amber-800">Products could not be verified/);
   assert.ok(result.items.every(item => item.status === 'match'));
 });

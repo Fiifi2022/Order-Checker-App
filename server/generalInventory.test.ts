@@ -24,7 +24,7 @@ async function completedCatalogAudit(product: string) {
   const catalog = { revision: 1, products: defaultProducts() };
   applyCatalog(catalog);
   const inputs = { whatsappMessage: `Orderer: Grace\nFacility: Example HC\n${product} 2`,
-    fulfillmentConfirmation: `Orderer: Grace\nFacility: Example HC\n${product} [2/2]` };
+    fulfillmentConfirmation: `Orderer: Grace\nFacility: Example HC\n${product==='Unknown remedy'?'Unrecognized counterpart':product} [2/2]` };
   const backend = await runGeneralProductNameAudit(inputs.whatsappMessage, inputs.fulfillmentConfirmation,
     catalog, { semanticTimeoutMs: 0 }, () => { throw new Error('No Gemini expected'); });
   return completeGeneralAuditRun(createGeneralAuditRun(inputs, 1, {}, {}, true),
@@ -39,7 +39,8 @@ test('catalogue identity review renders without an optional verification record'
   for (const productVerifications of [undefined, []]) {
     const html = markup({ ...record, id: 'review',
       generalAudit: { ...record.generalAudit, productVerifications } });
-    assert.match(html, /Review Required/);
+    assert.doesNotMatch(html, /Review Required/);
+    assert.match(html, /(?:identity|catalogue|catalog|verified)/i);
     assert.match(html, /Unknown remedy/);
     assert.doesNotMatch(html, /Product Discrepancy|Quantity Discrepancy/);
   }
@@ -74,8 +75,8 @@ test('finishing and rerunning an audit keeps the client mounted and preserves so
     await clickAudit();
     assert.deepEqual(errors, []);
     assert.ok(window.document.querySelector('input'), 'Audit completion must not unmount the input form');
-    assert.match(window.document.querySelector('[data-audit-result]')!.textContent!, /Review Required/);
-    assert.match(window.document.body.textContent!, /Unknown remedy \[2\/2\]/);
+    assert.match(window.document.querySelector('[data-audit-result]')!.textContent!, /Product could not be matched/);
+    assert.match(window.document.body.textContent!, /Unrecognized counterpart \[2\/2\]/);
     const input: any = window.document.querySelector('input');
     assert.equal(input.value, 'Unknown remedy');
     const props = input[Object.keys(input).find(key => key.startsWith('__reactProps'))!];

@@ -1,3 +1,4 @@
+import {PRODUCTION_BACKEND_URL} from './backend-target.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -109,7 +110,7 @@ test('background uses authenticated read-only lookup, rejects other websites, di
  const stored = { authSession: { idToken: 'test-only-token', expiresAt: Date.now() + 600000 } };
  const area = { async get(key) { return key === null ? { ...stored } : { [key]: stored[key] }; }, async set(data) { Object.assign(stored, data); }, async remove(key) { delete stored[key]; } };
  const listeners = { addListener() {} };
- const chrome = { sidePanel: { open(options) { panels.push(options); return Promise.resolve(); } }, storage: { session: area, local: { async get() { return {}; } }, onChanged: listeners }, tabs: { onRemoved: listeners, onUpdated: listeners, async sendMessage() {}, async query() { return [{ id: 7, url: 'https://fulfillment-gh3-production.platform.flyzipline.com/v3/orders/Draft' }, { id: 9, url: 'https://unrelated.example' }]; } }, permissions: { async contains() { return true; } }, scripting: { async executeScript(options) { injections.push(options); } }, runtime: { onInstalled: { addListener(fn) { installed = fn; } }, getURL: () => 'chrome-extension://test/', onMessage: { addListener(fn) { handle = fn; } } } };
+ const chrome = { sidePanel: { open(options) { panels.push(options); return Promise.resolve(); } }, storage: { session: area, local: { async get() { return {customBackendUrl: 'http://localhost:3000'}; } }, onChanged: listeners }, tabs: { onRemoved: listeners, onUpdated: listeners, async sendMessage() {}, async query() { return [{ id: 7, url: 'https://fulfillment-gh3-production.platform.flyzipline.com/v3/orders/Draft' }, { id: 9, url: 'https://unrelated.example' }]; } }, permissions: { async contains() { return true; } }, scripting: { async executeScript(options) { injections.push(options); } }, runtime: { onInstalled: { addListener(fn) { installed = fn; } }, getURL: () => 'chrome-extension://test/', onMessage: { addListener(fn) { handle = fn; } } } };
  const fetch = async (url, options) => {
    calls.push({ url, options });
    const input = JSON.parse(new URL(url).searchParams.get('selection'));
@@ -149,7 +150,7 @@ test('background uses authenticated read-only lookup, rejects other websites, di
  await request({ type: 'FS_SELECTION', selection: changed });
  assert.equal(stored['fsContext:7'].selection.script.text, changed.script.text);
  assert.equal(calls.length, 3, 'Script changes reuse allocation advice instead of fetching or writing balances.');
- assert.ok(calls.every(call => call.url.startsWith('http://localhost:3000/api/vaccine/companion/context?') && !call.options.method && call.options.headers.Authorization === 'Bearer test-only-token'));
+ assert.ok(calls.every(call => call.url.startsWith(PRODUCTION_BACKEND_URL + '/api/vaccine/companion/context?') && !call.options.method && call.options.headers.Authorization === 'Bearer test-only-token'));
 });
 
 test('side panel renders draft separately, retains added products, removes deleted rows and resolves ambiguity manually', async () => {

@@ -191,16 +191,6 @@ input:focus, select:focus, textarea:focus {
 .scan-status { margin-top: 6px; color: var(--muted); font-size: 12px; }
 .scan-status:empty { display: none; }
 
-.reminders {
-  margin-top: 10px;
-  padding: 10px;
-  background: var(--warn-bg);
-  border: 1px solid var(--warn-line);
-  border-radius: var(--radius);
-  font-size: 12.5px;
-  white-space: pre-wrap;
-}
-.reminders p { margin-top: 6px; }
 
 /* Audit result */
 .result-box {
@@ -440,7 +430,7 @@ input:focus, select:focus, textarea:focus {
 
 @media (prefers-reduced-motion: no-preference) {
   .spinner { animation: spin 0.9s linear infinite; }
-  .clear-bar span { animation: drain 3s linear forwards; }
+  .clear-bar span { animation: drain 5s linear forwards; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }

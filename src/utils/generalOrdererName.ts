@@ -1,3 +1,4 @@
+import {stripOrderPersonTitle} from '../../shared/orderText';
 import type { GeneralFieldResult, GeneralNameEvidence } from './generalAuditTypes';
 
 const aliases: Record<string, string> = {
@@ -7,11 +8,11 @@ const aliases: Record<string, string> = {
   alex: 'alexander', geo: 'george', thos: 'thomas', ben: 'benjamin',
   mohammed: 'muhammad', mohamed: 'muhammad', muhammad: 'muhammad',
 };
-const titles = /^(?:(?:dr|doctor|nurse|officer|mr|mrs|ms|miss|prof|sir|madam)\s+)+/;
+
 export function normalizeGeneralOrdererName(value: string): string[] {
-  return value.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
+  return stripOrderPersonTitle(value).normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
     .replace(/['’]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
-    .replace(titles, '').split(/\s+/).filter(Boolean)
+    .replace(/^(?:(?:sir|madam)\s+)+/,'').split(/\s+/).filter(Boolean)
     .map(word => aliases[word] || word);
 }
 
@@ -109,6 +110,6 @@ export function compareGeneralOrdererNames(whatsappValue: string, fulfillmentVal
     Number.isFinite(evidence.confidence) && evidence.confidence >= 0.98 && evidence.confidence <= 1 &&
     typeof evidence.reason === 'string' && evidence.reason.trim() && (evidence.decision === 'mismatch' || evidence.decision === 'match' && match.aiMatchAllowed);
   if (accepted) status = evidence.decision;
-  return { whatsappValue, fulfillmentValue, status, reason: accepted ? evidence.reason : match.reason, nameMatchMethod: accepted ? 'gemini' : match.method,
+  return { whatsappValue, fulfillmentValue, status, reason: whatsappValue === 'N/A' ? (fulfillmentValue === 'N/A' ? 'The orderer name is missing from both messages.' : `The customer request does not state an orderer name. Fulfilment identifies ${fulfillmentValue}.`) : fulfillmentValue === 'N/A' ? 'The fulfilment confirmation does not state an orderer name.' : accepted ? evidence.reason : match.reason, nameMatchMethod: accepted ? 'gemini' : match.method,
     ...(accepted ? { nameEvidence: evidence } : {}) };
 }

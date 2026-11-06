@@ -1,3 +1,5 @@
+import {malariaVaccineIdentityConflict} from '../shared/generalVaccineCatalog';
+import {isSyringeDescription,unsafeSyringeAlias} from '../shared/syringeIdentity';
 import { createHash, randomUUID } from 'node:crypto';
 import type { RequestHandler } from 'express';
 import { assignedRoles } from '../shared/roles';
@@ -8,7 +10,7 @@ const aliasId = (productId: string, text: string) => createHash('sha256').update
 const fail = (message: string, status = 400): never => { throw Object.assign(new Error(message), { status }); };
 export function catalogueAliasRecords(catalog: ProductCatalog): CatalogAliasRecord[] {
   const records = [...(catalog.aliasRecords || [])];
-  for (const product of catalog.products.filter(p=>p.scope==='general')) for (const text of product.aliases) {
+  for (const product of catalog.products.filter(p=>(p.scope==='general'||isSyringeDescription(p.name)))) for (const text of product.aliases) {
     if(catalogAliasKey(text)===catalogAliasKey(product.name)) continue;
     if (records.some(record=>record.productId===product.id && record.normalizedText===catalogAliasKey(text))) continue;
     records.push({ id:aliasId(product.id,text),productId:product.id,text,normalizedText:catalogAliasKey(text),source:'catalogue',status:'approved',active:true,requiresContext:product.contextualAliases.some(alias=>catalogAliasKey(alias)===catalogAliasKey(text)),
@@ -27,7 +29,7 @@ export function changeCatalogueAlias(catalog: ProductCatalog, input: any, actor:
   if(action!=='propose' && !previous) fail('Alias not found. Reload the catalogue.',404);
   const text=String(input.text ?? previous?.text ?? '').trim();
   const productId=String(input.productId ?? previous?.productId ?? '');
-  const product=catalog.products.find(p=>p.id===productId && p.scope==='general');
+  const product=catalog.products.find(p=>p.id===productId && (p.scope==='general'||isSyringeDescription(p.name)));
   if(!product || !text || text.length>160 || /[\r\n]/.test(text)) fail('Choose an existing General product and a one-line alias of at most 160 characters.');
   const normalizedText=catalogAliasKey(text);
   if(action==='propose' && normalizedText===catalogAliasKey(product.name)) fail('The canonical product name is already recognized. Enter an alternative description.');
@@ -41,8 +43,10 @@ export function changeCatalogueAlias(catalog: ProductCatalog, input: any, actor:
   if(automatic && action!=='propose') fail('Automatic suggestions cannot approve aliases.');
   if(action==='propose' && records.filter(record=>record.productId===productId && record.status==='pending').length>=150) fail('Review existing pending aliases for this product before adding more.');
   if(approving && product.aliases.filter(alias=>catalogAliasKey(alias)!==previous?.normalizedText).length>=150) fail('This product has reached its approved alias limit.');
+  if(approving && malariaVaccineIdentityConflict(text,product.name))fail('Different malaria vaccine identities cannot share an approved alias.',409);
+  if(approving && unsafeSyringeAlias(text,product))fail('Syringe capacity or configuration conflicts, or the alias contains an order quantity.',409);
   if(approving) {
-    const conflicts=catalog.products.filter(p=>p.scope==='general' && p.id!==productId && !(previous?.status==='approved' && previous.active && p.id===previous.productId && previous.normalizedText===normalizedText) && catalogProductNames(p).some(name=>catalogMatchLabelKey(name)===catalogMatchLabelKey(text)));
+    const conflicts=catalog.products.filter(p=>(p.scope==='general'||isSyringeDescription(p.name)) && p.id!==productId && !(previous?.status==='approved' && previous.active && p.id===previous.productId && previous.normalizedText===normalizedText) && catalogProductNames(p).some(name=>catalogMatchLabelKey(name)===catalogMatchLabelKey(text)));
     if(conflicts.length) fail('This alias belongs to another product. Correct or deactivate that mapping first.',409);
     if(records.some(record=>record.id!==previous?.id && record.productId!==productId && catalogMatchLabelKey(record.text)===catalogMatchLabelKey(text) && record.status==='approved' && record.active)) fail('Another approved mapping already uses this alias.',409);
   }
@@ -82,13 +86,17 @@ export function learnVerifiedCatalogueAliases(catalog:ProductCatalog,aliases:{al
   const key=catalogAliasKey(alias);
   if(catalogueAliasRecords(current).some(record=>record.normalizedText===key))continue;
   const match=resolveGeneralCatalogIdentity(alias,current.products);
-  if(match.product?.id!==productId || match.product.scope!=='general' || match.source!=='Normalized')continue;
+  if(match.product?.id!==productId || match.product.scope!=='general'&&!isSyringeDescription(match.product.name) || match.source!=='Normalized')continue;
   if(!canAutomaticallyLearnGeneralAlias(alias,match.product))continue;
-  if(current.products.some(product=>product.scope==='general' && catalogProductNames(product).some(name=>catalogAliasKey(name)===key)))continue;
+  if(current.products.some(product=>(product.scope==='general'||isSyringeDescription(product.name)) && catalogProductNames(product).some(name=>catalogAliasKey(name)===key)))continue;
   try {
    const proposed=changeCatalogueAlias(current,{action:'propose',text:alias,productId,source:'deterministic',confidence:1,clinicalUncertainty:false,reason:'Unique compatible product verified against the current catalogue.'},actor,true);
    const record=proposed.events[0]?.after;if(!record)continue;
-   current=proposed.catalog;events.push(...proposed.events);
+   // This is a unique deterministic catalogue match with all required clinical
+   // attributes preserved, rechecked inside the catalogue transaction above.
+   // Gemini proposals never enter this approval path.
+   const approved=changeCatalogueAlias(proposed.catalog,{action:'approve',id:record.id,revision:proposed.catalog.revision,identityConfirmed:true},actor);
+   current=approved.catalog;events.push(...proposed.events,...approved.events);
   }catch { /* Conflicts or capacity limits cannot invalidate the actual audit. */ }
  }
  return {catalog:current,events};
@@ -96,7 +104,7 @@ export function learnVerifiedCatalogueAliases(catalog:ProductCatalog,aliases:{al
 /** Capture alias edits made through the existing product form too. */
 export function trackCatalogueAliasEdits(before:ProductCatalog,after:ProductCatalog,actor:string) {
   const now=new Date().toISOString(),records=catalogueAliasRecords(before),events:CatalogAliasEvent[]=[];
-  for(const product of after.products.filter(p=>p.scope==='general')) {
+  for(const product of after.products.filter(p=>(p.scope==='general'||isSyringeDescription(p.name)))) {
     const old=before.products.find(p=>p.id===product.id);
     for(const text of new Set([...(old?.aliases || []),...product.aliases])) {
       const key=catalogAliasKey(text),was=old?.aliases.some(alias=>catalogAliasKey(alias)===key),is=product.aliases.some(alias=>catalogAliasKey(alias)===key);
@@ -125,7 +133,7 @@ export function catalogueAliasHandlers(deps:{read:()=>Promise<ProductCatalog>;ch
   const list:RequestHandler=async(_req,res)=>{
     res.setHeader('Cache-Control','no-store');
     try {const catalog=await deps.read();const records=catalogueAliasRecords(catalog);
-      res.json({revision:catalog.revision,canEdit:canManageCatalog(assignedRoles(res.locals.authUser)),products:catalog.products.filter(p=>p.scope==='general').map(p=>({id:p.id,name:p.displayName || p.name})),
+      res.json({revision:catalog.revision,canEdit:canManageCatalog(assignedRoles(res.locals.authUser)),products:catalog.products.filter(p=>(p.scope==='general'||isSyringeDescription(p.name))).map(p=>({id:p.id,name:p.displayName || p.name})),
         records:records.map(record=>({...record,ambiguous:records.some(other=>other.productId!==record.productId && other.normalizedText===record.normalizedText && other.status!=='rejected')}))});
     } catch {res.status(503).json({error:'Alias catalogue unavailable. Please retry.'});}
   };

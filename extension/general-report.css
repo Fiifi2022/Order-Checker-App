@@ -22,3 +22,8 @@
 .highlight-types li{border:1px solid #fda4af;background:#fff;padding:5px 8px;border-radius:6px;font-size:12px;line-height:1.4;color:#881337}
 
 .audit-highlight.verdict-pending{background:#fffbeb;border-color:#d97706;color:#92400e}
+
+.identity-card.identity-verified { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; border-radius:8px; padding:12px; }
+.identity-card.identity-pending { background:#fffbeb; border:1px solid #fde68a; color:#92400e; border-radius:8px; padding:12px; }
+.identity-card.identity-rejected { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; border-radius:8px; padding:12px; }
+.btn-identity-reject { border:1px solid #b91c1c; color:#991b1b; background:white; }
